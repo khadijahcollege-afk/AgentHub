@@ -8,7 +8,11 @@
 
   // ---------- token ----------
   let token = localStorage.getItem('ah_token') || '';
-  const urlToken = new URLSearchParams(location.search).get('token');
+  const urlParams = new URLSearchParams(location.search);
+  const urlToken = urlParams.get('token');
+  const urlView = urlParams.get('view');
+  const urlThread = urlParams.get('thread');
+  let deepLinkDone = false;
   if (urlToken) {
     token = urlToken;
     localStorage.setItem('ah_token', token);
@@ -45,6 +49,8 @@
   let taskSearch = '';
 
   const ENGINE_ICON = { pool: '🆓', claude: '✳️', codex: '🔷', opencode: '🟦', gemini: '✨', echo: '🔁' };
+  const svgIco = (p) => `<svg viewBox="0 0 24 24">${p}</svg>`;
+  const FOLDER_SVG = svgIco('<path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H9l2 2h7.5A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5z"/>');
   const fmtCtx = (n) => (n >= 1000000 ? (n / 1000000).toFixed(n % 1000000 ? 1 : 0) + 'M' : n >= 1000 ? Math.round(n / 1000) + 'K' : n);
   const fmtTime = (ts) => (ts ? new Date(ts).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—');
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -82,6 +88,11 @@
       $('#gate').classList.add('hidden');
       $('#app').classList.remove('hidden');
       renderAll();
+      if (!deepLinkDone) {
+        deepLinkDone = true;
+        if (urlThread) openThread(urlThread);
+        else if (urlView && document.getElementById(`view-${urlView}`)) go(urlView);
+      }
     } catch (e) {
       if (e.message === 'AUTH') showGate();
       else toast('Gagal memuat: ' + e.message);
@@ -102,15 +113,25 @@
   $('#gate-token').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#gate-btn').click(); });
 
   // ---------- navigasi ----------
+  let sidebarOpen = window.innerWidth > 900;
+  function applySidebar() {
+    const show = view === 'studio' && sidebarOpen;
+    $('#sidebar').classList.toggle('hidden', !show);
+    const backdrop = $('#sb-backdrop');
+    if (backdrop) backdrop.classList.toggle('hidden', !(show && window.innerWidth <= 900));
+  }
   function go(v) {
     view = v;
     $$('.view').forEach((el) => el.classList.toggle('active', el.id === `view-${v}`));
     $$('.rail-btn[data-view]').forEach((b) => b.classList.toggle('active', b.dataset.view === v));
-    $('#sidebar').classList.toggle('hidden', v !== 'studio');
+    applySidebar();
     if (v === 'studio') { renderSidebar(); placeComposer(); if (curThread) renderChat(); }
     if (v === 'tasks') renderTasks();
     if (v === 'alerts') markReadSoon();
   }
+  $('#btn-side-toggle').addEventListener('click', () => { sidebarOpen = !sidebarOpen; applySidebar(); });
+  $('#sb-backdrop').addEventListener('click', () => { sidebarOpen = false; applySidebar(); });
+  window.addEventListener('resize', () => { if (window.innerWidth > 900) sidebarOpen = true; applySidebar(); });
   $$('.rail-btn[data-view]').forEach((b) => b.addEventListener('click', () => go(b.dataset.view)));
   document.addEventListener('click', (e) => {
     const g = e.target.closest('[data-view]');
@@ -197,7 +218,7 @@
 
     // project row (folder kerja)
     $('#sb-projects').innerHTML = `
-      <div class="project-row"><span class="p-ico">📁</span><span class="p-name">${esc(cwdBase())}</span><span class="p-ext" title="Ganti folder">↗</span></div>`;
+      <div class="project-row"><span class="p-ico">${FOLDER_SVG}</span><span class="p-name">${esc(cwdBase())}</span><span class="p-ext" title="Ganti folder"><svg viewBox="0 0 24 24"><path d="M4 20h4L20 8l-4-4L4 16z"/></svg></span></div>`;
     $('#sb-projects .project-row').addEventListener('click', () => {
       const v = prompt('Folder kerja untuk agent CLI (kosongkan = home):', cwd);
       if (v !== null) setCwd(v);
@@ -221,6 +242,10 @@
     const v = prompt('Cari thread:');
     if (v !== null) { threadSearch = v; renderSidebar(); }
   });
+  $('#btn-filter-projects').addEventListener('click', () => {
+    const v = prompt('Filter thread (kosongkan = semua):', threadSearch);
+    if (v !== null) { threadSearch = v; renderSidebar(); }
+  });
   $('#btn-resume').addEventListener('click', () => {
     const t = threadCache[0];
     if (t) openThread(t.id); else toast('Belum ada sesi tersimpan');
@@ -232,7 +257,8 @@
       view = 'studio';
       $$('.view').forEach((el) => el.classList.toggle('active', el.id === 'view-studio'));
       $$('.rail-btn[data-view]').forEach((b) => b.classList.toggle('active', b.dataset.view === 'studio'));
-      $('#sidebar').classList.remove('hidden');
+      sidebarOpen = window.innerWidth > 900;
+      applySidebar();
       renderSidebar();
       placeComposer();
       renderChat();
@@ -246,7 +272,7 @@
       placeComposer();
       renderChat();
       renderSidebar();
-      $('#composer').focus();
+      $('#composer-input').focus();
     } catch (e) { toast('Gagal: ' + e.message); }
   });
 
@@ -256,11 +282,13 @@
     const slot = empty ? $('#hero-composer-slot') : $('#bottom-composer-slot');
     const c = $('#composer');
     if (c.parentElement !== slot) slot.appendChild(c);
-    $('#chat-empty').classList.toggle('hidden', !empty);
-    $('#chat-messages').classList.toggle('hidden', empty);
-    $('#hero-continue').classList.toggle('hidden', !empty);
-    $('#chat-top').classList.toggle('ghost-top', empty);
-    $('#btn-chat-del').classList.toggle('hidden', !curThread);
+    const hide = (sel, on) => { const el = $(sel); if (el) el.classList.toggle('hidden', on); };
+    hide('#chat-empty', !empty);
+    hide('#chat-messages', empty);
+    hide('#hero-continue', !empty);
+    hide('#btn-chat-del', !curThread);
+    const top = $('#chat-top');
+    if (top) top.classList.toggle('ghost-top', empty);
   }
 
   $('#btn-chat-del').addEventListener('click', async () => {
@@ -275,7 +303,7 @@
   // ---------- render chat ----------
   function renderChat() {
     const empty = !curThread || !curThread.messages?.length;
-    $('#chat-title').textContent = curThread ? curThread.title : 'agenthub';
+    $('#chat-title').textContent = curThread ? curThread.title : '';
     const badge = $('#chat-engine-badge');
     badge.classList.toggle('hidden', !curThread);
     if (curThread) badge.textContent = `${icon(curThread.engine)} ${engineLabel(curThread.engine)}`;
@@ -359,7 +387,7 @@
 
   async function sendPrompt() {
     if (sending) return;
-    const prompt = $('#composer').value.trim();
+    const prompt = $('#composer-input').value.trim();
     if (!prompt) return;
     sending = true;
     $('#btn-send').disabled = true;
@@ -406,12 +434,12 @@
     } finally {
       sending = false;
       $('#btn-send').disabled = false;
-      $('#composer').value = '';
-      $('#composer').focus();
+      $('#composer-input').value = '';
+      $('#composer-input').focus();
     }
   }
   $('#btn-send').addEventListener('click', sendPrompt);
-  $('#composer').addEventListener('keydown', (e) => {
+  $('#composer-input').addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendPrompt(); }
   });
 
@@ -472,35 +500,65 @@
   });
 
   // ---------- tasks ----------
+  const KICON = {
+    all: svgIco('<path d="M4 7h16M4 12h16M4 17h10"/>'),
+    inbox: svgIco('<path d="M3 13h5l2 3h4l2-3h5"/><path d="M5.5 5h13l2.5 8v6H3v-6z"/>'),
+    todo: svgIco('<circle cx="12" cy="12" r="8.5"/>'),
+    running: svgIco('<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>'),
+    review: svgIco('<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="2.6"/>'),
+    done: svgIco('<circle cx="12" cy="12" r="8.5"/><path d="M8.4 12.2l2.5 2.5 4.7-4.9"/>'),
+    global: svgIco('<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.4 2.4 3.6 5.3 3.6 8.5s-1.2 6.1-3.6 8.5c-2.4-2.4-3.6-5.3-3.6-8.5S9.6 5.9 12 3.5z"/>'),
+  };
   const TASK_COLS = [
-    ['inbox', '◯', 'Inbox'], ['todo', '○', 'To do'], ['running', '⏱', 'Running'],
-    ['review', '🕒', 'Needs review'], ['done', '✅', 'Done'],
+    ['inbox', 'Inbox'], ['todo', 'To do'], ['running', 'Running'],
+    ['review', 'Needs review'], ['done', 'Recently done'],
   ];
+  let taskProject = 'all';
+  let taskGlobal = false;
 
   async function renderTasks() {
     let list;
     try { list = await api('/api/tasks'); } catch { return; }
     const q = taskSearch.toLowerCase();
-    const filtered = list.filter((t) =>
-      (taskFilter === 'all' || t.status === taskFilter)
+    const inProject = (t) => taskProject === 'all' || (t.projectId || 'default') === taskProject;
+    const filtered = list.filter((t) => inProject(t)
+      && (taskFilter === 'all' || t.status === taskFilter)
       && (!q || t.title.toLowerCase().includes(q)));
 
-    $('#task-filters').innerHTML = [
-      ['all', '☰', 'All tasks'], ...TASK_COLS.map(([k, i, l]) => [k, i, l]),
-    ].map(([k, i, l]) => {
-      const n = k === 'all' ? list.length : list.filter((t) => t.status === k).length;
-      return `<div class="filter-row ${taskFilter === k ? 'active' : ''}" data-filter="${k}"><span>${i}</span><span class="grow">${l}</span><span class="muted small">${n}</span></div>`;
+    const rows = [['all', 'All tasks'], ...TASK_COLS, ['global', 'Global']];
+    $('#task-filters').innerHTML = rows.map(([k, l]) => {
+      const base = list.filter(inProject);
+      const n = k === 'all' || k === 'global' ? base.length : base.filter((t) => t.status === k).length;
+      const active = k === 'global' ? taskGlobal : (taskFilter === k && !taskGlobal);
+      return `<div class="filter-row ${active ? 'active' : ''}" data-filter="${k}"><span class="kico">${KICON[k]}</span><span class="grow">${l}</span><span class="muted small">${n}</span></div>`;
     }).join('');
-    $$('#task-filters .filter-row').forEach((el) => el.addEventListener('click', () => { taskFilter = el.dataset.filter; renderTasks(); }));
+    $$('#task-filters .filter-row').forEach((el) => el.addEventListener('click', () => {
+      const k = el.dataset.filter;
+      if (k === 'global') { taskFilter = 'all'; taskProject = 'all'; taskGlobal = true; }
+      else { taskFilter = k; taskGlobal = false; }
+      renderTasks();
+    }));
 
     const projects = [...new Set(list.map((t) => t.projectId || 'default'))];
-    $('#task-projects').innerHTML = projects.map((p) => `<div class="filter-row"><span class="p-dot"></span><span class="grow">${esc(p)}</span><span class="muted small">${list.filter((t) => (t.projectId || 'default') === p).length}</span></div>`).join('');
+    $('#task-projects').innerHTML = projects.map((p) => `
+      <div class="filter-row ${taskProject === p ? 'active' : ''}" data-project="${esc(p)}">
+        <span class="p-dot" style="background:${hashHue(p)}"></span>
+        <span class="grow">${esc(p)}</span>
+        <span class="muted small">${list.filter((t) => (t.projectId || 'default') === p).length}</span>
+      </div>`).join('');
+    $$('#task-projects .filter-row').forEach((el) => el.addEventListener('click', () => {
+      taskProject = el.dataset.project;
+      taskGlobal = false;
+      renderTasks();
+    }));
 
-    $('#kanban').innerHTML = TASK_COLS.map(([key, ic, label]) => {
-      const cards = list.filter((t) => t.status === key && (!q || t.title.toLowerCase().includes(q)));
+    $('#task-project-name').textContent = taskProject === 'all' ? cwdBase() : taskProject;
+
+    $('#kanban').innerHTML = TASK_COLS.map(([key, label]) => {
+      const cards = filtered.filter((t) => t.status === key);
       return `
       <div class="kcol" data-status="${key}">
-        <div class="kcol-head"><span>${ic}</span><b>${label}</b> <span class="count">${cards.length}</span>
+        <div class="kcol-head"><span class="kico">${KICON[key]}</span><b>${label}</b> <span class="count">${cards.length}</span>
           <button class="add" data-add="${key}" title="Tambah tugas">＋</button>
         </div>
         <div class="kcol-body">
@@ -557,6 +615,17 @@
     $$('#kanban [data-open-thread]').forEach((btn) => btn.addEventListener('click', () => openThread(btn.dataset.openThread)));
   }
   $('#task-search').addEventListener('input', (e) => { taskSearch = e.target.value; renderTasks(); });
+  $('#btn-task-display').addEventListener('click', () => {
+    const board = $('#kanban');
+    board.classList.toggle('compact');
+    toast(board.classList.contains('compact') ? 'Tampilan ringkas' : 'Tampilan normal', 1500);
+  });
+  $('#btn-task-panel').addEventListener('click', () => $('#btn-task-display').click());
+  $('#btn-task-sidebar').addEventListener('click', () => {
+    const side = $('.task-side');
+    side.classList.toggle('hidden');
+    if (side.classList.contains('hidden')) toast('Sidebar disembunyikan — klik ikon lagi untuk menampilkan', 2200);
+  });
 
   // ---------- promo ----------
   function renderPromo() {
@@ -943,12 +1012,16 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
     $('#usage-rows').innerHTML = usage.map((u) => {
       const pct = Math.round((u.runs / max) * 100);
       return `<div class="usage-row">
-        <div class="u-top">${icon(u.id)} <b>${esc(u.label)}</b><span>${u.runs} run</span></div>
+        <div class="u-top"><span class="u-name"><span class="u-ico">${icon(u.id)}</span><b>${esc(u.label)}</b></span><span class="u-num">${u.runs} run</span></div>
         <div class="u-bar"><i style="width:${pct}%"></i></div>
         <div class="u-sub"><span>${u.ok} ok · ${u.failed} gagal</span><span>${u.ok ? 'avg ' + Math.round(u.avgMs / 100) / 10 + 's' : '—'}</span></div>
       </div>`;
     }).join('');
     pop.classList.remove('hidden');
+  });
+  $('#usage-manage').addEventListener('click', () => {
+    $('#usage-pop').classList.add('hidden');
+    go('gateway');
   });
   document.addEventListener('click', (e) => {
     if (!e.target.closest('#usage-pop') && !e.target.closest('#rail-usage')) $('#usage-pop')?.classList.add('hidden');
@@ -986,5 +1059,5 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
   }
 
   // ---------- init ----------
-  loadState().then(() => { fillPresets(); renderEngines(); connectSSE(); go('studio'); });
+  loadState().then(() => { fillPresets(); renderEngines(); connectSSE(); if (!urlThread && !urlView) go('studio'); });
 })();

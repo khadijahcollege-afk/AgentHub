@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.4.1 — 2026-11-11
+- **Paritas UI dengan referensi Kybern** (dicek langsung terhadap tangkapan layar Kybern):
+  - Rail ikon garis monokrom, bukan emoji; status aktif berbentuk rounded-square
+  - Composer dua lapis ala Kybern: kartu konteks (folder kerja + branch) di belakang kartu utama
+  - Sidebar: baris "This PC" satu baris dengan titik status, tombol filter di header Personal, ikon pensil muncul saat hover pada baris proyek
+  - Tasks: top bar proyek + tombol Display, 5 kolom muat tanpa scroll horizontal dengan garis pemisah penuh, ikon kolom bergaya garis, tombol ＋ selalu tampak, filter proyek & Global berfungsi (status aktif tidak lagi dobel)
+  - Popover Pemakaian engine: nama rata kiri, jumlah rata kanan, bar netral, plus pintasan ke Gateway
+  - Popover Environment memakai ikon garis
+- Deep link: `?view=tasks` dan `?thread=<id>` langsung membuka tampilan/thread
+- Perbaikan: deep link hanya berlaku saat muat pertama, jadi pindah tab tidak lagi terlempar balik ke tampilan awal 1,2 detik setelah membuka Notifikasi.
+- Perbaikan: error `Cannot read properties of null (reading 'classList')` saat Studio dimuat (`#hero-continue` belum punya id)
+- Perbaikan: id ganda pada composer (shell vs textarea) yang membuat fokus kotak input tidak bekerja
+
+## 1.4.0 — 2026-11-11
+- **UI sama persis dengan referensi Kybern**:
+  - Sidebar: wordmark `agenthub ⌄`, baris `This PC • server jalan`, Chat baru / Resume sesi, label PERSONAL + daftar proyek, RECENTS dengan ikon engine
+  - Hero `Let's work in / agenthub` dengan composer pill dua baris: chip This PC + main, placeholder `Ask anything, @ to mention, $ skills, or / commands`, baris + / Full access / pemilih model / tombol kirim
+  - Chat: pemisah tanggal `Today · ...`, kartu delegation `N delegated agents · M working`, baris pohon dan status `Xs Working`, baris `Worked for Xs`
+  - Tasks: sidebar filter (All/Inbox/To do/Running/Needs review/Done) + projects, header kolom ikon + jumlah + ＋, kartu ID chip dengan aksi buka-thread/done
+  - Popover Environments dan Pemakaian engine dari rail
+  - Perbaikan: `#view-studio` tanpa `.active` tidak lagi flex (bocor ke view lain)
+
+## 1.3.1 — 2026-11-11
+- Restyle UI ke bahasa visual Kybern: latar gelap, rail ikon, sidebar thread, hero composer, tipografi lebih rapat
+
 ## 1.3.0 — 2026-11-11
 - **Studio** — gaya antarmuka kontrol-plane ala studio agent: rail ikon, sidebar thread, composer besar, UI bahasa Indonesia
 - **Chat multi-engine dengan streaming** — ngobrol langsung dengan:
