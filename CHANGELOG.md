@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.3.0 — 2026-11-11
+- **Studio** — gaya antarmuka kontrol-plane ala studio agent: rail ikon, sidebar thread, composer besar, UI bahasa Indonesia
+- **Chat multi-engine dengan streaming** — ngobrol langsung dengan:
+  - *Free tokens (Gateway Pool)* — LLM gratis via rotasi provider
+  - *Claude Code / Codex / OpenCode / Gemini CLI* — harness CLI yang terdeteksi otomatis, prompt dikirim aman via stdin, keluaran streaming realtime
+- **Delegation** — satu prompt dijalankan paralel ke beberapa agent sekaligus; hasil dikumpulkan di satu thread, task otomatis dibuat di papan Tugas
+- **Papan Tugas (kanban)** — Inbox / To do / Running / Needs review / Done
+- **Statistik pemakaian engine** per harness di tab Gateway
+- Konfigurasi harness dapat dioverride via `data/harnesses.json`
+- Perbaikan: spawn CLI Windows dibungkus `cmd.exe` dengan quoting aman (shim npm .cmd)
+
 ## 1.2.0 — 2026-11-11
 - **Native desktop app** — AgentHub now runs as its own Windows application (Electron shell): own window, taskbar icon, tray icon; no browser needed
 - Server starts automatically as an internal child process; closing the window keeps monitoring alive in the tray

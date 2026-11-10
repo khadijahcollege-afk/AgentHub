@@ -11,6 +11,9 @@ import { refreshPromo, getCatalog } from './lib/promo.js';
 import { listKeys, addKey, removeKey, checkKey, checkAllKeys, setPool, PRESETS, DEFAULT_MODELS } from './lib/keys.js';
 import { listAgents, addAgent, removeAgent, checkAgent, checkAllAgents } from './lib/agents.js';
 import { routeChat, testPool, poolStatus, poolModels } from './lib/pool.js';
+import { listEngines, runEngine, usageStats } from './lib/harness.js';
+import * as threads from './lib/threads.js';
+import * as tasks from './lib/tasks.js';
 import { toast } from './lib/notify.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -312,6 +315,142 @@ async function route(req, res) {
     setPool(m[1], b);
     broadcast('keys');
     return sendJson(res, 200, { ok: true });
+  }
+
+  // ---- studio: engines, threads, tasks ----
+  if (p === '/api/engines' && method === 'GET') {
+    return sendJson(res, 200, await listEngines(url.searchParams.get('refresh') === '1'));
+  }
+  if (p === '/api/threads' && method === 'GET') return sendJson(res, 200, threads.listThreads());
+  if (p === '/api/threads' && method === 'POST') {
+    const b = await readBody(req);
+    const t = threads.createThread(b);
+    broadcast('threads');
+    return sendJson(res, 200, t);
+  }
+  if ((m = p.match(/^\/api\/threads\/([a-f0-9]+)$/))) {
+    if (method === 'GET') {
+      const t = threads.getThread(m[1]);
+      return t ? sendJson(res, 200, t) : sendJson(res, 404, { error: 'Thread tidak ditemukan' });
+    }
+    if (method === 'DELETE') {
+      threads.deleteThread(m[1]);
+      broadcast('threads');
+      return sendJson(res, 200, { ok: true });
+    }
+  }
+  // kirim prompt: respons SSE (delta / done / error)
+  if ((m = p.match(/^\/api\/threads\/([a-f0-9]+)\/send$/)) && method === 'POST') {
+    const b = await readBody(req);
+    const t = threads.getThread(m[1]);
+    if (!t) return sendJson(res, 404, { error: 'Thread tidak ditemukan' });
+    const engineId = b.engine || t.engine || 'pool';
+    threads.appendMessage(m[1], { role: 'user', content: String(b.prompt || '').slice(0, 16000), engine: engineId });
+    threads.patchThread(m[1], { engine: engineId, running: true });
+    broadcast('threads');
+
+    res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });
+    const send = (obj) => res.write(`data: ${JSON.stringify(obj)}\n\n`);
+
+    try {
+      let acc = '';
+      const r = await runEngine(engineId, b.prompt, {
+        cwd: b.cwd,
+        model: b.model,
+        onDelta: (chunk) => {
+          acc += chunk;
+          if (acc.length < 200000) send({ type: 'delta', text: chunk });
+        },
+      });
+      if (!acc.trim()) { acc = r.text; send({ type: 'delta', text: r.text }); }
+      threads.appendMessage(m[1], {
+        role: 'assistant',
+        engine: engineId,
+        content: acc.slice(0, 200000),
+        ms: r.ms,
+        servedBy: r.servedBy,
+        model: r.model,
+      });
+      threads.patchThread(m[1], { running: false });
+      broadcast('threads');
+      send({ type: 'done', ms: r.ms, servedBy: r.servedBy });
+    } catch (e) {
+      threads.appendMessage(m[1], { role: 'assistant', engine: engineId, content: `⚠️ ${e.message}` });
+      threads.patchThread(m[1], { running: false });
+      broadcast('threads');
+      send({ type: 'error', message: String(e.message || e) });
+    }
+    return res.end();
+  }
+
+  // delegasi: satu prompt → banyak agent paralel (SSE)
+  if (p === '/api/delegate' && method === 'POST') {
+    const b = await readBody(req);
+    const engines = Array.isArray(b.engines) ? b.engines.slice(0, 6) : [];
+    if (!b.prompt || engines.length === 0) {
+      return sendJson(res, 400, { error: 'prompt dan engines (min 1) wajib' });
+    }
+    const t = threads.createThread({ title: '🎯 ' + String(b.prompt).replace(/\s+/g, ' ').slice(0, 50), projectId: b.projectId, kind: 'delegation' });
+    threads.appendMessage(t.id, { role: 'user', content: b.prompt });
+    broadcast('threads');
+
+    res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });
+    const send = (obj) => res.write(`data: ${JSON.stringify(obj)}\n\n`);
+
+    const task = tasks.createTask({ title: String(b.prompt).slice(0, 120), status: 'running', threadId: t.id, projectId: b.projectId });
+    send({ type: 'start', threadId: t.id, engines, taskId: task.id });
+
+    await Promise.all(
+      engines.map(async (engineId) => {
+        send({ type: 'sub', engine: engineId, status: 'working' });
+        threads.appendMessage(t.id, { role: 'assistant', engine: engineId, subrun: true, content: '', status: 'working' });
+        try {
+          let acc = '';
+          const r = await runEngine(engineId, b.prompt, {
+            cwd: b.cwd,
+            onDelta: (chunk) => {
+              acc += chunk;
+              if (acc.length < 100000) send({ type: 'subdelta', engine: engineId, text: chunk });
+            },
+          });
+          threads.updateSubrun(t.id, engineId, { status: 'done', content: acc.slice(0, 100000), ms: r.ms });
+          send({ type: 'sub', engine: engineId, status: 'done', ms: r.ms });
+        } catch (e) {
+          threads.updateSubrun(t.id, engineId, { status: 'error', content: String(e.message || e) });
+          send({ type: 'sub', engine: engineId, status: 'error', message: String(e.message || e) });
+        }
+        broadcast('threads');
+      })
+    );
+    threads.patchThread(t.id, { running: false });
+    tasks.patchTask(task.id, { status: 'review' });
+    broadcast('threads');
+    send({ type: 'done', threadId: t.id });
+    return res.end();
+  }
+  if (p === '/api/usage' && method === 'GET') return sendJson(res, 200, usageStats());
+
+  // tasks kanban
+  if (p === '/api/tasks' && method === 'GET') return sendJson(res, 200, tasks.listTasks());
+  if (p === '/api/tasks' && method === 'POST') {
+    const b = await readBody(req);
+    if (!b.title) return sendJson(res, 400, { error: 'judul task wajib' });
+    const t = tasks.createTask(b);
+    broadcast('tasks');
+    return sendJson(res, 200, t);
+  }
+  if ((m = p.match(/^\/api\/tasks\/([a-f0-9]+)$/))) {
+    if (method === 'POST') {
+      const b = await readBody(req);
+      const t = tasks.patchTask(m[1], b);
+      broadcast('tasks');
+      return sendJson(res, 200, t);
+    }
+    if (method === 'DELETE') {
+      tasks.deleteTask(m[1]);
+      broadcast('tasks');
+      return sendJson(res, 200, { ok: true });
+    }
   }
 
   // ---- settings ----

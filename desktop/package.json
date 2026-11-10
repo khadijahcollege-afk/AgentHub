@@ -1,7 +1,7 @@
 {
   "name": "agenthub-desktop",
   "productName": "AgentHub",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "AgentHub desktop shell — jendela asli Windows untuk server AgentHub",
   "main": "main.js",
   "author": "AgentHub Contributors",
@@ -23,19 +23,42 @@
       "package.json"
     ],
     "extraResources": [
-      { "from": "../server.js", "to": "server/server.js" },
-      { "from": "../server-package.json", "to": "server/package.json" },
-      { "from": "../lib", "to": "server/lib" },
-      { "from": "../public", "to": "server/public" },
-      { "from": "../data/seed-openrouter.json", "to": "server/data/seed-openrouter.json" },
-      { "from": "../data/seed-freelist.md", "to": "server/data/seed-freelist.md" },
-      { "from": "build/icon.ico", "to": "icon.ico" }
+      {
+        "from": "../server.js",
+        "to": "server/server.js"
+      },
+      {
+        "from": "../server-package.json",
+        "to": "server/package.json"
+      },
+      {
+        "from": "../lib",
+        "to": "server/lib"
+      },
+      {
+        "from": "../public",
+        "to": "server/public"
+      },
+      {
+        "from": "../data/seed-openrouter.json",
+        "to": "server/data/seed-openrouter.json"
+      },
+      {
+        "from": "../data/seed-freelist.md",
+        "to": "server/data/seed-freelist.md"
+      },
+      {
+        "from": "build/icon.ico",
+        "to": "icon.ico"
+      }
     ],
     "win": {
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "build/icon.ico",

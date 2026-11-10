@@ -11,14 +11,17 @@ AgentHub watches **free AI model promos** from multiple internet sources, connec
 
 > 🇮🇩 Dokumentasi berbahasa Indonesia: [README.id.md](README.id.md)
 
-| Dashboard | Free promo tracking | Gateway Pool |
+| Studio (chat) | Tasks board | Free promo tracking |
 |---|---|---|
-| ![](assets/readme/dashboard.png) | ![](assets/readme/promo.png) | ![](assets/readme/gateway.png) |
+| ![](assets/readme/studio.png) | ![](assets/readme/tasks.png) | ![](assets/readme/promo.png) |
 
 ## Why AgentHub?
 
 Free AI API tiers (Groq, Google AI Studio, Cerebras, OpenRouter `:free`, …) are great — until your agent hits the rate limit at the worst moment. AgentHub solves this with a **Gateway Pool**: your agents point at *one* endpoint, and AgentHub rotates through all your free keys.
 
+- **💬 Studio** — chat directly with your agents in a native desktop app: pick an engine, type a prompt, watch it stream. Engines include the **free-token Gateway Pool** and installed **CLI harnesses** (Claude Code, Codex, OpenCode, Gemini CLI — auto-detected).
+- **🎯 Delegation** — send one prompt to several agents in parallel; results are collected into a single thread and a task appears on the board.
+- **📋 Tasks board** — Inbox / To do / Running / Needs review / Done.
 - **🎁 Promo tracking** — live from [OpenRouter](https://openrouter.ai), [models.dev](https://models.dev) and the [free-llm-api-resources](https://github.com/raullenchai/free-llm-api-resources) list, plus a curated catalog with signup links. New free model detected → notification + Windows toast.
 - **🔀 Gateway Pool** — one OpenAI-compatible endpoint (`/v1/chat/completions`, `/v1/models`). `429` → 5-minute cooldown → traffic shifts to the next provider. Rejected keys (401) get disabled automatically. Supports streaming (`stream: true`).
 - **🔑 API key vault** — store keys for 11+ OpenAI-compatible presets (Groq, OpenRouter, Cerebras, Gemini, GitHub Models, Mistral, Together, DeepSeek, xAI, GLM, Hugging Face, custom). Periodic re-validation, keys masked in the UI.
