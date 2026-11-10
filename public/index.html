@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#0d0f13">
 <title>agenthub — studio agent</title>
-<link rel="stylesheet" href="/public/style.css?v=1.4.1">
+<link rel="stylesheet" href="/public/style.css?v=1.5.0">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%234f7cff'/%3E%3Ccircle cx='50' cy='42' r='16' fill='white'/%3E%3Crect x='28' y='66' width='44' height='10' rx='5' fill='white'/%3E%3C/svg%3E">
 </head>
 <body>
@@ -23,6 +23,10 @@
 </div>
 
 <div id="app" class="layout hidden">
+  <div id="conn-banner" class="conn-banner hidden" role="status" aria-live="polite">
+    <span id="conn-text">Menghubungkan…</span>
+    <button id="conn-retry" class="btn tiny">Coba lagi</button>
+  </div>
   <!-- rail ikon -->
   <aside class="rail">
     <button class="rail-btn active" data-view="studio" title="Studio"><svg viewBox="0 0 24 24"><path d="M4 5.5h16v10H9l-5 4z"/></svg></button>
@@ -71,6 +75,7 @@
           <span id="chat-engine-badge" class="chip hidden"></span>
           <span id="chat-running" class="chip run hidden">Working</span>
           <span class="grow"></span>
+          <button id="btn-stop" class="icon-btn hidden" title="Hentikan run"><svg viewBox="0 0 24 24"><rect x="6.5" y="6.5" width="11" height="11" rx="2"/></svg></button>
           <button id="btn-chat-del" class="icon-btn hidden" title="Hapus thread">🗑</button>
         </div>
         <div class="chat-scroll" id="chat-scroll">
@@ -311,6 +316,6 @@
 
 <div id="toast-wrap" class="toast-wrap"></div>
 <script src="/public/qrcode.min.js"></script>
-<script src="/public/app.js?v=1.4.1"></script>
+<script type="module" src="/public/app.js?v=1.5.0"></script>
 </body>
 </html>

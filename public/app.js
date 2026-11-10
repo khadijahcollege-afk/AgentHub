@@ -1,5 +1,22 @@
-// AgentHub — UI kontrol-plane ala Kybern (vanilla JS)
+// AgentHub — UI kontrol-plane ala Kybern (vanilla JS, ESM)
 // Studio chat multi-engine + delegation + papan tugas + monitoring.
+//
+// Semua status yang dulu berupa string lepas / boolean sekarang mengikuti
+// mesin di /public/machines.js (dihasilkan dari lib/machines.js). Satu mesin,
+// tiga konsumen: server (validasi), UI (label & tombol), agent (kontrak API).
+import {
+  TASK_STATUSES, TASK_LABELS, TASK_MACHINE, taskCanMove, taskNext,
+  RUN_MACHINE, CONNECTION_MACHINE, PROMO_MACHINE, UI_MACHINE,
+  VIEWS, UI_LAYERS, SSE_SCOPES, scopeSlices,
+} from './machines.js';
+
+// Kontrak mesin juga tersedia di runtime browser: agent yang mengemudikan UI
+// lewat CDP bisa membaca aturan yang sama tanpa menebak tombol mana yang ada.
+window.__ahMachines = {
+  tasks: TASK_MACHINE, run: RUN_MACHINE, connection: CONNECTION_MACHINE,
+  promo: PROMO_MACHINE, ui: UI_MACHINE, views: VIEWS, sse: SSE_SCOPES,
+};
+
 (() => {
   'use strict';
 
@@ -20,18 +37,32 @@
   }
 
   async function api(path, opts = {}) {
-    const res = await fetch(path, {
-      ...opts,
-      headers: {
-        ...(opts.body ? { 'content-type': 'application/json' } : {}),
-        authorization: `Bearer ${token}`,
-      },
-    });
-    if (res.status === 401) throw new Error('AUTH');
+    let res;
+    try {
+      res = await fetch(path, {
+        ...opts,
+        headers: {
+          ...(opts.body ? { 'content-type': 'application/json' } : {}),
+          authorization: `Bearer ${token}`,
+        },
+      });
+    } catch (e) {
+      // fetch gagal = transport, bukan HTTP. Ini satu-satunya cara UI tahu
+      // server mati; sebelumnya error ini hilang sebagai "Gagal: Failed to fetch".
+      setConn('offline', 'server tidak merespons');
+      const err = new Error('OFFLINE');
+      err.cause = e;
+      throw err;
+    }
+    if (res.status === 401) { setConn('unauthorized'); throw new Error('AUTH'); }
     if (!res.ok) {
       const j = await res.json().catch(() => ({}));
-      throw new Error(j.error || `HTTP ${res.status}`);
+      const err = new Error(j.error || `HTTP ${res.status}`);
+      err.status = res.status;
+      err.body = j;
+      throw err;
     }
+    if (conn !== 'live') setConn('live');
     return res.json();
   }
 
@@ -44,9 +75,47 @@
   let curThread = null;
   let threadSearch = '';
   let cwd = localStorage.getItem('ah_cwd') || '';
-  let sending = false;
   let taskFilter = 'all';
   let taskSearch = '';
+
+  // --- mesin: run & koneksi ---
+  // runStatus: idle | running | done | error | stopped (RUN_MACHINE)
+  let runStatus = 'idle';
+  let runCtrl = null;          // AbortController run aktif
+  let conn = 'connecting';     // CONNECTION_MACHINE
+  let promoStatus = 'idle';    // PROMO_MACHINE
+  let layer = null;            // UI_MACHINE — hanya satu overlay aktif
+
+  const runActive = () => runStatus === 'running';
+
+  function setRun(next) {
+    if (next !== runStatus) {
+      const allowed = RUN_MACHINE.transitions[runStatus] || [];
+      if (!allowed.includes(next)) {
+        // transisi ilegal = bug pemanggil, bukan kondisi user. Jangan diam-diam.
+        console.warn(`[run] transisi ${runStatus} → ${next} tidak sah (boleh: ${allowed.join(', ') || '—'})`);
+      }
+      runStatus = next;
+    }
+    const btn = $('#btn-send');
+    if (btn) btn.disabled = next === 'running';
+    const stop = $('#btn-stop');
+    if (stop) stop.classList.toggle('hidden', next !== 'running');
+    const chip = $('#chat-running');
+    if (chip) chip.classList.toggle('hidden', next !== 'running');
+  }
+
+  function setConn(next, detail) {
+    conn = next;
+    const banner = $('#conn-banner');
+    if (!banner) return;
+    const label = CONNECTION_MACHINE.states[next] || next;
+    const show = next === 'degraded' || next === 'offline' || next === 'unauthorized';
+    banner.classList.toggle('hidden', !show);
+    banner.dataset.state = next;
+    const txt = $('#conn-text');
+    if (txt) txt.textContent = detail ? `${label} — ${detail}` : label;
+  }
 
   const ENGINE_ICON = { pool: '🆓', claude: '✳️', codex: '🔷', opencode: '🟦', gemini: '✨', echo: '🔁' };
   const svgIco = (p) => `<svg viewBox="0 0 24 24">${p}</svg>`;
@@ -74,28 +143,42 @@
     return `<div class="day-sep">${same ? 'Today' : 'Earlier'} · ${s}</div>`;
   }
 
+  // Toast: satu pesan = satu elemen. Dulu event SSE beruntun menumpuk toast
+  // kembar dan menutupi UI.
+  const toastSeen = new Map();
   function toast(msg, ms = 3500) {
+    const key = String(msg);
+    const now = Date.now();
+    const prev = toastSeen.get(key);
+    if (prev && now - prev < 1500) return;   // debounce pesan yang sama
+    toastSeen.set(key, now);
     const el = document.createElement('div');
     el.className = 'toast';
     el.textContent = msg;
     $('#toast-wrap').appendChild(el);
-    setTimeout(() => el.remove(), ms);
+    setTimeout(() => { el.remove(); if (toastSeen.get(key) === now) toastSeen.delete(key); }, ms);
   }
 
-  async function loadState() {
+  async function loadState({ slices, silent = false } = {}) {
     try {
       state = await api('/api/state');
       $('#gate').classList.add('hidden');
       $('#app').classList.remove('hidden');
-      renderAll();
+      renderAll(slices);
+      if (slices) {
+        // render selektif: papan tugas & tampilan aktif tetap ikut segar
+        if (slices.includes('tasks') && view === 'tasks') renderTasks();
+        return;
+      }
       if (!deepLinkDone) {
         deepLinkDone = true;
         if (urlThread) openThread(urlThread);
-        else if (urlView && document.getElementById(`view-${urlView}`)) go(urlView);
+        else if (urlView && document.getElementById(`view-${urlView}`)) go(urlView, { silentRoute: true });
       }
     } catch (e) {
-      if (e.message === 'AUTH') showGate();
-      else toast('Gagal memuat: ' + e.message);
+      if (e.message === 'AUTH') { showGate(); return; }
+      if (e.message === 'OFFLINE') { if (!silent) setConn('offline'); return; }
+      if (!silent) toast('Gagal memuat: ' + e.message);
     }
   }
 
@@ -120,11 +203,25 @@
     const backdrop = $('#sb-backdrop');
     if (backdrop) backdrop.classList.toggle('hidden', !(show && window.innerWidth <= 900));
   }
-  function go(v) {
+
+  // URL adalah bagian dari state, bukan efek samping. Tanpa ini, refresh /
+  // bookmark / share selalu mendarat di Studio dan user kehilangan konteks.
+  function syncRoute(v, threadId) {
+    const q = new URLSearchParams(location.search);
+    q.delete('token');
+    if (v && v !== 'studio') q.set('view', v); else q.delete('view');
+    if (threadId) q.set('thread', threadId); else q.delete('thread');
+    const qs = q.toString();
+    history.replaceState(null, '', location.pathname + (qs ? '?' + qs : ''));
+  }
+
+  function go(v, { silentRoute = false } = {}) {
+    if (!VIEWS.includes(v)) v = 'studio';
     view = v;
     $$('.view').forEach((el) => el.classList.toggle('active', el.id === `view-${v}`));
     $$('.rail-btn[data-view]').forEach((b) => b.classList.toggle('active', b.dataset.view === v));
     applySidebar();
+    if (!silentRoute) syncRoute(v, curThread?.id);
     if (v === 'studio') { renderSidebar(); placeComposer(); if (curThread) renderChat(); }
     if (v === 'tasks') renderTasks();
     if (v === 'alerts') markReadSoon();
@@ -138,19 +235,64 @@
     if (g && !g.classList.contains('rail-btn')) go(g.dataset.view);
   });
 
+  // ---------- overlay: satu layer aktif pada satu waktu ----------
+  // Dulu tiap handler menutup popover lain secara manual (dan overlay delegasi
+  // tidak menutup apa pun). Sekarang ada satu pemilik state.
+  const LAYER_EL = {
+    usage: '#usage-pop',
+    env: '#env-pop',
+    qr: '#qr-pop',
+    delegate: '#delegate-overlay',
+  };
+
+  function setLayer(next) {
+    if (next && !UI_LAYERS.includes(next)) return;
+    const allowed = UI_MACHINE.transitions[layer] || [];
+    if (next && !allowed.includes(next)) console.warn(`[ui] layer ${layer} → ${next} tidak sah`);
+    layer = next || null;
+    for (const [name, sel] of Object.entries(LAYER_EL)) {
+      const el = $(sel);
+      if (!el) continue;
+      el.classList.toggle('hidden', layer !== name);
+      el.setAttribute('aria-hidden', layer === name ? 'false' : 'true');
+    }
+    if (layer === 'delegate') $('#del-prompt')?.focus();
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && layer) { setLayer(null); }
+  });
+
+  // Klik di luar popover menutupnya — tapi klik pada pemicu bukan "di luar".
+  // Tanpa daftar ini, klik #rail-usage membuka lalu langsung menutup popover
+  // dalam event yang sama (bug halus yang tidak terlihat di kode).
+  const LAYER_TRIGGERS = ['#rail-usage', '#rail-env', '#env-open', '#env-pair', '[data-open-delegate]'];
+  const LAYER_TRIGGER_SEL = LAYER_TRIGGERS.join(',');
+
+  document.addEventListener('click', (e) => {
+    if (!layer) return;
+    if (e.target.closest(Object.values(LAYER_EL).join(','))) return;
+    if (e.target.closest(LAYER_TRIGGER_SEL)) return;
+    if (layer === 'delegate') return; // overlay modal: hanya tombol Batal/Esc
+    setLayer(null);
+  });
+
   // ---------- render utama ----------
-  function renderAll() {
-    renderSidebar();
-    renderEngines();
-    renderPromo();
-    renderKeys();
-    renderGateway();
-    renderAgents();
-    renderAlerts();
-    renderSettings();
-    renderBadges();
-    if (curThread) renderChat();
-    placeComposer();
+  // slices: undefined = semua. SSE memanggil dengan daftar slice yang berubah,
+  // jadi event `tasks` tidak lagi me-render ulang chat/promo/keys.
+  function renderAll(slices) {
+    const want = (s) => !slices || slices.includes('all') || slices.includes(s);
+    if (want('threads')) renderSidebar();
+    if (want('engines')) renderEngines();
+    if (want('promo') || want('snapshot')) renderPromo();
+    if (want('keys')) renderKeys();
+    if (want('pool') || want('keys')) renderGateway();
+    if (want('agents')) renderAgents();
+    if (want('alerts')) renderAlerts();
+    if (want('config') || want('server')) renderSettings();
+    if (want('alerts')) renderBadges();
+    if (want('threads') && curThread) renderChat({ preserveStream: runActive() });
+    if (want('threads') || want('engines')) placeComposer();
   }
 
   function renderBadges() {
@@ -259,6 +401,7 @@
       $$('.rail-btn[data-view]').forEach((b) => b.classList.toggle('active', b.dataset.view === 'studio'));
       sidebarOpen = window.innerWidth > 900;
       applySidebar();
+      syncRoute('studio', curThread.id);
       renderSidebar();
       placeComposer();
       renderChat();
@@ -301,15 +444,20 @@
   });
 
   // ---------- render chat ----------
-  function renderChat() {
+  // preserveStream: jangan sentuh DOM pesan saat stream sedang menulis ke sana
+  // (SSE `threads` bisa datang di tengah run; render ulang akan menghapus kursor
+  // dan teks yang sedang tumbuh).
+  function renderChat({ preserveStream = false } = {}) {
     const empty = !curThread || !curThread.messages?.length;
     $('#chat-title').textContent = curThread ? curThread.title : '';
     const badge = $('#chat-engine-badge');
     badge.classList.toggle('hidden', !curThread);
     if (curThread) badge.textContent = `${icon(curThread.engine)} ${engineLabel(curThread.engine)}`;
-    $('#chat-running').classList.toggle('hidden', !(curThread?.running));
+    $('#chat-running').classList.toggle('hidden', !(curThread?.running || runActive()));
+    $('#btn-stop').classList.toggle('hidden', !(curThread?.running || runActive()));
     placeComposer();
     if (empty) return;
+    if (preserveStream) return;
 
     const msgs = curThread.messages.filter((m) => m.role !== 'system');
     let html = '';
@@ -386,15 +534,16 @@
   }
 
   async function sendPrompt() {
-    if (sending) return;
+    if (runActive()) return;
     const prompt = $('#composer-input').value.trim();
     if (!prompt) return;
-    sending = true;
-    $('#btn-send').disabled = true;
+    setRun('running');
+    runCtrl = new AbortController();
 
     try {
       if (!curThread) {
         curThread = await api('/api/threads', { method: 'POST', body: JSON.stringify({ engine: $('#engine-select').value }) });
+        syncRoute('studio', curThread.id);
       }
       const engineId = $('#engine-select').value;
       curThread.messages = [...(curThread.messages || []), { id: 'tmp-u', role: 'user', content: prompt, ts: Date.now() }];
@@ -409,9 +558,11 @@
         method: 'POST',
         headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
         body: JSON.stringify({ prompt, engine: engineId, model: $('#chat-model').value || undefined, cwd: cwd || undefined }),
+        signal: runCtrl.signal,
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`);
       let acc = '';
+      let outcome = 'done';
       await parseSSE(res, (ev) => {
         if (ev.type === 'delta') {
           acc += ev.text;
@@ -420,22 +571,31 @@
         } else if (ev.type === 'done') {
           const meta = curThread.messages[curThread.messages.length - 1];
           meta.content = acc; meta.ms = ev.ms; meta.servedBy = ev.servedBy; meta.status = 'done';
+        } else if (ev.type === 'stopped') {
+          outcome = 'stopped';
+          const meta = curThread.messages[curThread.messages.length - 1];
+          meta.content = acc || '⏹️ Dihentikan.'; meta.status = 'stopped';
         } else if (ev.type === 'error') {
+          outcome = 'error';
           const meta = curThread.messages[curThread.messages.length - 1];
           meta.content = '⚠️ ' + ev.message; meta.status = 'error';
         }
       });
+      setRun(outcome);
       curThread = await api(`/api/threads/${curThread.id}`);
       renderChat();
       renderSidebar();
     } catch (e) {
-      toast('Gagal: ' + e.message);
+      const aborted = e.name === 'AbortError' || runCtrl?.signal.aborted;
+      setRun(aborted ? 'stopped' : 'error');
+      if (!aborted) toast(e.message === 'OFFLINE' ? 'Server tidak terjangkau — coba lagi' : 'Gagal: ' + e.message);
       if (curThread) { curThread = await api(`/api/threads/${curThread.id}`).catch(() => curThread); renderChat(); }
     } finally {
-      sending = false;
-      $('#btn-send').disabled = false;
+      runCtrl = null;
       $('#composer-input').value = '';
       $('#composer-input').focus();
+      // kembali ke idle setelah terminal state terlihat sebentar
+      setTimeout(() => { if (!runActive()) setRun('idle'); }, 400);
     }
   }
   $('#btn-send').addEventListener('click', sendPrompt);
@@ -443,22 +603,40 @@
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendPrompt(); }
   });
 
+  // Hentikan run: batalkan fetch lokal DAN minta server mematikan proses CLI.
+  // Tanpa ini, menutup tab meninggalkan proses 10 menit dan thread "running" selamanya.
+  async function stopRun() {
+    const id = curThread?.id;
+    try { runCtrl?.abort(); } catch { /* noop */ }
+    if (id) { try { await api(`/api/threads/${id}/stop`, { method: 'POST' }); } catch { /* sudah berhenti */ } }
+    setRun('stopped');
+    toast('Run dihentikan');
+    if (id) {
+      curThread = await api(`/api/threads/${id}`).catch(() => curThread);
+      renderChat();
+      renderSidebar();
+    }
+    setTimeout(() => { if (!runActive()) setRun('idle'); }, 400);
+  }
+  $('#btn-stop').addEventListener('click', stopRun);
+
   // ---------- delegation ----------
   function renderDelegationEngines() {
+    // jangan buang pilihan user saat SSE memicu render ulang
+    const checked = new Set($$('#del-engines input[data-del]:checked').map((i) => i.value));
     $('#del-engines').innerHTML = engines.map((e) => `
       <label class="switch-row del-engine ${e.available ? '' : 'off'}">
-        <input type="checkbox" value="${esc(e.id)}" data-del ${e.available ? '' : 'disabled'}>
+        <input type="checkbox" value="${esc(e.id)}" data-del ${e.available ? '' : 'disabled'} ${checked.has(e.id) ? 'checked' : ''}>
         <span>${icon(e.id)} ${esc(e.label)} <span class="muted small">${esc(e.note || '')}</span></span>
       </label>`).join('');
   }
 
   $$('[data-open-delegate]').forEach((b) => b.addEventListener('click', () => {
-    $('#delegate-overlay').classList.remove('hidden');
+    setLayer('delegate');
     $('#del-progress').classList.add('hidden');
     $('#del-progress').innerHTML = '';
-    $('#del-prompt').focus();
   }));
-  $('#btn-del-cancel').addEventListener('click', () => $('#delegate-overlay').classList.add('hidden'));
+  $('#btn-del-cancel').addEventListener('click', () => setLayer(null));
 
   $('#btn-del-start').addEventListener('click', async () => {
     const prompt = $('#del-prompt').value.trim();
@@ -491,7 +669,7 @@
       curThread = null;
       await loadState();
       if (threadId) await openThread(threadId);
-      $('#delegate-overlay').classList.add('hidden');
+      setLayer(null);
     } catch (e) {
       toast('Delegation gagal: ' + e.message);
     } finally {
@@ -509,12 +687,12 @@
     done: svgIco('<circle cx="12" cy="12" r="8.5"/><path d="M8.4 12.2l2.5 2.5 4.7-4.9"/>'),
     global: svgIco('<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.4 2.4 3.6 5.3 3.6 8.5s-1.2 6.1-3.6 8.5c-2.4-2.4-3.6-5.3-3.6-8.5S9.6 5.9 12 3.5z"/>'),
   };
-  const TASK_COLS = [
-    ['inbox', 'Inbox'], ['todo', 'To do'], ['running', 'Running'],
-    ['review', 'Needs review'], ['done', 'Recently done'],
-  ];
+  const TASK_COLS = TASK_STATUSES.map((s) => [s, TASK_LABELS[s]]);
   let taskProject = 'all';
   let taskGlobal = false;
+  // satu input "tambah tugas" yang terbuka pada satu waktu
+  let openCol = null;
+  let newTaskDraft = '';   // draft bertahan walau SSE memicu render ulang
 
   async function renderTasks() {
     let list;
@@ -556,56 +734,73 @@
 
     $('#kanban').innerHTML = TASK_COLS.map(([key, label]) => {
       const cards = filtered.filter((t) => t.status === key);
+      const nextStatus = taskNext(key, 1);
+      const prevStatus = taskNext(key, -1);
       return `
       <div class="kcol" data-status="${key}">
         <div class="kcol-head"><span class="kico">${KICON[key]}</span><b>${label}</b> <span class="count">${cards.length}</span>
           <button class="add" data-add="${key}" title="Tambah tugas">＋</button>
         </div>
         <div class="kcol-body">
-          <input class="knew hidden" placeholder="Tulis judul, Enter" data-status="${key}">
-          ${cards.map((t) => `
+          <input class="knew${openCol === key ? '' : ' hidden'}" placeholder="Tulis judul, Enter" data-status="${key}" value="${openCol === key ? esc(newTaskDraft) : ''}">
+          ${cards.map((t) => {
+            // Tombol hanya untuk transisi yang sah menurut TASK_MACHINE.
+            const canPrev = prevStatus && taskCanMove(key, prevStatus);
+            const canNext = nextStatus && taskCanMove(key, nextStatus);
+            return `
           <div class="kcard" data-id="${t.id}">
             <div class="kcard-top"><span class="id-chip">${esc(t.id.slice(0, 4).toUpperCase())}</span>
               <span class="kcard-acts">
                 ${t.threadId ? `<button class="icon-btn" data-open-thread="${t.threadId}" title="Buka thread">⤢</button>` : ''}
-                ${key !== 'done' ? `<button class="icon-btn" data-done="1" title="Tandai Done">☐</button>` : ''}
               </span>
             </div>
             <div class="kcard-title">${esc(t.title)}</div>
             <div class="kcard-foot">
-              ${key !== 'inbox' ? `<button class="icon-btn" data-move="-1" title="Mundur">←</button>` : ''}
-              ${key !== 'done' ? `<button class="icon-btn" data-move="1" title="Maju">→</button>` : ''}
+              ${canPrev ? `<button class="icon-btn" data-to="${prevStatus}" title="Kembali ke ${TASK_LABELS[prevStatus]}">←</button>` : ''}
+              ${canNext ? `<button class="icon-btn" data-to="${nextStatus}" title="Lanjut ke ${TASK_LABELS[nextStatus]}">→</button>` : ''}
               <button class="icon-btn" data-del-task="1" title="Hapus">🗑</button>
             </div>
-          </div>`).join('')}
+          </div>`;
+          }).join('')}
         </div>
       </div>`;
     }).join('');
 
     $$('#kanban .kcol-head .add').forEach((btn) => btn.addEventListener('click', () => {
-      const col = btn.closest('.kcol');
-      const inp = col.querySelector('.knew');
-      inp.classList.toggle('hidden');
-      if (!inp.classList.contains('hidden')) inp.focus();
+      const key = btn.dataset.add;
+      openCol = openCol === key ? null : key;
+      $$('#kanban .knew').forEach((inp) => inp.classList.toggle('hidden', inp.dataset.status !== openCol));
+      const inp = $(`#kanban .knew[data-status="${key}"]`);
+      if (inp && openCol === key) inp.focus();
     }));
-    $$('#kanban .knew').forEach((inp) => inp.addEventListener('keydown', async (e) => {
-      if (e.key === 'Enter' && inp.value.trim()) {
-        await api('/api/tasks', { method: 'POST', body: JSON.stringify({ title: inp.value.trim(), status: inp.dataset.status }) });
+    $$('#kanban .knew').forEach((inp) => {
+      inp.addEventListener('input', () => { if (inp.dataset.status === openCol) newTaskDraft = inp.value; });
+      inp.addEventListener('keydown', async (e) => {
+        if (e.key === 'Enter' && inp.value.trim()) {
+          await api('/api/tasks', { method: 'POST', body: JSON.stringify({ title: inp.value.trim(), status: inp.dataset.status }) });
+          openCol = null;
+          newTaskDraft = '';
+          renderTasks();
+        }
+        if (e.key === 'Escape') { openCol = null; newTaskDraft = ''; inp.classList.add('hidden'); }
+      });
+    });
+    // satu handler untuk semua perpindahan; target diambil dari tombol, bukan ±1
+    $$('#kanban [data-to]').forEach((btn) => btn.addEventListener('click', async () => {
+      const card = btn.closest('.kcard');
+      const from = btn.closest('.kcol').dataset.status;
+      const to = btn.dataset.to;
+      if (!taskCanMove(from, to)) return toast(`Tidak bisa ${from} → ${to}`, 2500);
+      try {
+        await api(`/api/tasks/${card.dataset.id}`, { method: 'POST', body: JSON.stringify({ status: to }) });
         renderTasks();
+      } catch (e) {
+        // server menolak transisi (409) — tampilkan alasannya, jangan diam
+        if (e.status === 409) {
+          toast(e.message, 4000);
+          renderTasks();
+        } else toast('Gagal: ' + e.message);
       }
-      if (e.key === 'Escape') inp.classList.add('hidden');
-    }));
-    $$('#kanban [data-move]').forEach((btn) => btn.addEventListener('click', async () => {
-      const id = btn.closest('.kcard').dataset.id;
-      const idx = TASK_COLS.findIndex(([k]) => k === btn.closest('.kcol').dataset.status);
-      const next = TASK_COLS[Math.min(TASK_COLS.length - 1, Math.max(0, idx + Number(btn.dataset.move)))][0];
-      await api(`/api/tasks/${id}`, { method: 'POST', body: JSON.stringify({ status: next }) });
-      renderTasks();
-    }));
-    $$('#kanban [data-done]').forEach((btn) => btn.addEventListener('click', async () => {
-      const id = btn.closest('.kcard').dataset.id;
-      await api(`/api/tasks/${id}`, { method: 'POST', body: JSON.stringify({ status: 'done' }) });
-      renderTasks();
     }));
     $$('#kanban [data-del-task]').forEach((btn) => btn.addEventListener('click', async () => {
       if (!confirm('Hapus task?')) return;
@@ -927,13 +1122,25 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
 
   // ---------- promo aksi ----------
   $('#btn-promo-refresh').addEventListener('click', async (e) => {
-    e.target.disabled = true;
+    if (promoStatus === 'refreshing') return;
+    promoStatus = 'refreshing';
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    btn.dataset.label ??= btn.textContent;
+    btn.textContent = PROMO_MACHINE.states.refreshing;
     try {
       await api('/api/promo/refresh', { method: 'POST' });
+      promoStatus = 'ready';
       toast('Sumber promo diperbarui');
       await loadState();
-    } catch (err) { toast('Gagal: ' + err.message); }
-    finally { e.target.disabled = false; }
+    } catch (err) {
+      promoStatus = 'error';
+      toast('Gagal: ' + err.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = btn.dataset.label;
+      setTimeout(() => { if (promoStatus === 'ready') promoStatus = 'idle'; }, 1500);
+    }
   });
   $('#promo-search').addEventListener('input', (e) => {
     promoQuery = e.target.value;
@@ -1003,9 +1210,8 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
 
   // ---------- popover usage ----------
   $('#rail-usage').addEventListener('click', async () => {
-    const pop = $('#usage-pop');
-    $('#env-pop').classList.add('hidden');
-    if (!pop.classList.contains('hidden')) return pop.classList.add('hidden');
+    if (layer === 'usage') return setLayer(null);
+    setLayer('usage');
     let usage;
     try { usage = await api('/api/usage'); } catch { return toast('Gagal memuat pemakaian'); }
     const max = Math.max(1, ...usage.map((u) => u.runs));
@@ -1017,47 +1223,107 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
         <div class="u-sub"><span>${u.ok} ok · ${u.failed} gagal</span><span>${u.ok ? 'avg ' + Math.round(u.avgMs / 100) / 10 + 's' : '—'}</span></div>
       </div>`;
     }).join('');
-    pop.classList.remove('hidden');
   });
   $('#usage-manage').addEventListener('click', () => {
-    $('#usage-pop').classList.add('hidden');
+    setLayer(null);
     go('gateway');
-  });
-  document.addEventListener('click', (e) => {
-    if (!e.target.closest('#usage-pop') && !e.target.closest('#rail-usage')) $('#usage-pop')?.classList.add('hidden');
-    if (!e.target.closest('#env-pop') && !e.target.closest('#rail-env') && !e.target.closest('#env-open') && !e.target.closest('#qr-pop')) $('#env-pop')?.classList.add('hidden');
   });
 
   // ---------- popover environment ----------
   $('#rail-env').addEventListener('click', () => {
-    $('#usage-pop').classList.add('hidden');
-    $('#env-pop').classList.toggle('hidden');
+    setLayer(layer === 'env' ? null : 'env');
     const note = $('#env-note');
     if (note) note.textContent = 'server jalan';
   });
-  $('#env-open').addEventListener('click', () => $('#env-pop').classList.toggle('hidden'));
-  $('#env-manage').addEventListener('click', () => { $('#env-pop').classList.add('hidden'); go('settings'); });
+  $('#env-open').addEventListener('click', () => setLayer(layer === 'env' ? null : 'env'));
+  $('#env-manage').addEventListener('click', () => { setLayer(null); go('settings'); });
   $('#env-pair').addEventListener('click', () => {
-    $('#env-pop').classList.add('hidden');
-    $('#qr-pop').classList.toggle('hidden');
     renderSettings(); // pastikan QR terisi
+    setLayer('qr');
   });
 
   // ---------- SSE ----------
+  // Dulu: setiap event → loadState() penuh (fetch /api/state ~200 KB + render
+  // semua view). Sekarang: event digabung (coalesce) dan hanya slice yang
+  // berubah yang di-render. `loadState` tetap dipakai saat reconnect/penuh.
+  let sseTimer = null;
+  let ssePending = new Set();
+  let sse = null;
+  let retry = 0;
+
+  function flushSse() {
+    const scopes = [...ssePending];
+    ssePending.clear();
+    sseTimer = null;
+    if (!scopes.length) return;
+    // event yang butuh data baru: ambil state sekali, render slice yang relevan
+    loadState({ slices: scopes.flatMap((s) => scopeSlices(s)), silent: true });
+  }
+
+  function onScope(scope) {
+    if (scope === 'hello' || scope === 'ping') return;
+    ssePending.add(scope);
+    if (sseTimer) return;
+    sseTimer = setTimeout(flushSse, 120); // jendela 120 ms: N event → 1 render
+  }
+
   function connectSSE() {
+    try { sse?.close(); } catch { /* noop */ }
+    setConn(retry ? 'degraded' : 'connecting');
     const es = new EventSource('/api/events?token=' + encodeURIComponent(token));
+    sse = es;
+
+    es.onopen = () => {
+      const wasDown = conn !== 'live';
+      retry = 0;
+      setConn('live');
+      // setelah putus, state bisa basi (run selesai / task pindah saat offline)
+      if (wasDown) loadState();
+    };
+
     es.onmessage = (ev) => {
       try {
         const { scope } = JSON.parse(ev.data);
-        if (scope === 'hello') return;
-        loadState();
         if (scope === 'promo') toast('🎁 Data promo diperbarui otomatis');
-        if (scope === 'threads') renderSidebar();
-        if (scope === 'tasks' && view === 'tasks') renderTasks();
+        onScope(scope);
       } catch { /* noop */ }
+    };
+
+    es.onerror = () => {
+      // EventSource otomatis reconnect; kita hanya memberi tahu user bahwa
+      // data yang terlihat mungkin sudah tidak segar.
+      if (es.readyState === EventSource.CLOSED) {
+        retry += 1;
+        setConn('offline', 'mencoba menyambung ulang…');
+        const wait = Math.min(30000, 1000 * 2 ** Math.min(retry, 5));
+        setTimeout(connectSSE, wait);
+      } else {
+        setConn('degraded');
+      }
     };
   }
 
+  $('#conn-retry')?.addEventListener('click', async () => {
+    setConn('connecting');
+    await loadState().catch(() => {});
+    connectSSE();
+  });
+
   // ---------- init ----------
-  loadState().then(() => { fillPresets(); renderEngines(); connectSSE(); if (!urlThread && !urlView) go('studio'); });
+  loadState().then(async () => {
+    fillPresets();
+    await renderEngines();
+    connectSSE();
+    setRun('idle');
+    // pulihkan tampilan run yang masih berjalan di server (mis. setelah refresh)
+    try {
+      const st = await api('/api/status');
+      if (st.runningThreads?.length) {
+        const mine = curThread && st.runningThreads.some((t) => t.id === curThread.id);
+        if (mine) setRun('running');
+        else toast(`${st.runningThreads.length} run masih berjalan di server`, 3000);
+      }
+    } catch { /* status opsional */ }
+    if (!urlThread && !urlView) go('studio', { silentRoute: true });
+  });
 })();

@@ -15,6 +15,10 @@ import { listEngines, runEngine, usageStats } from './lib/harness.js';
 import * as threads from './lib/threads.js';
 import * as tasks from './lib/tasks.js';
 import { toast } from './lib/notify.js';
+import {
+  TASK_MACHINE, RUN_MACHINE, KEY_MACHINE, AGENT_MACHINE, CONNECTION_MACHINE,
+  PROMO_MACHINE, VIEW_MACHINE, UI_MACHINE, SSE_SCOPES, VIEWS, TASK_STATUSES,
+} from './lib/machines.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(ROOT, 'public');
@@ -35,6 +39,47 @@ function broadcast(scope) {
   for (const res of sseClients) {
     try { res.write(`data: ${JSON.stringify({ scope, ts: Date.now() })}\n\n`); } catch { /* klien putus */ }
   }
+}
+
+// Tandai "sedang diperiksa" supaya UI punya state nyata, bukan cuma tombol mati.
+function markKeyChecking(id) {
+  const all = readJson('keys.json', []);
+  const k = all.find((x) => x.id === id);
+  if (!k) return;
+  k.status = 'checking';
+  k.statusText = 'Memeriksa…';
+  writeJson('keys.json', all);
+}
+
+function markAgentChecking(id, state = 'checking') {
+  const all = readJson('agents.json', []);
+  const a = all.find((x) => x.id === id);
+  if (!a) return;
+  a.status = state;
+  a.statusText = state === 'triggering' ? 'Mengirim tes…' : 'Memeriksa…';
+  writeJson('agents.json', all);
+}
+
+// Pendaftar pembatalan run: threadId -> Set<() => void>
+const runStops = new Map();
+
+function registerRun(threadId, stop) {
+  if (!runStops.has(threadId)) runStops.set(threadId, new Set());
+  runStops.get(threadId).add(stop);
+  return () => {
+    const s = runStops.get(threadId);
+    if (!s) return;
+    s.delete(stop);
+    if (!s.size) runStops.delete(threadId);
+  };
+}
+
+export function stopRun(threadId) {
+  const s = runStops.get(threadId);
+  if (!s || !s.size) return 0;
+  for (const stop of [...s]) { try { stop(); } catch { /* noop */ } }
+  runStops.delete(threadId);
+  return s.size;
 }
 
 // ---------- util ----------
@@ -117,6 +162,45 @@ function appState() {
     catalog: getCatalog(),
     pool: poolStatus(),
     server: serverInfo(),
+    // kontrak state machine — UI memakainya untuk tombol/label yang sah,
+    // agent memakainya untuk tahu transisi apa yang diizinkan tanpa menebak.
+    machines: machineContracts(),
+  };
+}
+
+// Satu sumber kebenaran yang bisa dibaca mesin (AX): semua mesin + versinya.
+function machineContracts() {
+  return {
+    version: 1,
+    views: VIEWS,
+    tasks: TASK_MACHINE,
+    run: RUN_MACHINE,
+    keys: KEY_MACHINE,
+    agents: AGENT_MACHINE,
+    connection: CONNECTION_MACHINE,
+    promo: PROMO_MACHINE,
+    ui: UI_MACHINE,
+    viewsMachine: VIEW_MACHINE,
+    sseScopes: SSE_SCOPES,
+  };
+}
+
+// Bentuk ringkas status runtime: apa yang sedang berjalan sekarang.
+// Dipakai UI untuk memulihkan tampilan "Working" setelah refresh/reconnect.
+function runtimeStatus() {
+  const running = threads.listThreads().filter((t) => t.running).map((t) => ({ id: t.id, kind: t.kind, title: t.title }));
+  const busy = listKeys().filter((k) => k.status === 'checking').map((k) => k.id);
+  return {
+    runningThreads: running,
+    runningCount: running.length,
+    threads: threads.listThreads().length,
+    tasks: tasks.listTasks().length,
+    tasksByStatus: TASK_STATUSES.reduce((acc, s) => {
+      acc[s] = tasks.listTasks().filter((t) => t.status === s).length;
+      return acc;
+    }, {}),
+    checkingKeys: busy,
+    uptimeMs: Date.now() - startedAt,
   };
 }
 
@@ -219,6 +303,25 @@ async function route(req, res) {
   // ---- state ----
   if (p === '/api/state' && method === 'GET') return sendJson(res, 200, appState());
   if (p === '/api/serverinfo' && method === 'GET') return sendJson(res, 200, serverInfo());
+  // kontrak mesin saja — murah, untuk agent yang tidak butuh seluruh state
+  if (p === '/api/machines' && method === 'GET') return sendJson(res, 200, machineContracts());
+  // apa yang sedang berjalan — UI memulihkan tampilan setelah refresh/reconnect
+  if (p === '/api/status' && method === 'GET') return sendJson(res, 200, runtimeStatus());
+  // aliran kejadian sebagai JSON-lines (untuk agent non-browser; browser pakai SSE)
+  if (p === '/api/events' && method === 'GET' && url.searchParams.get('format') === 'json') {
+    res.writeHead(200, { 'content-type': 'application/x-ndjson; charset=utf-8', 'cache-control': 'no-store' });
+    res.write(JSON.stringify({ scope: 'hello', ts: Date.now() }) + '\n');
+    sseClients.add(res);
+    const ping = setInterval(() => {
+      try { res.write(JSON.stringify({ scope: 'ping', ts: Date.now() }) + '\n'); } catch { /* noop */ }
+    }, 25000);
+    req.on('close', () => { clearInterval(ping); sseClients.delete(res); });
+    return;
+  }
+  // versi mesin — dipakai CI dan agent untuk memastikan kontrak tidak berubah diam-diam
+  if (p === '/api/version' && method === 'GET') {
+    return sendJson(res, 200, { name: 'AgentHub', machines: 1, views: VIEWS, taskStatuses: TASK_STATUSES });
+  }
 
   // ---- promo ----
   if (p === '/api/promo/refresh' && method === 'POST') {
@@ -239,8 +342,9 @@ async function route(req, res) {
   }
   let m;
   if ((m = p.match(/^\/api\/keys\/([a-f0-9]+)\/check$/)) && method === 'POST') {
-    await checkKey(m[1]);
+    markKeyChecking(m[1]);
     broadcast('keys');
+    try { await checkKey(m[1]); } finally { broadcast('keys'); }
     return sendJson(res, 200, { ok: true });
   }
   if ((m = p.match(/^\/api\/keys\/([a-f0-9]+)$/)) && method === 'DELETE') {
@@ -260,14 +364,22 @@ async function route(req, res) {
     return sendJson(res, 200, { ok: true, entry: listAgents().find((a) => a.id === entry.id) });
   }
   if ((m = p.match(/^\/api\/agents\/([a-f0-9]+)\/check$/)) && method === 'POST') {
-    const { entry } = await checkAgent(m[1]);
+    markAgentChecking(m[1]);
     broadcast('agents');
-    return sendJson(res, 200, { ok: true, status: entry.status, statusText: entry.statusText });
+    try {
+      const { entry } = await checkAgent(m[1]);
+      broadcast('agents');
+      return sendJson(res, 200, { ok: true, status: entry.status, statusText: entry.statusText });
+    } catch (e) { broadcast('agents'); throw e; }
   }
   if ((m = p.match(/^\/api\/agents\/([a-f0-9]+)\/trigger$/)) && method === 'POST') {
-    const { entry, res: r } = await checkAgent(m[1], true);
+    markAgentChecking(m[1], 'triggering');
     broadcast('agents');
-    return sendJson(res, 200, { ok: true, status: entry.status, statusText: entry.statusText, response: r.text });
+    try {
+      const { entry, res: r } = await checkAgent(m[1], true);
+      broadcast('agents');
+      return sendJson(res, 200, { ok: true, status: entry.status, statusText: entry.statusText, response: r.text });
+    } catch (e) { broadcast('agents'); throw e; }
   }
   if ((m = p.match(/^\/api\/agents\/([a-f0-9]+)$/)) && method === 'DELETE') {
     removeAgent(m[1]);
@@ -346,17 +458,26 @@ async function route(req, res) {
     if (!t) return sendJson(res, 404, { error: 'Thread tidak ditemukan' });
     const engineId = b.engine || t.engine || 'pool';
     threads.appendMessage(m[1], { role: 'user', content: String(b.prompt || '').slice(0, 16000), engine: engineId });
-    threads.patchThread(m[1], { engine: engineId, running: true });
+    threads.patchThread(m[1], { engine: engineId, running: true, runStartedAt: Date.now() });
     broadcast('threads');
 
     res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });
     const send = (obj) => res.write(`data: ${JSON.stringify(obj)}\n\n`);
+
+    // Client putus (tab ditutup / jaringan hilang) → hentikan proses agar tidak
+    // menggantung 10 menit dan tidak menahan thread dalam status running.
+    // Pakai `res` (bukan `req`): 'close' pada req bisa menyala begitu body selesai
+    // dibaca, yang akan membatalkan setiap run tepat setelah dimulai.
+    const ctrl = new AbortController();
+    const unregister = registerRun(m[1], () => ctrl.abort());
+    res.on('close', () => { if (!res.writableEnded) ctrl.abort(); });
 
     try {
       let acc = '';
       const r = await runEngine(engineId, b.prompt, {
         cwd: b.cwd,
         model: b.model,
+        signal: ctrl.signal,
         onDelta: (chunk) => {
           acc += chunk;
           if (acc.length < 200000) send({ type: 'delta', text: chunk });
@@ -371,16 +492,37 @@ async function route(req, res) {
         servedBy: r.servedBy,
         model: r.model,
       });
-      threads.patchThread(m[1], { running: false });
+      threads.patchThread(m[1], { running: false, runStartedAt: null });
       broadcast('threads');
       send({ type: 'done', ms: r.ms, servedBy: r.servedBy });
     } catch (e) {
-      threads.appendMessage(m[1], { role: 'assistant', engine: engineId, content: `⚠️ ${e.message}` });
-      threads.patchThread(m[1], { running: false });
+      const stopped = e.name === 'AbortError' || ctrl.signal.aborted;
+      threads.appendMessage(m[1], {
+        role: 'assistant',
+        engine: engineId,
+        content: stopped ? '⏹️ Dihentikan.' : `⚠️ ${e.message}`,
+        runStatus: stopped ? 'stopped' : 'error',
+      });
+      threads.patchThread(m[1], { running: false, runStartedAt: null });
       broadcast('threads');
-      send({ type: 'error', message: String(e.message || e) });
+      send(stopped
+        ? { type: 'stopped', message: 'Run dihentikan' }
+        : { type: 'error', message: String(e.message || e) });
+    } finally {
+      unregister();
+      broadcast('threads');
     }
     return res.end();
+  }
+
+  // hentikan run yang sedang berjalan di sebuah thread (idempoten)
+  if ((m = p.match(/^\/api\/threads\/([a-f0-9]+)\/stop$/)) && method === 'POST') {
+    const n = stopRun(m[1]);
+    if (threads.getThread(m[1])) {
+      threads.patchThread(m[1], { running: false, runStartedAt: null });
+      broadcast('threads');
+    }
+    return sendJson(res, 200, { ok: true, stopped: n });
   }
 
   // delegasi: satu prompt → banyak agent paralel (SSE)
@@ -442,7 +584,18 @@ async function route(req, res) {
   if ((m = p.match(/^\/api\/tasks\/([a-f0-9]+)$/))) {
     if (method === 'POST') {
       const b = await readBody(req);
-      const t = tasks.patchTask(m[1], b);
+      let t;
+      try {
+        t = tasks.patchTask(m[1], b);
+      } catch (e) {
+        if (e.code === 'ILLEGAL_TRANSITION') {
+          return sendJson(res, 409, {
+            error: e.message, code: e.code, from: e.from, to: e.to, allowed: e.allowed,
+          });
+        }
+        if (e.message === 'Task tidak ditemukan') return sendJson(res, 404, { error: e.message });
+        throw e;
+      }
       broadcast('tasks');
       return sendJson(res, 200, t);
     }

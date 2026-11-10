@@ -1,5 +1,39 @@
 # Changelog
 
+## 1.5.0 — 2026-11-11
+- **Satu sumber kebenaran untuk semua state** — `lib/machines.js` mendefinisikan 8 mesin
+  (tugas, run, koneksi, key, agent, promo, overlay, view) + peta scope SSE.
+  `public/machines.js` dihasilkan dari file itu (`npm run machines`), jadi server,
+  UI, dan agent tidak bisa lagi punya aturan yang berbeda.
+- **Kontrak mesin untuk agent** — `GET /api/machines` (aturan + label + scope SSE),
+  `GET /api/status` (apa yang sedang berjalan), `GET /api/version`; event SSE juga
+  tersedia sebagai NDJSON (`/api/events?format=json`) untuk klien non-browser.
+- **Siklus tugas linear yang ditegakkan server** — inbox → todo → running → review → done.
+  Lompatan kolom ditolak `409 ILLEGAL_TRANSITION` beserta `allowed`, bukan diam-diam
+  diabaikan. Tombol di papan tugas kini diturunkan dari mesin yang sama, jadi UI tidak
+  pernah menawarkan perpindahan yang akan ditolak. Setiap kolom punya stempel waktu
+  (`statusAt`), termasuk backfill untuk tugas lama.
+- **Run bisa dihentikan** — tombol ⏹ di header chat, `POST /api/threads/:id/stop`,
+  `AbortController` di klien, dan pembunuhan proses (termasuk pohon proses di Windows).
+  Menutup tab juga menghentikan proses, bukan meninggalkan run 10 menit.
+  Status run eksplisit: idle / running / done / error / stopped.
+- **Banner koneksi** — status connecting / live / degraded / offline / unauthorized
+  dengan tombol "Coba lagi". Sebelumnya server mati hanya terlihat sebagai
+  "Gagal: Failed to fetch" sekali lalu UI tampak normal padahal data basi.
+- **SSE hemat** — event digabung dalam jendela 120 ms dan hanya slice yang berubah
+  yang di-render (`threads`, `tasks`, `keys`, …), bukan `loadState()` penuh per event.
+  Reconnect memakai backoff dan menyegarkan state setelah putus.
+- **Satu overlay aktif** — popover usage/env/QR dan modal delegation dikelola satu
+  pemilik state; Esc menutup, klik pada pemicu tidak lagi membuka-lalu-menutup.
+- **URL adalah state** — `?view=` dan `?thread=` dipertahankan lewat
+  `history.replaceState`, jadi refresh/bookmark/share tidak selalu mendarat di Studio.
+- **UX kecil yang sering menggigit** — draft "tambah tugas" bertahan saat render ulang,
+  pilihan engine delegation tidak hilang, toast kembar di-debounce, status
+  `checking`/`triggering` punya spinner, dan badge run tidak lagi hilang saat stream.
+- **DX** — `npm test` (21 tes: mesin, kontrak HTTP, run/stop sungguhan), `npm run check`
+  (drift generator + tes), dan CI menjalankan keduanya. Notifikasi Windows bisa
+  dimatikan dengan `AGENTHUB_NO_TOAST=1` untuk uji otomatis.
+
 ## 1.4.1 — 2026-11-11
 - **Paritas UI dengan referensi Kybern** (dicek langsung terhadap tangkapan layar Kybern):
   - Rail ikon garis monokrom, bukan emoji; status aktif berbentuk rounded-square

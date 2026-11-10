@@ -19,7 +19,16 @@ jobs:
           node --check get-info.js
           node --check install-autostart.js
           node --check desktop/main.js
+          node --check public/app.js
           Get-ChildItem lib -Filter *.js | ForEach-Object { node --check $_.FullName }
+      - name: Machines tidak boleh drift
+        # public/machines.js dihasilkan dari lib/machines.js. Kalau seseorang
+        # mengubah satu sisi saja, build ini gagal sebelum UI & server berbeda.
+        run: node tools/build-machines.mjs --check
+      - name: Test (mesin + kontrak HTTP + run/stop)
+        run: npm test
+        env:
+          AGENTHUB_NO_TOAST: "1"
       - name: Boot server & smoke test
         run: |
           Start-Process node -ArgumentList "server.js" -WindowStyle Hidden

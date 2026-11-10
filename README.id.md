@@ -63,6 +63,32 @@ Kuota habis → provider itu di-cooldown 5 menit dan request dilayani provider b
 
 4. **Pindai QR** dari HP (satu WiFi) untuk memantau dari jauh.
 
+## Mesin state & API untuk agent
+
+Semua status di AgentHub (tugas, run, koneksi, probe key/agent, refresh promo, overlay,
+view) dideklarasikan sekali di [`lib/machines.js`](lib/machines.js). `public/machines.js`
+dihasilkan dari file itu, jadi server yang menegakkan transisi dan UI yang menggambar
+tombol tidak bisa berbeda aturan:
+
+```bash
+npm run machines   # regenerasi public/machines.js
+npm run check      # gagal bila file hasil generate drift, lalu jalankan tes
+npm test           # 21 tes: mesin, kontrak HTTP, run + stop sungguhan
+```
+
+Agent yang mengemudikan aplikasi tidak perlu menebak; kontraknya disajikan lewat HTTP:
+
+| Endpoint | Isinya |
+| --- | --- |
+| `GET /api/machines` | semua state, transisi, label, dan scope SSE |
+| `GET /api/status` | apa yang sedang berjalan + jumlah tugas per kolom |
+| `GET /api/version` | versi kontrak mesin + daftar status tugas |
+| `GET /api/events?format=json` | stream SSE sebagai newline-delimited JSON |
+
+Perpindahan tugas linear ketat: `inbox → todo → running → review → done`. Lompatan
+kolom ditolak `409` dengan body berisi `allowed`, jadi klien bisa mengoreksi diri
+alih-alih diam-diam menyimpang.
+
 ## Privacy & keamanan
 
 - Server berjalan di `0.0.0.0:7788` agar HP bisa akses; semua `/api/*` wajib token akses (tampil di Pengaturan, bisa di-regenerate).

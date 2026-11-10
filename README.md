@@ -76,6 +76,32 @@ makensis /DXVER=1.2.3 /DSTAGE="<stage-dir>" packaging/agenthub.nsis
 
 CI does this for you: pushing a tag `v*` runs [.github/workflows/release.yml](.github/workflows/release.yml), builds the installer & portable ZIP on a Windows runner, and publishes them to GitHub Releases.
 
+## State machines & agent API
+
+Every status in AgentHub (task, run, connection, key/agent probe, promo refresh, overlay,
+view) is declared once in [`lib/machines.js`](lib/machines.js). `public/machines.js` is
+generated from it, so the server that enforces transitions and the UI that draws buttons
+can never disagree:
+
+```bash
+npm run machines   # regenerate public/machines.js
+npm run check      # fail if the generated file drifted, then run the tests
+npm test           # 21 tests: machines, HTTP contract, real run + stop
+```
+
+Agents driving the app do not have to guess. The contract is served over HTTP:
+
+| Endpoint | What it gives you |
+| --- | --- |
+| `GET /api/machines` | every state, transition, label, and SSE scope |
+| `GET /api/status` | what is running right now, task counts per column |
+| `GET /api/version` | machine contract version + task statuses |
+| `GET /api/events?format=json` | the SSE stream as newline-delimited JSON |
+
+Task movement is strictly linear: `inbox → todo → running → review → done`. A skip is
+rejected with `409` and a body containing `allowed`, so a client can correct itself
+instead of silently diverging.
+
 ## Privacy & security
 
 - Runs on `0.0.0.0:7788` so phones can connect; every `/api/*` route requires an access token (shown in Settings, regenerable).

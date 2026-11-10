@@ -467,6 +467,13 @@ label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color:
 .status.valid, .status.online { color: var(--ok); border-color: rgba(48,209,88,.4); }
 .status.invalid, .status.error, .status.offline { color: var(--err); border-color: rgba(255,92,122,.4); }
 .status.unknown { color: var(--muted); }
+.status.checking, .status.triggering { color: var(--warn); border-color: rgba(245,185,66,.4); }
+.status.checking::after, .status.triggering::after {
+  content: ""; width: 6px; height: 6px; border-radius: 50%;
+  border: 1.5px solid currentColor; border-right-color: transparent;
+  animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
 .hist { display: flex; gap: 3px; margin-top: 8px; }
 .hist i { width: 8px; height: 13px; border-radius: 2px; background: var(--line); display: inline-block; }
 .hist i.ok { background: var(--ok); }
@@ -542,6 +549,22 @@ label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color:
 .gate-card p { color: var(--muted); font-size: 12.5px; }
 .logo-big { font-size: 42px; }
 .err { color: var(--err); font-size: 12.5px; }
+
+/* ---------- banner koneksi ---------- */
+/* Satu-satunya sinyal bahwa data di layar mungkin sudah basi. */
+.conn-banner {
+  position: fixed; top: 10px; left: 50%; transform: translateX(-50%);
+  z-index: 80; display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px 8px 14px; border-radius: 99px;
+  background: #1b1a12; border: 1px solid rgba(245,185,66,.45);
+  color: var(--warn); font-size: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.5);
+  max-width: calc(100vw - 24px);
+}
+.conn-banner[data-state="offline"], .conn-banner[data-state="unauthorized"] {
+  background: #1e1216; border-color: rgba(255,92,122,.45); color: var(--err);
+}
+.conn-banner .btn { border-color: currentColor; color: inherit; }
+@media (max-width: 760px) { .conn-banner { left: 12px; right: 12px; transform: none; } }
 
 /* ---------- toast ---------- */
 .toast-wrap { position: fixed; bottom: 20px; right: 20px; display: flex; flex-direction: column; gap: 8px; z-index: 99; }
