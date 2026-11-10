@@ -1,5 +1,5 @@
-// AgentHub — logika UI (vanilla JS, tanpa framework)
-// Studio chat multi-engine + papan tugas + monitoring.
+// AgentHub — UI kontrol-plane ala Kybern (vanilla JS)
+// Studio chat multi-engine + delegation + papan tugas + monitoring.
 (() => {
   'use strict';
 
@@ -37,23 +37,35 @@
   let view = 'studio';
   let promoTab = 'live';
   let promoQuery = '';
-  let curThread = null;   // thread aktif (objek penuh)
+  let curThread = null;
   let threadSearch = '';
   let cwd = localStorage.getItem('ah_cwd') || '';
   let sending = false;
+  let taskFilter = 'all';
+  let taskSearch = '';
 
+  const ENGINE_ICON = { pool: '🆓', claude: '✳️', codex: '🔷', opencode: '🟦', gemini: '✨', echo: '🔁' };
   const fmtCtx = (n) => (n >= 1000000 ? (n / 1000000).toFixed(n % 1000000 ? 1 : 0) + 'M' : n >= 1000 ? Math.round(n / 1000) + 'K' : n);
   const fmtTime = (ts) => (ts ? new Date(ts).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—');
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const icon = (id) => ENGINE_ICON[id] || '🤖';
+  const cwdBase = () => (cwd ? cwd.split(/[\\/]/).filter(Boolean).pop() || cwd : 'This PC');
 
-  // render teks asisten: code fence, inline code, bold, baris baru
   function md(s) {
     let out = esc(s);
-    out = out.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => `<pre class="codeblock">${code}</pre>`);
+    out = out.replace(/```(\w*)\n([\s\S]*?)```/g, (_, l, code) => `<pre class="codeblock">${code}</pre>`);
     out = out.replace(/`([^`\n]+)`/g, '<code>$1</code>');
     out = out.replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>');
     out = out.replace(/\n/g, '<br>');
     return out;
+  }
+
+  function daySep(ts) {
+    const d = new Date(ts);
+    const today = new Date();
+    const same = d.toDateString() === today.toDateString();
+    const s = d.toLocaleDateString('en-GB', { weekday: 'long', day: '2-digit', month: 'short', year: 'numeric' });
+    return `<div class="day-sep">${same ? 'Today' : 'Earlier'} · ${s}</div>`;
   }
 
   function toast(msg, ms = 3500) {
@@ -93,21 +105,21 @@
   function go(v) {
     view = v;
     $$('.view').forEach((el) => el.classList.toggle('active', el.id === `view-${v}`));
-    $$('.rail-btn').forEach((b) => b.classList.toggle('active', b.dataset.view === v));
-    $('#threadbar').classList.toggle('hidden', v !== 'studio');
-    if (v === 'studio') { renderThreads(); if (curThread) renderChat(); }
+    $$('.rail-btn[data-view]').forEach((b) => b.classList.toggle('active', b.dataset.view === v));
+    $('#sidebar').classList.toggle('hidden', v !== 'studio');
+    if (v === 'studio') { renderSidebar(); placeComposer(); if (curThread) renderChat(); }
     if (v === 'tasks') renderTasks();
     if (v === 'alerts') markReadSoon();
   }
-  $$('.rail-btn').forEach((b) => b.addEventListener('click', () => go(b.dataset.view)));
+  $$('.rail-btn[data-view]').forEach((b) => b.addEventListener('click', () => go(b.dataset.view)));
   document.addEventListener('click', (e) => {
-    const g = e.target.closest('[data-goto]');
-    if (g) go(g.dataset.goto);
+    const g = e.target.closest('[data-view]');
+    if (g && !g.classList.contains('rail-btn')) go(g.dataset.view);
   });
 
   // ---------- render utama ----------
   function renderAll() {
-    renderThreads();
+    renderSidebar();
     renderEngines();
     renderPromo();
     renderKeys();
@@ -117,6 +129,7 @@
     renderSettings();
     renderBadges();
     if (curThread) renderChat();
+    placeComposer();
   }
 
   function renderBadges() {
@@ -126,11 +139,15 @@
     badge.textContent = unread > 9 ? '9+' : unread;
   }
 
+  function engineLabel(id) {
+    return engines.find((e) => e.id === id)?.label || id || 'pool';
+  }
+
   // ---------- studio: engines ----------
   async function renderEngines() {
     try { engines = await api('/api/engines'); } catch { engines = engines || []; }
     const sel = $('#engine-select');
-    sel.innerHTML = engines.map((e) => `<option value="${esc(e.id)}" ${e.available ? '' : 'disabled'}>${esc(e.label)}${e.available ? '' : ' — ' + esc(e.note)} </option>`).join('');
+    sel.innerHTML = engines.map((e) => `<option value="${esc(e.id)}" ${e.available ? '' : 'disabled'}>${icon(e.id)} ${esc(e.label)}${e.available ? '' : ' — ' + esc(e.note)}</option>`).join('');
     const saved = localStorage.getItem('ah_engine');
     if (saved && engines.some((e) => e.id === saved && e.available)) sel.value = saved;
     updateEngineUI();
@@ -141,113 +158,169 @@
     const id = $('#engine-select').value;
     localStorage.setItem('ah_engine', id);
     $('#chat-model').classList.toggle('hidden', id !== 'pool');
-    const e = engines.find((x) => x.id === id);
-    $('#cwd-hint')?.remove();
   }
 
   $('#engine-select').addEventListener('change', updateEngineUI);
 
-  // folder kerja CLI
-  function refreshCwd() {
-    $('#btn-cwd').textContent = cwd ? '📁 ' + (cwd.split(/[\\/]/).pop() || cwd) : '📁 This PC';
+  function setCwd(v) {
+    cwd = v.trim();
+    localStorage.setItem('ah_cwd', cwd);
+    $('#cwd-name').textContent = cwdBase();
   }
+  $('#composer-cwd').addEventListener('click', () => {
+    const v = prompt('Folder kerja untuk agent CLI (kosongkan = home):', cwd);
+    if (v !== null) setCwd(v);
+  });
   $('#btn-cwd').addEventListener('click', () => {
     const v = prompt('Folder kerja untuk agent CLI (kosongkan = home):', cwd);
-    if (v !== null) { cwd = v.trim(); localStorage.setItem('ah_cwd', cwd); refreshCwd(); }
+    if (v !== null) setCwd(v);
   });
-  refreshCwd();
+  $('#cwd-name').textContent = cwdBase();
 
-  // ---------- studio: threads ----------
-  async function renderThreads() {
-    let list;
-    try { list = await api('/api/threads'); } catch { return; }
+  // ---------- studio: sidebar ----------
+  let threadCache = [];
+  async function renderSidebar() {
+    try { threadCache = await api('/api/threads'); } catch { return; }
     const q = threadSearch.toLowerCase();
-    const filtered = q ? list.filter((t) => (t.title + ' ' + t.preview).toLowerCase().includes(q)) : list;
-    $('#thread-list').innerHTML = filtered.length
-      ? filtered.map((t) => `
-        <div class="thread-item ${curThread?.id === t.id ? 'active' : ''}" data-id="${t.id}">
-          <div class="ti-main"><b>${esc(t.title)}</b><span class="muted small">${esc((t.preview || '').slice(0, 46))}</span></div>
-          <div class="ti-meta"><span class="chip tiny-chip">${esc(engineLabel(t.engine))}</span>${t.kind === 'delegation' ? '<span class="chip tiny-chip">🎯</span>' : ''}${t.running ? '<span class="chip tiny-chip run">⏳</span>' : ''}<span class="muted tiny-chip">${fmtTime(t.updatedAt)}</span></div>
-        </div>`).join('')
-      : '<p class="muted small" style="padding:8px">Belum ada thread.</p>';
-    $$('#thread-list .thread-item').forEach((el) => el.addEventListener('click', () => openThread(el.dataset.id)));
-  }
-  $('#thread-search').addEventListener('input', (e) => { threadSearch = e.target.value; renderThreads(); });
+    const list = q ? threadCache.filter((t) => (t.title + ' ' + t.preview).toLowerCase().includes(q)) : threadCache;
 
-  function engineLabel(id) {
-    return engines.find((e) => e.id === id)?.label || id || 'pool';
+    // Recents di sidebar
+    $('#sb-recents').innerHTML = list.length
+      ? list.map((t) => `
+        <div class="recent-item ${curThread?.id === t.id ? 'active' : ''}" data-id="${t.id}">
+          <span class="r-ico">${icon(t.engine)}</span>
+          <span class="r-title">${esc(t.title)}</span>
+          <span class="r-time">${t.kind === 'delegation' ? '🎯 ' : ''}${t.running ? '⏳' : fmtTime(t.updatedAt)}</span>
+        </div>`).join('')
+      : '<p class="muted small" style="padding:6px 10px">Belum ada thread.</p>';
+    $$('#sb-recents .recent-item').forEach((el) => el.addEventListener('click', () => openThread(el.dataset.id)));
+
+    // project row (folder kerja)
+    $('#sb-projects').innerHTML = `
+      <div class="project-row"><span class="p-ico">📁</span><span class="p-name">${esc(cwdBase())}</span><span class="p-ext" title="Ganti folder">↗</span></div>`;
+    $('#sb-projects .project-row').addEventListener('click', () => {
+      const v = prompt('Folder kerja untuk agent CLI (kosongkan = home):', cwd);
+      if (v !== null) setCwd(v);
+      renderSidebar();
+    });
+
+    // Continue di hero
+    const hero = $('#hero-recent');
+    if (hero) {
+      hero.innerHTML = list.slice(0, 3).map((t) => `
+        <div class="recent-item" data-id="${t.id}">
+          <span class="r-ico">${icon(t.engine)}</span>
+          <span class="r-title">${esc(t.title)}</span>
+          <span class="r-time">${fmtTime(t.updatedAt)}</span>
+        </div>`).join('') || '<p class="muted small" style="padding:4px 10px">Belum ada sesi.</p>';
+      $$('#hero-recent .recent-item').forEach((el) => el.addEventListener('click', () => openThread(el.dataset.id)));
+    }
+    $('#env-note').textContent = 'server jalan';
+  }
+  $('#sb-search-btn').addEventListener('click', () => {
+    const v = prompt('Cari thread:');
+    if (v !== null) { threadSearch = v; renderSidebar(); }
+  });
+  $('#btn-resume').addEventListener('click', () => {
+    const t = threadCache[0];
+    if (t) openThread(t.id); else toast('Belum ada sesi tersimpan');
+  });
+
+  async function openThread(id) {
+    try {
+      curThread = await api(`/api/threads/${id}`);
+      view = 'studio';
+      $$('.view').forEach((el) => el.classList.toggle('active', el.id === 'view-studio'));
+      $$('.rail-btn[data-view]').forEach((b) => b.classList.toggle('active', b.dataset.view === 'studio'));
+      $('#sidebar').classList.remove('hidden');
+      renderSidebar();
+      placeComposer();
+      renderChat();
+    } catch (e) { toast('Gagal: ' + e.message); }
   }
 
   $('#btn-new-chat').addEventListener('click', async () => {
     try {
       const t = await api('/api/threads', { method: 'POST', body: JSON.stringify({ engine: $('#engine-select').value }) });
       curThread = t;
-      go('studio');
-      renderThreads();
+      placeComposer();
       renderChat();
+      renderSidebar();
       $('#composer').focus();
     } catch (e) { toast('Gagal: ' + e.message); }
   });
 
-  async function openThread(id) {
-    try {
-      curThread = await api(`/api/threads/${id}`);
-      renderThreads();
-      renderChat();
-    } catch (e) { toast('Gagal: ' + e.message); }
+  // ---------- composer placement ----------
+  function placeComposer() {
+    const empty = !curThread || !curThread.messages?.length;
+    const slot = empty ? $('#hero-composer-slot') : $('#bottom-composer-slot');
+    const c = $('#composer');
+    if (c.parentElement !== slot) slot.appendChild(c);
+    $('#chat-empty').classList.toggle('hidden', !empty);
+    $('#chat-messages').classList.toggle('hidden', empty);
+    $('#hero-continue').classList.toggle('hidden', !empty);
+    $('#chat-top').classList.toggle('ghost-top', empty);
+    $('#btn-chat-del').classList.toggle('hidden', !curThread);
   }
 
   $('#btn-chat-del').addEventListener('click', async () => {
     if (!curThread || !confirm('Hapus thread ini?')) return;
     await api(`/api/threads/${curThread.id}`, { method: 'DELETE' });
     curThread = null;
-    renderThreads();
+    renderSidebar();
+    placeComposer();
     renderChat();
   });
 
-  // ---------- studio: render chat ----------
+  // ---------- render chat ----------
   function renderChat() {
     const empty = !curThread || !curThread.messages?.length;
-    $('#chat-empty').classList.toggle('hidden', !empty);
-    $('.chat').classList.toggle('empty', empty);
-    $('#chat-messages').classList.toggle('hidden', empty);
-    $('#btn-chat-del').classList.toggle('hidden', !curThread);
-    $('#chat-title').textContent = curThread ? curThread.title : 'Studio';
+    $('#chat-title').textContent = curThread ? curThread.title : 'agenthub';
     const badge = $('#chat-engine-badge');
     badge.classList.toggle('hidden', !curThread);
-    if (curThread) badge.textContent = engineLabel(curThread.engine);
+    if (curThread) badge.textContent = `${icon(curThread.engine)} ${engineLabel(curThread.engine)}`;
     $('#chat-running').classList.toggle('hidden', !(curThread?.running));
-
+    placeComposer();
     if (empty) return;
+
     const msgs = curThread.messages.filter((m) => m.role !== 'system');
     let html = '';
-    let subruns = null; // kumpulkan subrun delegation → satu kartu pohon
+    let lastDay = '';
+    let subruns = null;
 
     const flushSubruns = () => {
       if (!subruns || !subruns.length) return;
       const working = subruns.filter((s) => (s.status || 'working') === 'working').length;
+      const maxMs = Math.max(0, ...subruns.map((s) => s.ms || 0));
       const rows = subruns.map((s) => {
         const st = s.status || 'working';
-        const stat = st === 'done' ? `✓ ${Math.round((s.ms || 0) / 100) / 10}s`
-          : st === 'error' ? '✗ gagal' : `${Math.round((Date.now() - (s.ts || Date.now())) / 1000)}s Working`;
+        const stat = st === 'done' ? `${Math.round((s.ms || 0) / 100) / 10}s Done`
+          : st === 'error' ? 'Failed'
+          : `${Math.round((Date.now() - (s.ts || Date.now())) / 1000)}s Working`;
+        const meta = `${st === 'error' ? 'Error' : 'Review'} · ${esc(s.engine)} · ${esc(cwdBase())}`;
         const body = st === 'working' ? '' : `<div class="deleg-out">${esc((s.content || '').slice(0, 4000))}</div>`;
-        return `<details class="deleg-row"><summary class="deleg-row-top">
-          <b>${esc(engineLabel(s.engine))}</b><span class="deleg-sub">${esc((s.content || '').replace(/\s+/g, ' ').slice(0, 90))}</span>
-          <span class="grow">${esc(stat)}</span></summary>${body}</details>`;
+        return `<details class="deleg-row"><summary>
+          <span class="d-ico" style="background:${hashHue(s.engine)}">${icon(s.engine)}</span>
+          <span class="d-main"><b>${esc(engineLabel(s.engine))}</b><span class="deleg-sub">${meta}</span></span>
+          <span class="d-stat">${esc(stat)} ›</span></summary>${body}</details>`;
       }).join('');
       html += `<div class="msg assistant"><div class="deleg-card">
-        <div class="deleg-head"><span class="chip">🎯 delegated</span><b>${subruns.length} agent</b><span class="muted small">${working} working</span><span class="caret">▼</span></div>
+        <div class="deleg-head">👑 <b>${subruns.length} delegated agents</b> <span class="muted small">${subruns.length - working} done · ${working} working</span><span class="grow"></span><span class="caret">▼</span></div>
         ${rows}
-      </div></div>`;
+      </div>
+      ${maxMs ? `<div class="worked-row">🪄 Worked for ${Math.round(maxMs / 100) / 10}s <span class="caret">›</span></div>` : ''}
+      </div>`;
       subruns = null;
     };
 
     for (const m of msgs) {
+      const day = new Date(m.ts).toDateString();
+      if (day !== lastDay) { html += daySep(m.ts); lastDay = day; }
       if (m.role === 'user') { flushSubruns(); html += `<div class="msg user"><div class="bubble">${esc(m.content)}</div></div>`; continue; }
       if (m.subrun) { (subruns = subruns || []).push(m); continue; }
       flushSubruns();
       html += `<div class="msg assistant">
-        <div class="msg-meta"><span class="chip">${esc(engineLabel(m.engine))}</span>${m.servedBy ? `<span>via ${esc(m.servedBy)}</span>` : ''}${m.ms ? `<span>Worked for ${Math.round(m.ms / 100) / 10}s</span>` : ''}</div>
+        <div class="msg-meta"><span class="chip">${icon(m.engine)} ${esc(engineLabel(m.engine))}</span>${m.servedBy ? `<span>via ${esc(m.servedBy)}</span>` : ''}${m.ms ? `<span>Worked for ${Math.round(m.ms / 100) / 10}s</span>` : ''}</div>
         <div class="msg-body">${md(m.content || '')}</div>
       </div>`;
     }
@@ -256,7 +329,13 @@
     $('#chat-messages').scrollTop = $('#chat-messages').scrollHeight;
   }
 
-  // ---------- studio: kirim (SSE streaming) ----------
+  function hashHue(id) {
+    let h = 0;
+    for (const c of id) h = (h * 31 + c.charCodeAt(0)) % 360;
+    return `hsl(${h},45%,42%)`;
+  }
+
+  // ---------- streaming ----------
   function parseSSE(res, onEvent) {
     return new Promise((resolve, reject) => {
       const reader = res.body.getReader();
@@ -290,10 +369,10 @@
         curThread = await api('/api/threads', { method: 'POST', body: JSON.stringify({ engine: $('#engine-select').value }) });
       }
       const engineId = $('#engine-select').value;
-      // pesan user langsung tampil
       curThread.messages = [...(curThread.messages || []), { id: 'tmp-u', role: 'user', content: prompt, ts: Date.now() }];
       curThread.messages = [...curThread.messages, { id: 'tmp-a', role: 'assistant', engine: engineId, content: '', status: 'working' }];
-      renderThreads();
+      placeComposer();
+      renderSidebar();
       renderChat();
       const streamingEl = $('#chat-messages .msg.assistant:last-child .msg-body');
       if (streamingEl) streamingEl.innerHTML = '<span class="cursor">▍</span>';
@@ -320,7 +399,7 @@
       });
       curThread = await api(`/api/threads/${curThread.id}`);
       renderChat();
-      renderThreads();
+      renderSidebar();
     } catch (e) {
       toast('Gagal: ' + e.message);
       if (curThread) { curThread = await api(`/api/threads/${curThread.id}`).catch(() => curThread); renderChat(); }
@@ -341,16 +420,16 @@
     $('#del-engines').innerHTML = engines.map((e) => `
       <label class="switch-row del-engine ${e.available ? '' : 'off'}">
         <input type="checkbox" value="${esc(e.id)}" data-del ${e.available ? '' : 'disabled'}>
-        <span>${esc(e.label)} <span class="muted small">${esc(e.note || '')}</span></span>
+        <span>${icon(e.id)} ${esc(e.label)} <span class="muted small">${esc(e.note || '')}</span></span>
       </label>`).join('');
   }
 
-  $('#btn-delegate').addEventListener('click', () => {
+  $$('[data-open-delegate]').forEach((b) => b.addEventListener('click', () => {
     $('#delegate-overlay').classList.remove('hidden');
     $('#del-progress').classList.add('hidden');
     $('#del-progress').innerHTML = '';
     $('#del-prompt').focus();
-  });
+  }));
   $('#btn-del-cancel').addEventListener('click', () => $('#delegate-overlay').classList.add('hidden'));
 
   $('#btn-del-start').addEventListener('click', async () => {
@@ -360,7 +439,7 @@
     $('#btn-del-start').disabled = true;
     $('#del-progress').classList.remove('hidden');
     $('#del-progress').innerHTML = selected.map((id) => `
-      <div class="del-run" data-engine="${esc(id)}"><span class="chip">${esc(engineLabel(id))}</span> <span class="del-status">⏳ mulai…</span><div class="del-out"></div></div>`).join('');
+      <div class="del-run" data-engine="${esc(id)}"><span class="chip">${icon(id)} ${esc(engineLabel(id))}</span> <span class="del-status">⏳ mulai…</span><div class="del-out"></div></div>`).join('');
 
     try {
       const res = await fetch('/api/delegate', {
@@ -374,7 +453,7 @@
         if (ev.type === 'start') threadId = ev.threadId;
         const row = $(`#del-progress .del-run[data-engine="${ev.engine}"] .del-status`);
         if (ev.type === 'sub') {
-          if (row) row.textContent = ev.status === 'done' ? `✓ selesai ${Math.round((ev.ms || 0) / 100) / 10}s` : ev.status === 'error' ? '✗ gagal' : '⏳ bekerja…';
+          if (row) row.textContent = ev.status === 'done' ? `✓ ${Math.round((ev.ms || 0) / 100) / 10}s` : ev.status === 'error' ? '✗ gagal' : '⏳ bekerja…';
         } else if (ev.type === 'subdelta') {
           const out = $(`#del-progress .del-run[data-engine="${ev.engine}"] .del-out`);
           if (out) { out.textContent = (out.textContent + ev.text).slice(-800); out.classList.add('live'); }
@@ -383,7 +462,7 @@
       toast('Delegation selesai — hasil di thread & papan Tugas');
       curThread = null;
       await loadState();
-      if (threadId) { await openThread(threadId); go('studio'); }
+      if (threadId) await openThread(threadId);
       $('#delegate-overlay').classList.add('hidden');
     } catch (e) {
       toast('Delegation gagal: ' + e.message);
@@ -392,30 +471,53 @@
     }
   });
 
-  // ---------- tasks kanban ----------
+  // ---------- tasks ----------
   const TASK_COLS = [
-    ['inbox', '📥 Inbox'], ['todo', '○ To do'], ['running', '⏳ Running'], ['review', '👁 Needs review'], ['done', '✅ Done'],
+    ['inbox', '◯', 'Inbox'], ['todo', '○', 'To do'], ['running', '⏱', 'Running'],
+    ['review', '🕒', 'Needs review'], ['done', '✅', 'Done'],
   ];
 
   async function renderTasks() {
     let list;
     try { list = await api('/api/tasks'); } catch { return; }
-    $('#kanban').innerHTML = TASK_COLS.map(([key, label]) => {
-      const cards = list.filter((t) => t.status === key);
+    const q = taskSearch.toLowerCase();
+    const filtered = list.filter((t) =>
+      (taskFilter === 'all' || t.status === taskFilter)
+      && (!q || t.title.toLowerCase().includes(q)));
+
+    $('#task-filters').innerHTML = [
+      ['all', '☰', 'All tasks'], ...TASK_COLS.map(([k, i, l]) => [k, i, l]),
+    ].map(([k, i, l]) => {
+      const n = k === 'all' ? list.length : list.filter((t) => t.status === k).length;
+      return `<div class="filter-row ${taskFilter === k ? 'active' : ''}" data-filter="${k}"><span>${i}</span><span class="grow">${l}</span><span class="muted small">${n}</span></div>`;
+    }).join('');
+    $$('#task-filters .filter-row').forEach((el) => el.addEventListener('click', () => { taskFilter = el.dataset.filter; renderTasks(); }));
+
+    const projects = [...new Set(list.map((t) => t.projectId || 'default'))];
+    $('#task-projects').innerHTML = projects.map((p) => `<div class="filter-row"><span class="p-dot"></span><span class="grow">${esc(p)}</span><span class="muted small">${list.filter((t) => (t.projectId || 'default') === p).length}</span></div>`).join('');
+
+    $('#kanban').innerHTML = TASK_COLS.map(([key, ic, label]) => {
+      const cards = list.filter((t) => t.status === key && (!q || t.title.toLowerCase().includes(q)));
       return `
       <div class="kcol" data-status="${key}">
-        <div class="kcol-head"><b>${label}</b> <span class="count">${cards.length}</span>
+        <div class="kcol-head"><span>${ic}</span><b>${label}</b> <span class="count">${cards.length}</span>
           <button class="add" data-add="${key}" title="Tambah tugas">＋</button>
         </div>
         <div class="kcol-body">
           <input class="knew hidden" placeholder="Tulis judul, Enter" data-status="${key}">
           ${cards.map((t) => `
           <div class="kcard" data-id="${t.id}">
+            <div class="kcard-top"><span class="id-chip">${esc(t.id.slice(0, 4).toUpperCase())}</span>
+              <span class="kcard-acts">
+                ${t.threadId ? `<button class="icon-btn" data-open-thread="${t.threadId}" title="Buka thread">⤢</button>` : ''}
+                ${key !== 'done' ? `<button class="icon-btn" data-done="1" title="Tandai Done">☐</button>` : ''}
+              </span>
+            </div>
             <div class="kcard-title">${esc(t.title)}</div>
-            <div class="kcard-actions">
-              ${key !== 'inbox' ? `<button class="btn tiny ghost" data-move="-1" title="Mundur">←</button>` : ''}
-              ${key !== 'done' ? `<button class="btn tiny ghost" data-move="1" title="Maju">→</button>` : ''}
-              <button class="btn tiny danger" data-del-task="1" title="Hapus">🗑</button>
+            <div class="kcard-foot">
+              ${key !== 'inbox' ? `<button class="icon-btn" data-move="-1" title="Mundur">←</button>` : ''}
+              ${key !== 'done' ? `<button class="icon-btn" data-move="1" title="Maju">→</button>` : ''}
+              <button class="icon-btn" data-del-task="1" title="Hapus">🗑</button>
             </div>
           </div>`).join('')}
         </div>
@@ -435,19 +537,26 @@
       }
       if (e.key === 'Escape') inp.classList.add('hidden');
     }));
-    $$('#kanban .kcard [data-move]').forEach((btn) => btn.addEventListener('click', async () => {
+    $$('#kanban [data-move]').forEach((btn) => btn.addEventListener('click', async () => {
       const id = btn.closest('.kcard').dataset.id;
       const idx = TASK_COLS.findIndex(([k]) => k === btn.closest('.kcol').dataset.status);
       const next = TASK_COLS[Math.min(TASK_COLS.length - 1, Math.max(0, idx + Number(btn.dataset.move)))][0];
       await api(`/api/tasks/${id}`, { method: 'POST', body: JSON.stringify({ status: next }) });
       renderTasks();
     }));
-    $$('#kanban .kcard [data-del-task]').forEach((btn) => btn.addEventListener('click', async () => {
+    $$('#kanban [data-done]').forEach((btn) => btn.addEventListener('click', async () => {
+      const id = btn.closest('.kcard').dataset.id;
+      await api(`/api/tasks/${id}`, { method: 'POST', body: JSON.stringify({ status: 'done' }) });
+      renderTasks();
+    }));
+    $$('#kanban [data-del-task]').forEach((btn) => btn.addEventListener('click', async () => {
       if (!confirm('Hapus task?')) return;
       await api(`/api/tasks/${btn.closest('.kcard').dataset.id}`, { method: 'DELETE' });
       renderTasks();
     }));
+    $$('#kanban [data-open-thread]').forEach((btn) => btn.addEventListener('click', () => openThread(btn.dataset.openThread)));
   }
+  $('#task-search').addEventListener('input', (e) => { taskSearch = e.target.value; renderTasks(); });
 
   // ---------- promo ----------
   function renderPromo() {
@@ -463,7 +572,6 @@
             <span class="chip free">GRATIS</span>
             <span class="chip">ctx ${fmtCtx(m.context)}</span>
             <span class="chip">${esc(m.provider)}</span>
-            ${m.modality && m.modality !== 'text->text' ? `<span class="chip">${esc(m.modality)}</span>` : ''}
           </div>
           <a class="visit" href="${esc(m.page)}" target="_blank" rel="noreferrer">Detail ↗</a>
         </div>`).join('')}</div>`
@@ -472,7 +580,7 @@
     const cross = state.snapshot?.sources?.cross?.models || [];
     const crossFiltered = q ? cross.filter((m) => (m.name + ' ' + m.id + ' ' + m.provider).toLowerCase().includes(q)) : cross;
     $('#promo-cross').innerHTML = crossFiltered.length
-      ? `<p class="muted small" style="margin-bottom:12px">${cross.length} model gratis lintas provider — sumber: <a href="https://models.dev" target="_blank" rel="noreferrer">models.dev</a> (registry terbuka)</p>
+      ? `<p class="muted small" style="margin-bottom:12px">${cross.length} model gratis lintas provider — sumber: <a href="https://models.dev" target="_blank" rel="noreferrer">models.dev</a></p>
         <div class="model-grid">${crossFiltered.slice(0, 120).map((m) => `
         <div class="model-card">
           <b title="${esc(m.name)}">${esc(m.name)}</b>
@@ -485,7 +593,7 @@
           <a class="visit" href="${esc(m.page)}" target="_blank" rel="noreferrer">Provider ↗</a>
         </div>`).join('')}</div>
         ${crossFiltered.length > 120 ? `<p class="muted small" style="margin-top:12px">Menampilkan 120 dari ${crossFiltered.length} — gunakan pencarian.</p>` : ''}`
-      : '<p class="muted">Sumber models.dev belum tersinkron — klik "Cek sekarang" (perlu internet).</p>';
+      : '<p class="muted">Sumber models.dev belum tersinkron — klik "Cek sekarang".</p>';
 
     $('#promo-catalog').innerHTML = `<div class="cat-grid">${state.catalog.map((c) => `
       <div class="cat-card">
@@ -506,7 +614,7 @@
           ${p.models.length ? `<div class="ftl-models">${p.models.map((m) => `<a href="${esc(m.url)}" target="_blank" rel="noreferrer">${esc(m.name)}</a>`).join('')}</div>` : ''}
           ${p.rows.length ? `<table class="ftl-table">${p.rows.map((r, i) => `<tr>${r.map((c) => (i === 0 ? `<th>${esc(c)}</th>` : `<td>${esc(c)}</td>`)).join('')}</tr>`).join('')}</table>` : ''}
         </div>`).join('')
-      : '<p class="muted">Sumber GitHub belum tersinkron — klik "Cek sekarang" (perlu internet).</p>';
+      : '<p class="muted">Sumber GitHub belum tersinkron — klik "Cek sekarang".</p>';
   }
 
   // ---------- keys ----------
@@ -525,8 +633,8 @@
           <div class="meta">${esc(k.baseUrl)} · key <code>${esc(k.keyMask)}</code>${k.latency ? ' · ' + k.latency + ' ms' : ''} · dicek ${fmtTime(k.lastChecked)}</div>
         </div>
         <div class="actions">
-          <button class="btn tiny ${k.pool ? 'primary' : 'ghost'}" data-act="key-pool" title="Ikut rotasi gateway">${k.pool ? '✓ Pool' : '+ Pool'}</button>
-          <button class="btn tiny ghost" data-act="key-check">⟳ Cek</button>
+          <button class="btn tiny ${k.pool ? 'primary' : ''}" data-act="key-pool">${k.pool ? '✓ Pool' : '+ Pool'}</button>
+          <button class="btn tiny" data-act="key-check">⟳ Cek</button>
           <button class="btn tiny danger" data-act="key-del">Hapus</button>
         </div>
       </div>`).join('');
@@ -561,7 +669,7 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
 
     const list = $('#pool-list');
     if (!members.length) {
-      list.innerHTML = '<div class="item"><div class="info muted">Pool masih kosong. Buka tab API Keys → tombol "+ Pool" pada key yang valid. Agent Anda lalu cukup menunjuk ke endpoint di atas.</div></div>';
+      list.innerHTML = '<div class="item"><div class="info muted">Pool masih kosong. Buka tab API Keys → tombol "+ Pool" pada key yang valid.</div></div>';
     } else {
       list.innerHTML = members.map((k) => `
       <div class="item" data-id="${k.id}">
@@ -574,15 +682,14 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
         <div class="actions pool-actions">
           <input class="prio-input" type="number" min="1" max="99" value="${k.priority}" title="Prioritas (kecil = didahulukan)">
           <input class="model-input" type="text" placeholder="model default" value="${esc(k.poolModel || '')}">
-          <button class="btn tiny ghost" data-act="pool-toggle">Keluar</button>
+          <button class="btn tiny" data-act="pool-toggle">Keluar</button>
         </div>
       </div>`).join('');
     }
 
-    // pemakaian engine studio
     api('/api/usage').then((usage) => {
       $('#usage-list').innerHTML = usage.map((u) => `
-        <div class="mini-item"><span><b>${esc(u.label)}</b> <span class="muted small">${u.runs} run · ${u.failed} gagal${u.ok ? ' · rata-rata ' + Math.round(u.avgMs / 100) / 10 + 's' : ''}</span></span><span class="chip">${u.type === 'pool' ? 'gateway' : 'CLI'}</span></div>`).join('');
+        <div class="mini-item"><span>${icon(u.id)} <b>${esc(u.label)}</b> <span class="muted small">${u.runs} run · ${u.failed} gagal${u.ok ? ' · avg ' + Math.round(u.avgMs / 100) / 10 + 's' : ''}</span></span><span class="chip">${u.type === 'pool' ? 'gateway' : 'CLI'}</span></div>`).join('');
     }).catch(() => {});
   }
 
@@ -606,7 +713,7 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
           <div class="meta small">dicek ${fmtTime(a.lastChecked)}</div>
         </div>
         <div class="actions">
-          <button class="btn tiny ghost" data-act="agent-check">⟳ Cek</button>
+          <button class="btn tiny" data-act="agent-check">⟳ Cek</button>
           <button class="btn tiny" data-act="agent-trigger">⚡ Tes kirim</button>
           <button class="btn tiny danger" data-act="agent-del">Hapus</button>
         </div>
@@ -644,8 +751,11 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
       <span>URL LAN/HP</span><span>${esc(s.lanUrl)}</span>
       <span>Uptime</span><span>${Math.floor(s.uptimeMs / 60000)} menit</span>`;
     $('#phone-url').textContent = s.phoneUrl;
+    $('#phone-url-pop').textContent = s.phoneUrl;
     $('#qr-box').innerHTML = '';
-    try { new QRCode($('#qr-box'), { text: s.phoneUrl, width: 132, height: 132, correct: QRCode.CorrectLevel.M }); } catch { /* QR gagal */ }
+    try { new QRCode($('#qr-box'), { text: s.phoneUrl, width: 132, height: 132, correct: QRCode.CorrectLevel.M }); } catch { }
+    $('#qr-box-pop').innerHTML = '';
+    try { new QRCode($('#qr-box-pop'), { text: s.phoneUrl, width: 148, height: 148, correct: QRCode.CorrectLevel.M }); } catch { }
   }
 
   // ---------- aksi list ----------
@@ -822,26 +932,10 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
   $('#btn-copy-url').addEventListener('click', () => navigator.clipboard?.writeText($('#phone-url').textContent).then(() => toast('URL HP disalin')));
   $('#btn-copy-token').addEventListener('click', () => navigator.clipboard?.writeText(state?.token || '').then(() => toast('Token disalin')));
 
-  // ---------- SSE ----------
-  function connectSSE() {
-    const es = new EventSource('/api/events?token=' + encodeURIComponent(token));
-    es.onerror = () => { document.title = 'AgentHub — reconnecting…'; };
-    es.onopen = () => { document.title = 'AgentHub — Studio Agent & Promo API'; };
-    es.onmessage = (ev) => {
-      try {
-        const { scope } = JSON.parse(ev.data);
-        if (scope === 'hello') return;
-        loadState();
-        if (scope === 'promo') toast('🎁 Data promo diperbarui otomatis');
-        if (scope === 'threads') renderThreads();
-        if (scope === 'tasks' && view === 'tasks') renderTasks();
-      } catch { /* noop */ }
-    };
-  }
-
-  // ---------- popover pemakaian engine ----------
+  // ---------- popover usage ----------
   $('#rail-usage').addEventListener('click', async () => {
     const pop = $('#usage-pop');
+    $('#env-pop').classList.add('hidden');
     if (!pop.classList.contains('hidden')) return pop.classList.add('hidden');
     let usage;
     try { usage = await api('/api/usage'); } catch { return toast('Gagal memuat pemakaian'); }
@@ -849,19 +943,47 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
     $('#usage-rows').innerHTML = usage.map((u) => {
       const pct = Math.round((u.runs / max) * 100);
       return `<div class="usage-row">
-        <div class="u-top"><b>${esc(u.label)}</b><span>${u.runs} run</span></div>
+        <div class="u-top">${icon(u.id)} <b>${esc(u.label)}</b><span>${u.runs} run</span></div>
         <div class="u-bar"><i style="width:${pct}%"></i></div>
         <div class="u-sub"><span>${u.ok} ok · ${u.failed} gagal</span><span>${u.ok ? 'avg ' + Math.round(u.avgMs / 100) / 10 + 's' : '—'}</span></div>
       </div>`;
     }).join('');
     pop.classList.remove('hidden');
   });
-  $('#usage-close').addEventListener('click', () => $('#usage-pop').classList.add('hidden'));
   document.addEventListener('click', (e) => {
-    if (!e.target.closest('#usage-pop') && !e.target.closest('#rail-usage')) {
-      $('#usage-pop')?.classList.add('hidden');
-    }
+    if (!e.target.closest('#usage-pop') && !e.target.closest('#rail-usage')) $('#usage-pop')?.classList.add('hidden');
+    if (!e.target.closest('#env-pop') && !e.target.closest('#rail-env') && !e.target.closest('#env-open') && !e.target.closest('#qr-pop')) $('#env-pop')?.classList.add('hidden');
   });
+
+  // ---------- popover environment ----------
+  $('#rail-env').addEventListener('click', () => {
+    $('#usage-pop').classList.add('hidden');
+    $('#env-pop').classList.toggle('hidden');
+    const note = $('#env-note');
+    if (note) note.textContent = 'server jalan';
+  });
+  $('#env-open').addEventListener('click', () => $('#env-pop').classList.toggle('hidden'));
+  $('#env-manage').addEventListener('click', () => { $('#env-pop').classList.add('hidden'); go('settings'); });
+  $('#env-pair').addEventListener('click', () => {
+    $('#env-pop').classList.add('hidden');
+    $('#qr-pop').classList.toggle('hidden');
+    renderSettings(); // pastikan QR terisi
+  });
+
+  // ---------- SSE ----------
+  function connectSSE() {
+    const es = new EventSource('/api/events?token=' + encodeURIComponent(token));
+    es.onmessage = (ev) => {
+      try {
+        const { scope } = JSON.parse(ev.data);
+        if (scope === 'hello') return;
+        loadState();
+        if (scope === 'promo') toast('🎁 Data promo diperbarui otomatis');
+        if (scope === 'threads') renderSidebar();
+        if (scope === 'tasks' && view === 'tasks') renderTasks();
+      } catch { /* noop */ }
+    };
+  }
 
   // ---------- init ----------
   loadState().then(() => { fillPresets(); renderEngines(); connectSSE(); go('studio'); });
