@@ -15,29 +15,21 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Install NSIS
-        run: choco install nsis -y --no-progress
-      - name: Stage app (bundle Node runtime)
+      - name: Build desktop installer (Electron)
+        run: |
+          cd desktop
+          npm install --no-audit --no-fund
+          npx electron-builder --win nsis --publish never
+          Copy-Item dist\AgentHub-Setup-*.exe ..\AgentHub-Setup.exe
+      - name: Build portable ZIP (classic, light)
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force stage\runtime, stage\data, dist | Out-Null
+          New-Item -ItemType Directory -Force stage\runtime, stage\data | Out-Null
           Copy-Item server.js, README.md, get-info.js, install-autostart.js, agenthub-launch.vbs, agenthub-autostart.vbs, 'Start AgentHub.bat', 'Stop AgentHub.bat' stage\
           Copy-Item lib, public stage -Recurse
           Copy-Item data\seed-openrouter.json, data\seed-freelist.md stage\data\
           Copy-Item (Get-Command node.exe).Source stage\runtime\node.exe
-      - name: Build installer (NSIS)
-        shell: pwsh
-        working-directory: packaging
-        run: |
-          $ver = "${{ github.ref_name }}" -replace '^v',''
-          & "C:\Program Files (x86)\NSIS\makensis.exe" /DXVER=$ver /DSTAGE="$env:GITHUB_WORKSPACE\stage" agenthub.nsis
-          if ($LASTEXITCODE -ne 0) { throw "makensis failed" }
-      - name: Prepare release assets
-        shell: pwsh
-        run: |
-          Copy-Item dist\AgentHub-Setup-*.exe AgentHub-Setup.exe
           Compress-Archive -Path stage\* -DestinationPath AgentHub-Portable.zip -Force
-          Get-ChildItem *.exe, *.zip | Format-Table Name, Length
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:

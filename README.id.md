@@ -23,7 +23,7 @@ AgentHub memantau **promo model & API AI gratis** dari berbagai sumber internet,
 - **🤖 Konektor agent** — webhook n8n/Make/custom dan endpoint LLM; health check terjadwal dengan riwayat latensi.
 - **📱 Akses dari HP** — pindai QR, buka dashboard yang sama via WiFi. Realtime via SSE, dilindungi token akses.
 - **🔒 Lokal dulu** — semua berjalan di komputer Anda. Tanpa cloud, tanpa telemetri. API key tidak keluar dari disk.
-- **🪶 Ringan** — Node.js murni, **nol dependency npm**, tanpa Electron.
+- **🪶 Server ringan** — Node.js murni, **nol dependency npm**; shell desktop-nya Electron tipis (jendela native + tray, tanpa browser).
 
 ## Install
 
@@ -31,8 +31,8 @@ AgentHub memantau **promo model & API AI gratis** dari berbagai sumber internet,
 
 | Berkas | Keterangan |
 |---|---|
-| [`AgentHub-Setup.exe`](https://github.com/khadijahcollege-afk/AgentHub/releases/latest/download/AgentHub-Setup.exe) | Installer (~23 MB) — runtime Node.js sudah digabung, shortcut Start Menu, autostart opsional, uninstaller |
-| [`AgentHub-Portable.zip`](https://github.com/khadijahcollege-afk/AgentHub/releases/latest/download/AgentHub-Portable.zip) | Portable — extract lalu jalankan `Start AgentHub.bat` |
+| [`AgentHub-Setup.exe`](https://github.com/khadijahcollege-afk/AgentHub/releases/latest/download/AgentHub-Setup.exe) | **Aplikasi desktop** (~82 MB) — jendela native dengan tray, minimize-to-tray, toggle autostart, runtime tergabung. Cara utama memakai AgentHub. |
+| [`AgentHub-Portable.zip`](https://github.com/khadijahcollege-afk/AgentHub/releases/latest/download/AgentHub-Portable.zip) | Portable (klasik) — extract lalu jalankan `Start AgentHub.bat`; terbuka sebagai jendela app browser, tanpa shell desktop |
 
 Saat pertama dijalankan Windows Firewall mungkin menanya izin Node.js — pilih **Allow** agar HP di WiFi yang sama bisa terhubung.
 
@@ -65,6 +65,10 @@ Kuota habis → provider itu di-cooldown 5 menit dan request dilayani provider b
 - Server berjalan di `0.0.0.0:7788` agar HP bisa akses; semua `/api/*` wajib token akses (tampil di Pengaturan, bisa di-regenerate).
 - API key tersimpan di `data/keys.json` (mode sumber) atau `%APPDATA%\AgentHub` (terinstall) — lokal saja.
 - Akses dari luar rumah: pakai VPN seperti Tailscale — jangan port-forward langsung.
+
+## Catatan shell desktop
+
+Shell Electron (`desktop/main.js`) menyalakan server sebagai proses anak, memastikan satu instance saja, dan tetap berjalan di tray saat jendela ditutup — memantau tidak berhenti. "Jalankan saat PC menyala" bisa diaktifkan dari menu tray.
 
 ## Lisensi
 

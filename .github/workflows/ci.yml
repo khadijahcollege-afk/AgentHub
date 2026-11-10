@@ -18,6 +18,7 @@ jobs:
           node --check server.js
           node --check get-info.js
           node --check install-autostart.js
+          node --check desktop/main.js
           Get-ChildItem lib -Filter *.js | ForEach-Object { node --check $_.FullName }
       - name: Boot server & smoke test
         run: |

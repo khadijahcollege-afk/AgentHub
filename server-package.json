@@ -1,0 +1,5 @@
+{
+  "name": "agenthub-server",
+  "private": true,
+  "type": "module"
+}

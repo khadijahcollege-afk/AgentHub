@@ -1,0 +1,10 @@
+{
+  "name": "agenthub",
+  "productName": "AgentHub",
+  "version": "1.2.0",
+  "private": true,
+  "type": "module",
+  "description": "Lightweight Windows control plane that keeps AI agents alive on free API tokens",
+  "author": "AgentHub Contributors",
+  "license": "MIT"
+}

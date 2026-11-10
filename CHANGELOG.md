@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.0 — 2026-11-11
+- **Native desktop app** — AgentHub now runs as its own Windows application (Electron shell): own window, taskbar icon, tray icon; no browser needed
+- Server starts automatically as an internal child process; closing the window keeps monitoring alive in the tray
+- Tray menu: open dashboard, "run at PC startup" toggle, quit
+- Single-instance lock; if a server is already running on the port, the shell attaches instead of spawning a second one
+- Links to external sites (model pages, provider sites) open in the default browser
+- Desktop installer built automatically by CI on version tags; classic portable ZIP remains available as a lighter alternative
+
 ## 1.1.1 — 2026-11-11
 - App icon for installer, shortcuts & uninstaller (custom generated .ico)
 - Fixed launcher VBS "Unterminated string constant" crash (robust quoting via `Chr(34)`)

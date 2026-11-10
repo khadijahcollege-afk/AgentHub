@@ -187,10 +187,10 @@ async function route(req, res) {
   // halaman & berkas unduhan (terbuka agar HP/komputer lain mudah mengambil)
   if (method === 'GET' && p === '/download') return serveStatic(res, 'download.html');
   if (method === 'GET' && p === '/download/setup.exe') {
-    return serveDownload(res, path.join(DIST_DIR, 'AgentHub-Setup.exe'), 'AgentHub-Setup-1.1.1.exe');
+    return serveDownload(res, path.join(DIST_DIR, 'AgentHub-Setup.exe'), 'AgentHub-Setup-1.2.0.exe');
   }
   if (method === 'GET' && p === '/download/portable.zip') {
-    return serveDownload(res, path.join(DIST_DIR, 'AgentHub-Portable.zip'), 'AgentHub-Portable-1.1.1.zip');
+    return serveDownload(res, path.join(DIST_DIR, 'AgentHub-Portable.zip'), 'AgentHub-Portable-1.2.0.zip');
   }
 
   if (!authorized(req, url)) {

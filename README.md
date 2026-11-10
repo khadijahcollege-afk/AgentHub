@@ -25,7 +25,7 @@ Free AI API tiers (Groq, Google AI Studio, Cerebras, OpenRouter `:free`, …) ar
 - **🤖 Agent connectors** — n8n/Make/custom webhooks and LLM endpoints; scheduled health checks with latency history.
 - **📱 Phone access** — scan a QR, open the same dashboard over Wi-Fi. Realtime via SSE, protected by an access token.
 - **🔒 Local-first** — everything runs on your machine. No cloud, no telemetry. API keys stay on disk.
-- **🪶 Featherweight** — pure Node.js, **zero npm dependencies**, no Electron.
+- **🪶 Featherweight server** — pure Node.js, **zero npm dependencies** for the server itself; the desktop shell is a thin Electron wrapper (native window + tray, no browser).
 
 ## Install
 
@@ -33,8 +33,8 @@ Free AI API tiers (Groq, Google AI Studio, Cerebras, OpenRouter `:free`, …) ar
 
 | Asset | What |
 |---|---|
-| [`AgentHub-Setup.exe`](https://github.com/khadijahcollege-afk/AgentHub/releases/latest/download/AgentHub-Setup.exe) | Installer (~23 MB) — bundles its own Node.js runtime, Start Menu shortcuts, optional autostart, uninstaller |
-| [`AgentHub-Portable.zip`](https://github.com/khadijahcollege-afk/AgentHub/releases/latest/download/AgentHub-Portable.zip) | Portable — extract and run `Start AgentHub.bat` |
+| [`AgentHub-Setup.exe`](https://github.com/khadijahcollege-afk/AgentHub/releases/latest/download/AgentHub-Setup.exe) | **Desktop app** (~82 MB) — native window with tray icon, minimize-to-tray, autostart toggle, bundled runtime. The recommended way to run AgentHub. |
+| [`AgentHub-Portable.zip`](https://github.com/khadijahcollege-afk/AgentHub/releases/latest/download/AgentHub-Portable.zip) | Portable (classic) — extract and run `Start AgentHub.bat`; opens in an app window of your browser, no desktop shell |
 
 On the first launch Windows Firewall may ask permission for Node.js — allow it so phones on the same Wi-Fi can connect.
 
@@ -78,6 +78,10 @@ CI does this for you: pushing a tag `v*` runs [.github/workflows/release.yml](.g
 - Runs on `0.0.0.0:7788` so phones can connect; every `/api/*` route requires an access token (shown in Settings, regenerable).
 - API keys live in `data/keys.json` (source mode) or `%APPDATA%\AgentHub` (installed) — local only, never sent anywhere except the provider you chose.
 - For access from outside your home, use a VPN such as Tailscale — do not port-forward directly.
+
+## Desktop shell notes
+
+The Electron shell (`desktop/main.js`) starts the server as a child process, remembers a single instance, and keeps running minimized to the tray — closing the window does not stop monitoring. "Run at PC startup" can be toggled from the tray menu.
 
 ## License
 

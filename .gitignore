@@ -12,3 +12,7 @@ stage/
 # OS / editor
 Thumbs.db
 .DS_Store
+
+# electron desktop build
+desktop/node_modules/
+desktop/dist/

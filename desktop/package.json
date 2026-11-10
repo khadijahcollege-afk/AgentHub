@@ -1,0 +1,55 @@
+{
+  "name": "agenthub-desktop",
+  "productName": "AgentHub",
+  "version": "1.2.0",
+  "description": "AgentHub desktop shell — jendela asli Windows untuk server AgentHub",
+  "main": "main.js",
+  "author": "AgentHub Contributors",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis --publish never"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "tech.agenthub.desktop",
+    "productName": "AgentHub",
+    "icon": "build/icon.ico",
+    "files": [
+      "main.js",
+      "package.json"
+    ],
+    "extraResources": [
+      { "from": "../server.js", "to": "server/server.js" },
+      { "from": "../server-package.json", "to": "server/package.json" },
+      { "from": "../lib", "to": "server/lib" },
+      { "from": "../public", "to": "server/public" },
+      { "from": "../data/seed-openrouter.json", "to": "server/data/seed-openrouter.json" },
+      { "from": "../data/seed-freelist.md", "to": "server/data/seed-freelist.md" },
+      { "from": "build/icon.ico", "to": "icon.ico" }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "artifactName": "AgentHub-Setup-${version}.${ext}",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "AgentHub",
+      "uninstallDisplayName": "AgentHub"
+    }
+  }
+}
