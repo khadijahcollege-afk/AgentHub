@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Syntax check
+        run: |
+          node --check server.js
+          node --check get-info.js
+          node --check install-autostart.js
+          Get-ChildItem lib -Filter *.js | ForEach-Object { node --check $_.FullName }
+      - name: Boot server & smoke test
+        run: |
+          Start-Process node -ArgumentList "server.js" -WindowStyle Hidden
+          Start-Sleep -Seconds 10
+          $health = Invoke-WebRequest -UseBasicParsing http://127.0.0.1:7788/healthz
+          if ($health.StatusCode -ne 200) { throw "healthz failed" }
+          Write-Host "healthz OK:" $health.Content
+          # API tanpa token harus ditolak
+          try { Invoke-WebRequest -UseBasicParsing http://127.0.0.1:7788/api/state -ErrorAction Stop; throw "state should require token" }
+          catch { if ($_.Exception.Response.StatusCode -ne 401) { throw "expected 401" } else { Write-Host "unauth 401 OK" } }

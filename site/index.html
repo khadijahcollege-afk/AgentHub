@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%234f7cff'/%3E%3Ccircle cx='50' cy='42' r='16' fill='white'/%3E%3Crect x='28' y='66' width='44' height='10' rx='5' fill='white'/%3E%3C/svg%3E">
+<title>AgentHub — Keep your AI agents alive on free tokens</title>
+<style>
+  :root { --bg:#0b0f1a; --card:#151d2e; --line:#26314a; --text:#e7ecf5; --muted:#8b96ad; --accent:#4f7cff; --accent2:#7c5cff; --ok:#2ecc8f; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:"Segoe UI",system-ui,sans-serif; background:var(--bg); color:var(--text); line-height:1.6; }
+  .wrap { max-width:940px; margin:0 auto; padding:24px 18px 80px; }
+  .top { display:flex; justify-content:space-between; align-items:center; padding:10px 0 30px; }
+  .brand { font-weight:700; font-size:18px; } .brand span { margin-right:8px; }
+  .top a { color:var(--muted); text-decoration:none; font-size:14px; margin-left:18px; }
+  .top a:hover { color:var(--accent); }
+  .hero { text-align:center; padding:34px 0 36px; }
+  .hero h1 { font-size:36px; letter-spacing:-.5px; margin-bottom:14px; }
+  .hero h1 em { font-style:normal; background:linear-gradient(90deg,var(--accent),var(--accent2)); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  .hero p { color:var(--muted); max-width:660px; margin:0 auto; }
+  .badges { display:flex; gap:8px; justify-content:center; margin-top:20px; flex-wrap:wrap; }
+  .badge { background:var(--card); border:1px solid var(--line); border-radius:99px; padding:5px 14px; font-size:12.5px; color:var(--muted); }
+  .dl-card { background:var(--card); border:1px solid var(--line); border-radius:18px; padding:26px; margin:26px 0; }
+  .dl-main { display:flex; gap:24px; align-items:center; flex-wrap:wrap; }
+  .dl-info { flex:1; min-width:240px; }
+  .dl-info h2 { font-size:20px; margin-bottom:6px; }
+  .dl-info p { color:var(--muted); font-size:14px; }
+  .btn-dl { display:inline-flex; align-items:center; gap:10px; background:linear-gradient(90deg,var(--accent),var(--accent2)); color:#fff; text-decoration:none; font-weight:600; font-size:16px; padding:14px 26px; border-radius:12px; margin-top:4px; }
+  .btn-dl:hover { filter:brightness(1.1); }
+  .btn-dl small { display:block; font-weight:400; font-size:11.5px; opacity:.85; }
+  .alt { margin-top:16px; display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  .btn-alt { color:var(--accent); border:1px solid var(--line); padding:9px 16px; border-radius:10px; text-decoration:none; font-size:13.5px; background:transparent; }
+  .steps { margin-top:22px; display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
+  .step { background:rgba(255,255,255,.02); border:1px solid var(--line); border-radius:12px; padding:14px; font-size:13.5px; }
+  .step b { display:block; color:var(--accent); margin-bottom:4px; font-size:12px; text-transform:uppercase; letter-spacing:.5px; }
+  .feats { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:12px; margin:26px 0; }
+  .feat { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px; }
+  .feat h3 { font-size:15px; margin-bottom:6px; } .feat p { color:var(--muted); font-size:13.5px; }
+  .note { background:rgba(46,204,143,.08); border:1px solid rgba(46,204,143,.25); border-radius:14px; padding:16px 18px; font-size:14px; margin:26px 0; }
+  footer { text-align:center; color:var(--muted); font-size:12.5px; margin-top:40px; }
+  a { color:var(--accent); }
+  code { background:var(--card); border:1px solid var(--line); padding:2px 6px; border-radius:6px; font-size:12.5px; }
+  @media (max-width:640px){ .steps{grid-template-columns:1fr} .hero h1{font-size:27px} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div class="brand"><span>🛰️</span>AgentHub</div>
+    <div><a href="https://github.com/khadijahcollege-afk/AgentHub">GitHub</a><a href="https://github.com/khadijahcollege-afk/AgentHub/releases/latest">Releases</a></div>
+  </div>
+
+  <div class="hero">
+    <h1>Keep your AI agents alive —<br><em>on free tokens.</em></h1>
+    <p>AgentHub watches free AI model promos from across the internet, connects to your agent apps, and rotates free API providers automatically when a quota runs out — all monitored from your phone.</p>
+    <div class="badges">
+      <span class="badge">🪟 Windows 10/11</span>
+      <span class="badge">⚡ Lightweight — no Electron</span>
+      <span class="badge">🔒 Local-first, token-protected</span>
+      <span class="badge">🔀 Auto-failover on free tokens</span>
+      <span class="badge">📜 MIT</span>
+    </div>
+  </div>
+
+  <div class="dl-card">
+    <div class="dl-main">
+      <div class="dl-info">
+        <h2>Download for Windows</h2>
+        <p>Bundled with its own Node.js runtime — nothing else to install. Grab the latest from GitHub Releases.</p>
+      </div>
+      <a class="btn-dl" href="https://github.com/khadijahcollege-afk/AgentHub/releases/latest/download/AgentHub-Setup.exe">⬇️ Installer<small>AgentHub-Setup.exe · Windows 10/11 64-bit · ~23 MB</small></a>
+    </div>
+    <div class="steps">
+      <div class="step"><b>1 · Download</b>Grab the installer above (or the portable ZIP below).</div>
+      <div class="step"><b>2 · Run</b>Next → Install. Approve the Windows prompt.</div>
+      <div class="step"><b>3 · Launch</b>AgentHub opens automatically. Start Menu &amp; desktop shortcuts included.</div>
+    </div>
+    <div class="alt">
+      <a class="btn-alt" href="https://github.com/khadijahcollege-afk/AgentHub/releases/latest/download/AgentHub-Portable.zip">📦 Portable ZIP (no install)</a>
+      <a class="btn-alt" href="https://github.com/khadijahcollege-afk/AgentHub#readme">📖 Full documentation</a>
+      <span class="btn-alt" style="color:var(--muted);border-style:dashed">Autostart is optional during setup</span>
+    </div>
+  </div>
+
+  <div class="feats">
+    <div class="feat"><h3>🎁 Free promo tracking</h3><p>Three live sources (OpenRouter, models.dev, GitHub free-tier list) plus a curated catalog — with alerts + Windows toasts when new free models appear.</p></div>
+    <div class="feat"><h3>🔀 Gateway Pool</h3><p>One OpenAI-compatible endpoint for every agent. Quota exhausted (429)? Traffic fails over to the next free provider automatically.</p></div>
+    <div class="feat"><h3>🤖 Agent connectors</h3><p>n8n/Make/custom webhooks and OpenAI-compatible LLM endpoints — scheduled health checks with status history.</p></div>
+    <div class="feat"><h3>📱 Monitor from your phone</h3><p>Scan a QR and open the same dashboard on your phone over Wi-Fi — realtime, token-protected.</p></div>
+    <div class="feat"><h3>🔒 Privacy</h3><p>Everything runs and stays on your machine. No cloud, no telemetry. API keys never leave your disk.</p></div>
+    <div class="feat"><h3>🪶 Featherweight</h3><p>Pure Node.js with zero npm dependencies — small memory footprint even while idle.</p></div>
+  </div>
+
+  <div class="note">💡 <b>Already installed?</b> From your phone on the same Wi-Fi, open the dashboard and scan the QR — nothing to install on the phone.</div>
+
+  <footer>AgentHub · open source under MIT · built for agents that never sleep</footer>
+</div>
+</body>
+</html>

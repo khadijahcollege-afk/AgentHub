@@ -1,0 +1,16 @@
+AgentHub — Lisensi MIT
+
+Hak cipta (c) 2026 AgentHub Authors
+
+Izin diberikan, tanpa biaya, kepada siapa pun yang memperoleh salinan
+perangkat lunak ini dan file dokumentasinya, untuk menggunakan, menyalin,
+memodifikasi, menggabungkan, menerbitkan, mendistribusikan, mensublisensikan,
+dan/atau menjual salinan perangkat lunak ini, dengan syarat pemberitahuan
+hak cipta di atas disertakan dalam semua salinan atau bagian penting dari
+perangkat lunak tersebut.
+
+PERANGKAT LUNAK INI DISEDIAKAN "SEBAGAIMANA ADANYA", TANPA JAMINAN DALAM
+BENTUK APA PUN, TERSURUP MAUPUN TERSIRAT, TERMASUK NAMUN TIDAK TERBATAS
+PADA JAMINAN KELAYAKAN JUAL, KECOCOKAN UNTUK TUJUAN TERTENTU, DAN
+PELANGGARAN. DALAM KEADAAN APA PUN PENULIS ATAU PEMEGANG HAK CIPTA TIDAK
+BERTANGGUNG JAWAB ATAS KLAIM, KERUSAKAN, ATAU TANGGUNG JAWAB LAINNYA.

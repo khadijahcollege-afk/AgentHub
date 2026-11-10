@@ -1,0 +1,117 @@
+; AgentHub — installer Windows (NSIS 3.x)
+; Build: makensis agenthub.nsis  (jalankan dari folder packaging)
+
+!define APPNAME "AgentHub"
+!define COMPANY "AgentHub"
+; versi bisa di-override: makensis /DXVER=1.2.3 /DSTAGE="..." agenthub.nsis
+!ifndef XVER
+  !define XVER "1.1.1"
+!endif
+!define VERSION "${XVER}"
+!define EXEDESC "AgentHub — Pantau AI Agent & Promo API"
+; folder staging bisa di-override: makensis /DSTAGE="..." agenthub.nsis
+!ifndef STAGE
+  !define STAGE "..\stage"
+!endif
+
+!include "MUI2.nsh"
+!include "nsDialogs.nsh"
+!include "LogicLib.nsh"
+
+Name "${APPNAME} ${VERSION}"
+OutFile "..\dist\AgentHub-Setup-${VERSION}.exe"
+InstallDir "$PROGRAMFILES64\${APPNAME}"
+InstallDirRegKey HKLM "Software\${APPNAME}" "InstallDir"
+RequestExecutionLevel admin
+SetCompressor /SOLID lzma
+
+!define MUI_ABORTWARNING
+!define MUI_ICON "appicon.ico"
+!define MUI_UNICON "appicon.ico"
+
+!insertmacro MUI_PAGE_WELCOME
+!insertmacro MUI_PAGE_LICENSE "LICENSE.txt"
+!insertmacro MUI_PAGE_DIRECTORY
+Page custom AutostartPage AutostartPageLeave
+!insertmacro MUI_PAGE_INSTFILES
+!define MUI_FINISHPAGE_RUN
+!define MUI_FINISHPAGE_RUN_FUNCTION "LaunchApp"
+!define MUI_FINISHPAGE_SHOWREADME ""
+!define MUI_FINISHPAGE_SHOWREADME_NOTCHECKED
+!define MUI_FINISHPAGE_SHOWREADME_TEXT "Lihat README (cara akses dari HP)"
+!insertmacro MUI_PAGE_FINISH
+!insertmacro MUI_UNPAGE_CONFIRM
+!insertmacro MUI_UNPAGE_INSTFILES
+
+!insertmacro MUI_LANGUAGE "Indonesian"
+!insertmacro MUI_LANGUAGE "English"
+
+; ---------- halaman opsi autostart ----------
+Var AutostartChecked
+Var AutostartCB
+Function AutostartPage
+  StrCpy $AutostartChecked "1"
+  !insertmacro MUI_HEADER_TEXT "Opsi Peluncuran" "Pilih cara AgentHub berjalan"
+  nsDialogs::Create 1018
+  Pop $0
+  ${NSD_CreateCheckbox} 0 10u 100% 10u "Jalankan otomatis saat komputer menyala (disarankan)"
+  Pop $AutostartCB
+  ${NSD_SetState} $AutostartCB ${BST_CHECKED}
+  nsDialogs::Show
+FunctionEnd
+
+Function AutostartPageLeave
+  ${NSD_GetState} $AutostartCB $0
+  ${If} $0 == ${BST_CHECKED}
+    StrCpy $AutostartChecked "1"
+  ${Else}
+    StrCpy $AutostartChecked "0"
+  ${EndIf}
+FunctionEnd
+
+; ---------- section utama ----------
+Section "Install" SecMain
+  SetOutPath "$INSTDIR"
+  File /r "${STAGE}\*.*"
+
+  ; penanda mode terinstall (data runtime akan di %APPDATA%\AgentHub)
+  WriteUninstaller "$INSTDIR\Uninstall AgentHub.exe"
+
+  ; shortcut Start Menu & Desktop (dengan ikon aplikasi)
+  CreateDirectory "$SMPROGRAMS\${APPNAME}"
+  CreateShortCut "$SMPROGRAMS\${APPNAME}\${APPNAME}.lnk" "$WINDIR\System32\wscript.exe" '"$INSTDIR\agenthub-launch.vbs"' "$INSTDIR\public\appicon.ico" 0 SW_SHOWNORMAL "" "${EXEDESC}"
+  CreateShortCut "$SMPROGRAMS\${APPNAME}\Uninstall ${APPNAME}.lnk" "$INSTDIR\Uninstall ${APPNAME}.exe"
+  CreateShortCut "$DESKTOP\${APPNAME}.lnk" "$WINDIR\System32\wscript.exe" '"$INSTDIR\agenthub-launch.vbs"' "$INSTDIR\public\appicon.ico" 0 SW_SHOWNORMAL "" "${EXEDESC}"
+
+  ; autostart bila dipilih
+  ${If} $AutostartChecked == "1"
+    CreateShortCut "$SMSTARTUP\AgentHub Server.lnk" "$WINDIR\System32\wscript.exe" '"$INSTDIR\agenthub-autostart.vbs"' "" 0 SW_SHOWNORMAL "" ""
+  ${EndIf}
+
+  WriteRegStr HKLM "Software\${APPNAME}" "InstallDir" $INSTDIR
+  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APPNAME}" "DisplayName" "${APPNAME} ${VERSION}"
+  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APPNAME}" "UninstallString" "$INSTDIR\Uninstall ${APPNAME}.exe"
+  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APPNAME}" "DisplayIcon" "$INSTDIR\public\appicon.ico"
+  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APPNAME}" "Publisher" "${COMPANY}"
+  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APPNAME}" "DisplayVersion" "${VERSION}"
+  WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APPNAME}" "EstimatedSize" 0000FA00
+SectionEnd
+
+Function LaunchApp
+  Exec '"$WINDIR\System32\wscript.exe" "$INSTDIR\agenthub-launch.vbs"'
+FunctionEnd
+
+; ---------- uninstaller ----------
+Section "Uninstall"
+  ; matikan server AgentHub (berdasarkan port 7788 & 7789) tanpa mengganggu node lain
+  nsExec::Exec 'powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort 7788,7789 -State Listen -ErrorAction SilentlyContinue | Select-Object -Unique OwningProcess | ForEach-Object { Stop-Process -Id $$PSItem.OwningProcess -Force -ErrorAction SilentlyContinue }"'
+  Sleep 800
+
+  Delete "$SMSTARTUP\AgentHub Server.lnk"
+  Delete "$DESKTOP\${APPNAME}.lnk"
+  RMDir /r "$SMPROGRAMS\${APPNAME}"
+  RMDir /r "$INSTDIR"
+  DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APPNAME}"
+  DeleteRegKey HKLM "Software\${APPNAME}"
+  ; data pengguna di %APPDATA%\AgentHub dibiarkan (berisi konfigurasi & API key)
+SectionEnd

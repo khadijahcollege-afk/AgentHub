@@ -1,0 +1,14 @@
+# runtime data (per-user, jangan pernah commit)
+data/*
+!data/seed-openrouter.json
+!data/seed-freelist.md
+
+# build artifacts
+dist/
+stage/
+*.log
+*.tmp
+
+# OS / editor
+Thumbs.db
+.DS_Store

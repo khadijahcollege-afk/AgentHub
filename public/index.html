@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0b0f1a">
+<title>AgentHub — Pantau AI Agent & Promo API</title>
+<link rel="stylesheet" href="/public/style.css?v=1.1.0">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%234f7cff'/%3E%3Ccircle cx='50' cy='42' r='16' fill='white'/%3E%3Crect x='28' y='66' width='44' height='10' rx='5' fill='white'/%3E%3C/svg%3E">
+</head>
+<body>
+
+<!-- Gerbang token -->
+<div id="gate" class="gate hidden">
+  <div class="gate-card">
+    <div class="logo-big">🛰️</div>
+    <h1>AgentHub</h1>
+    <p>Masukkan token akses untuk melanjutkan.<br>Token ada di Pengaturan aplikasi di komputer Anda.</p>
+    <input id="gate-token" type="password" placeholder="Token akses" autocomplete="off">
+    <button id="gate-btn" class="btn primary">Masuk</button>
+    <p id="gate-err" class="err hidden">Token salah.</p>
+  </div>
+</div>
+
+<!-- Aplikasi -->
+<div id="app" class="layout hidden">
+  <aside class="sidebar">
+    <div class="brand"><span class="logo">🛰️</span><div><b>AgentHub</b><small>pantau AI & promo</small></div></div>
+    <nav class="nav">
+      <button class="nav-btn active" data-view="dashboard"><span>📊</span> Dashboard</button>
+      <button class="nav-btn" data-view="promo"><span>🎁</span> Promo Gratis <em id="badge-promo" class="badge hidden"></em></button>
+      <button class="nav-btn" data-view="keys"><span>🔑</span> API Keys</button>
+      <button class="nav-btn" data-view="gateway"><span>🔀</span> Gateway</button>
+      <button class="nav-btn" data-view="agents"><span>🤖</span> Agent</button>
+      <button class="nav-btn" data-view="alerts"><span>🔔</span> Notifikasi <em id="badge-alerts" class="badge hidden"></em></button>
+      <button class="nav-btn" data-view="settings"><span>⚙️</span> Pengaturan</button>
+    </nav>
+    <div class="sidebar-foot">
+      <span id="conn-dot" class="dot ok"></span><span id="conn-text">tersambung</span>
+    </div>
+  </aside>
+
+  <main class="main">
+    <!-- DASHBOARD -->
+    <section id="view-dashboard" class="view active">
+      <header class="view-head">
+        <div><h2>Dashboard</h2><p class="sub" id="dash-sub">Ringkasan agent & promo Anda</p></div>
+        <button id="btn-refresh-all" class="btn ghost">⟳ Refresh</button>
+      </header>
+      <div class="cards">
+        <div class="card stat" id="card-models"><div class="stat-num">–</div><div class="stat-label">Model gratis dipantau</div><div class="stat-foot" id="card-models-foot"></div></div>
+        <div class="card stat" id="card-keys"><div class="stat-num">–</div><div class="stat-label">API key valid</div><div class="stat-foot" id="card-keys-foot"></div></div>
+        <div class="card stat" id="card-agents"><div class="stat-num">–</div><div class="stat-label">Agent online</div><div class="stat-foot" id="card-agents-foot"></div></div>
+        <div class="card stat" id="card-alerts"><div class="stat-num">–</div><div class="stat-label">Notifikasi belum dibaca</div><div class="stat-foot" id="card-alerts-foot"></div></div>
+      </div>
+
+      <div class="panel">
+        <h3>🎁 Model gratis terbaru <button class="btn tiny ghost" data-goto="promo">lihat semua</button></h3>
+        <div id="dash-models" class="mini-list"><p class="muted">memuat…</p></div>
+      </div>
+
+      <div class="panel">
+        <h3>📱 Akses dari HP</h3>
+        <div class="phone-row">
+          <div id="qr-box" class="qr-box"></div>
+          <div class="phone-info">
+            <p>Pindai QR atau buka URL ini di browser HP (harus 1 jaringan WiFi):</p>
+            <div class="url-row"><code id="phone-url">…</code><button id="btn-copy-url" class="btn tiny">Salin</button></div>
+            <p class="muted small">Server berjalan di komputer ini — HP hanya melihat dashboard, komputer tetap bisa dipakai normal.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PROMO -->
+    <section id="view-promo" class="view">
+      <header class="view-head">
+        <div><h2>Promo & API Gratis</h2><p class="sub" id="promo-sub">Diperbarui otomatis · sumber: OpenRouter & daftar free-tier</p></div>
+        <button id="btn-promo-refresh" class="btn primary">⟳ Cek sekarang</button>
+      </header>
+      <div class="tabs">
+        <button class="tab active" data-tab="live">Model Gratis (live)</button>
+        <button class="tab" data-tab="cross">Lintas Provider</button>
+        <button class="tab" data-tab="catalog">Katalog Free Tier</button>
+        <button class="tab" data-tab="list">Daftar Free-Tier (GitHub)</button>
+      </div>
+      <input id="promo-search" class="search" placeholder="Cari model / provider…" type="search">
+      <div id="promo-live" class="tab-body"></div>
+      <div id="promo-cross" class="tab-body hidden"></div>
+      <div id="promo-catalog" class="tab-body hidden"></div>
+      <div id="promo-list" class="tab-body hidden"></div>
+    </section>
+
+    <!-- KEYS -->
+    <section id="view-keys" class="view">
+      <header class="view-head">
+        <div><h2>API Keys</h2><p class="sub">Simpan & validasi key provider — dipantau berkala otomatis</p></div>
+      </header>
+      <div class="panel">
+        <h3>➕ Tambah API Key</h3>
+        <form id="form-key" class="form-grid">
+          <label>Preset<select id="key-preset"></select></label>
+          <label>Nama <input id="key-name" placeholder="Nama tampilan"></label>
+          <label>Base URL <input id="key-url" placeholder="https://…/v1 (opsional, ikut preset)"></label>
+          <label class="span2">API Key <input id="key-value" type="password" placeholder="sk-… / gsk_…" required></label>
+          <div class="span2 form-actions"><button class="btn primary" type="submit">Simpan & Validasi</button><a id="key-signup" class="btn ghost" target="_blank" rel="noreferrer">Dapatkan key ↗</a></div>
+        </form>
+      </div>
+      <div id="keys-list" class="item-list"></div>
+    </section>
+
+    <!-- GATEWAY -->
+    <section id="view-gateway" class="view">
+      <header class="view-head">
+        <div><h2>Gateway Pool</h2><p class="sub">Agent tetap hidup — kuota satu provider habis, otomatis pindah ke yang berikutnya</p></div>
+        <button id="btn-pool-test" class="btn primary">⚡ Tes Rotasi</button>
+      </header>
+
+      <div class="cards" style="grid-template-columns:repeat(3,1fr)">
+        <div class="card stat"><div class="stat-num" id="pool-active">–</div><div class="stat-label">Provider siap melayani</div><div class="stat-foot" id="pool-active-foot"></div></div>
+        <div class="card stat"><div class="stat-num" id="pool-req">–</div><div class="stat-label">Request via gateway</div><div class="stat-foot">total semua anggota</div></div>
+        <div class="card stat"><div class="stat-num" id="pool-err">–</div><div class="stat-label">Gagal (di-failover)</div><div class="stat-foot">dipindah otomatis</div></div>
+      </div>
+
+      <div class="panel">
+        <h3>🔌 Endpoint untuk Agent Anda</h3>
+        <p class="muted small">Arahkan semua agent ke endpoint OpenAI-compatible ini — API key-nya = token AgentHub. Model boleh <code>auto</code>, <code>preset/model</code>, atau nama model langsung.</p>
+        <div class="url-row"><code id="gw-url">…</code><button id="btn-copy-gw" class="btn tiny">Salin</button></div>
+        <div class="url-row"><code id="gw-key">…</code><button id="btn-copy-gwkey" class="btn tiny">Salin</button></div>
+        <details class="howto">
+          <summary>Contoh pemakaian (curl / n8n / SDK)</summary>
+          <pre id="gw-example"></pre>
+        </details>
+      </div>
+
+      <div class="panel">
+        <h3>🧰 Anggota Pool <span class="muted small" style="font-weight:400">— angka kecil = didahulukan</span></h3>
+        <div id="pool-list" class="item-list"></div>
+        <p class="muted small" style="margin-top:10px">Aktifkan key → pool di tab API Keys. Bila kuota habis (429) provider di-cooldown 5 menit dan traffic pindah otomatis.</p>
+      </div>
+
+      <div id="pool-test-result" class="panel hidden">
+        <h3>⚡ Hasil Tes Rotasi</h3>
+        <div id="pool-test-body"></div>
+      </div>
+    </section>
+
+    <!-- AGENTS -->
+    <section id="view-agents" class="view">
+      <header class="view-head">
+        <div><h2>Agent & Aplikasi</h2><p class="sub">Sambungkan webhook (n8n/Make/custom) atau endpoint OpenAI-compatible</p></div>
+      </header>
+      <div class="panel">
+        <h3>➕ Sambungkan Agent</h3>
+        <form id="form-agent" class="form-grid">
+          <label>Nama <input id="agent-name" placeholder="mis. Agent Sales n8n" required></label>
+          <label>Tipe<select id="agent-type"><option value="webhook">Webhook / HTTP</option><option value="openai">LLM (OpenAI-compatible)</option></select></label>
+          <label class="webhook-only span2">URL Webhook <input id="agent-url" placeholder="https://n8n.local/webhook/…"></label>
+          <label class="openai-only hidden">Base URL <input id="agent-base" placeholder="https://…/v1"></label>
+          <label class="webhook-only">Method<select id="agent-method"><option>GET</option><option>POST</option><option>PUT</option><option>HEAD</option></select></label>
+          <label class="openai-only hidden">Model <input id="agent-model" placeholder="mis. glm-4.5-flash"></label>
+          <label class="openai-only hidden">API Key (opsional) <input id="agent-key" type="password" placeholder="sk-…"></label>
+          <label class="webhook-only hidden" id="agent-body-label">Body JSON (POST/PUT) <textarea id="agent-body" rows="2" placeholder='{"task":"ping"}'></textarea></label>
+          <div class="span2 form-actions"><button class="btn primary" type="submit">Simpan & Cek</button></div>
+        </form>
+      </div>
+      <div id="agents-list" class="item-list"></div>
+    </section>
+
+    <!-- ALERTS -->
+    <section id="view-alerts" class="view">
+      <header class="view-head">
+        <div><h2>Notifikasi</h2><p class="sub">Perubahan promo, status key & agent</p></div>
+        <button id="btn-read-all" class="btn ghost">Tandai dibaca</button>
+      </header>
+      <div id="alerts-list" class="alerts"></div>
+    </section>
+
+    <!-- SETTINGS -->
+    <section id="view-settings" class="view">
+      <header class="view-head"><div><h2>Pengaturan</h2><p class="sub">Konfigurasi AgentHub</p></div></header>
+      <div class="panel">
+        <h3>🔁 Otomatisasi</h3>
+        <form id="form-settings" class="form-grid">
+          <label>Refresh sumber promo (jam)<input id="set-refresh" type="number" min="1" max="168"></label>
+          <label>Health-check agent (menit)<input id="set-agent" type="number" min="1" max="1440"></label>
+          <label>Re-validasi API key (jam)<input id="set-keys" type="number" min="1" max="168"></label>
+          <label class="switch-row span2"><input id="set-notify" type="checkbox"><span>Notifikasi Windows (toast) saat ada promo/status baru</span></label>
+          <div class="span2 form-actions"><button class="btn primary" type="submit">Simpan</button></div>
+        </form>
+      </div>
+      <div class="panel">
+        <h3>🔐 Token Akses</h3>
+        <p class="muted small">Token ini dipakai HP untuk masuk. Jangan dibagikan di luar jaringan Anda.</p>
+        <div class="url-row"><code id="set-token">…</code><button id="btn-copy-token" class="btn tiny">Salin</button></div>
+        <button id="btn-regen" class="btn ghost" style="margin-top:8px">Regenerate token</button>
+      </div>
+      <div class="panel">
+        <h3>💻 Info Server</h3>
+        <div id="server-info" class="kv"></div>
+        <p class="muted small" style="margin-top:8px">Port berubah? Edit lewat file <code>data/config.json</code> lalu jalankan ulang.</p>
+      </div>
+      <div class="panel">
+        <h3>🪟 Windows</h3>
+        <p class="muted small">• Autostart saat PC nyala: jalankan <code>autostart-install.bat</code><br>
+        • Buka jendela app: jalankan <code>Start AgentHub.bat</code><br>
+        • Matikan server: <code>Stop AgentHub.bat</code></p>
+        <p class="muted small" style="margin-top:8px">Install di komputer lain: bagikan halaman unduh <a href="/download" target="_blank"><code>/download</code></a> (satu WiFi).</p>
+      </div>
+    </section>
+  </main>
+
+  <!-- navigasi bawah (HP) -->
+  <nav class="bottom-nav">
+    <button data-view="dashboard"><span>📊</span><small>Dasbor</small></button>
+    <button data-view="promo"><span>🎁</span><small>Promo</small></button>
+    <button data-view="keys"><span>🔑</span><small>Key</small></button>
+    <button data-view="gateway"><span>🔀</span><small>Pool</small></button>
+    <button data-view="agents"><span>🤖</span><small>Agent</small></button>
+    <button data-view="alerts"><span>🔔</span><small>Alert</small></button>
+    <button data-view="settings"><span>⚙️</span><small>Atur</small></button>
+  </nav>
+</div>
+
+<div id="toast-wrap" class="toast-wrap"></div>
+<script src="/public/qrcode.min.js"></script>
+<script src="/public/app.js?v=1.1.0"></script>
+</body>
+</html>
