@@ -209,6 +209,7 @@
   function renderChat() {
     const empty = !curThread || !curThread.messages?.length;
     $('#chat-empty').classList.toggle('hidden', !empty);
+    $('.chat').classList.toggle('empty', empty);
     $('#chat-messages').classList.toggle('hidden', empty);
     $('#btn-chat-del').classList.toggle('hidden', !curThread);
     $('#chat-title').textContent = curThread ? curThread.title : 'Studio';
@@ -219,22 +220,39 @@
 
     if (empty) return;
     const msgs = curThread.messages.filter((m) => m.role !== 'system');
-    $('#chat-messages').innerHTML = msgs.map((m) => {
-      if (m.role === 'user') {
-        return `<div class="msg user"><div class="bubble">${esc(m.content)}</div></div>`;
-      }
-      if (m.subrun) {
-        const st = m.status || 'working';
-        const chip = st === 'done' ? `<span class="chip ok-chip">✓ ${Math.round((m.ms || 0) / 100) / 10}s</span>`
-          : st === 'error' ? '<span class="chip err-chip">gagal</span>' : '<span class="chip run">⏳ bekerja…</span>';
-        const body = st === 'working' ? '<p class="muted small">menunggu keluaran…</p>' : `<div class="msg-body">${md(m.content || '')}</div>`;
-        return `<div class="msg assistant subrun"><div class="subrun-head"><span class="chip">${esc(engineLabel(m.engine))}</span>${chip}</div>${body}</div>`;
-      }
-      return `<div class="msg assistant">
-        <div class="msg-meta"><span class="chip">${esc(engineLabel(m.engine))}</span>${m.servedBy ? `<span class="muted small">via ${esc(m.servedBy)}</span>` : ''}${m.ms ? `<span class="muted small">${Math.round(m.ms / 100) / 10}s</span>` : ''}</div>
+    let html = '';
+    let subruns = null; // kumpulkan subrun delegation → satu kartu pohon
+
+    const flushSubruns = () => {
+      if (!subruns || !subruns.length) return;
+      const working = subruns.filter((s) => (s.status || 'working') === 'working').length;
+      const rows = subruns.map((s) => {
+        const st = s.status || 'working';
+        const stat = st === 'done' ? `✓ ${Math.round((s.ms || 0) / 100) / 10}s`
+          : st === 'error' ? '✗ gagal' : `${Math.round((Date.now() - (s.ts || Date.now())) / 1000)}s Working`;
+        const body = st === 'working' ? '' : `<div class="deleg-out">${esc((s.content || '').slice(0, 4000))}</div>`;
+        return `<details class="deleg-row"><summary class="deleg-row-top">
+          <b>${esc(engineLabel(s.engine))}</b><span class="deleg-sub">${esc((s.content || '').replace(/\s+/g, ' ').slice(0, 90))}</span>
+          <span class="grow">${esc(stat)}</span></summary>${body}</details>`;
+      }).join('');
+      html += `<div class="msg assistant"><div class="deleg-card">
+        <div class="deleg-head"><span class="chip">🎯 delegated</span><b>${subruns.length} agent</b><span class="muted small">${working} working</span><span class="caret">▼</span></div>
+        ${rows}
+      </div></div>`;
+      subruns = null;
+    };
+
+    for (const m of msgs) {
+      if (m.role === 'user') { flushSubruns(); html += `<div class="msg user"><div class="bubble">${esc(m.content)}</div></div>`; continue; }
+      if (m.subrun) { (subruns = subruns || []).push(m); continue; }
+      flushSubruns();
+      html += `<div class="msg assistant">
+        <div class="msg-meta"><span class="chip">${esc(engineLabel(m.engine))}</span>${m.servedBy ? `<span>via ${esc(m.servedBy)}</span>` : ''}${m.ms ? `<span>Worked for ${Math.round(m.ms / 100) / 10}s</span>` : ''}</div>
         <div class="msg-body">${md(m.content || '')}</div>
       </div>`;
-    }).join('');
+    }
+    flushSubruns();
+    $('#chat-messages').innerHTML = html;
     $('#chat-messages').scrollTop = $('#chat-messages').scrollHeight;
   }
 
@@ -386,8 +404,11 @@
       const cards = list.filter((t) => t.status === key);
       return `
       <div class="kcol" data-status="${key}">
-        <div class="kcol-head"><b>${label}</b> <span class="muted">${cards.length}</span></div>
+        <div class="kcol-head"><b>${label}</b> <span class="count">${cards.length}</span>
+          <button class="add" data-add="${key}" title="Tambah tugas">＋</button>
+        </div>
         <div class="kcol-body">
+          <input class="knew hidden" placeholder="Tulis judul, Enter" data-status="${key}">
           ${cards.map((t) => `
           <div class="kcard" data-id="${t.id}">
             <div class="kcard-title">${esc(t.title)}</div>
@@ -397,16 +418,22 @@
               <button class="btn tiny danger" data-del-task="1" title="Hapus">🗑</button>
             </div>
           </div>`).join('')}
-          <input class="knew" placeholder="+ tugas baru (Enter)" data-status="${key}">
         </div>
       </div>`;
     }).join('');
 
+    $$('#kanban .kcol-head .add').forEach((btn) => btn.addEventListener('click', () => {
+      const col = btn.closest('.kcol');
+      const inp = col.querySelector('.knew');
+      inp.classList.toggle('hidden');
+      if (!inp.classList.contains('hidden')) inp.focus();
+    }));
     $$('#kanban .knew').forEach((inp) => inp.addEventListener('keydown', async (e) => {
       if (e.key === 'Enter' && inp.value.trim()) {
         await api('/api/tasks', { method: 'POST', body: JSON.stringify({ title: inp.value.trim(), status: inp.dataset.status }) });
         renderTasks();
       }
+      if (e.key === 'Escape') inp.classList.add('hidden');
     }));
     $$('#kanban .kcard [data-move]').forEach((btn) => btn.addEventListener('click', async () => {
       const id = btn.closest('.kcard').dataset.id;
@@ -811,6 +838,30 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
       } catch { /* noop */ }
     };
   }
+
+  // ---------- popover pemakaian engine ----------
+  $('#rail-usage').addEventListener('click', async () => {
+    const pop = $('#usage-pop');
+    if (!pop.classList.contains('hidden')) return pop.classList.add('hidden');
+    let usage;
+    try { usage = await api('/api/usage'); } catch { return toast('Gagal memuat pemakaian'); }
+    const max = Math.max(1, ...usage.map((u) => u.runs));
+    $('#usage-rows').innerHTML = usage.map((u) => {
+      const pct = Math.round((u.runs / max) * 100);
+      return `<div class="usage-row">
+        <div class="u-top"><b>${esc(u.label)}</b><span>${u.runs} run</span></div>
+        <div class="u-bar"><i style="width:${pct}%"></i></div>
+        <div class="u-sub"><span>${u.ok} ok · ${u.failed} gagal</span><span>${u.ok ? 'avg ' + Math.round(u.avgMs / 100) / 10 + 's' : '—'}</span></div>
+      </div>`;
+    }).join('');
+    pop.classList.remove('hidden');
+  });
+  $('#usage-close').addEventListener('click', () => $('#usage-pop').classList.add('hidden'));
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#usage-pop') && !e.target.closest('#rail-usage')) {
+      $('#usage-pop')?.classList.add('hidden');
+    }
+  });
 
   // ---------- init ----------
   loadState().then(() => { fillPresets(); renderEngines(); connectSSE(); go('studio'); });

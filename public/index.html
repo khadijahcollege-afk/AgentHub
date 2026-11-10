@@ -35,15 +35,20 @@
     <button class="rail-btn" data-view="gateway" title="Gateway pool">🔀</button>
     <button class="rail-btn" data-view="agents" title="Agent & aplikasi">🤖</button>
     <div class="rail-spacer"></div>
+    <button class="rail-btn" id="rail-usage" title="Pemakaian engine">⚡</button>
     <button class="rail-btn" data-view="alerts" title="Notifikasi">🔔<em id="badge-alerts" class="badge hidden"></em></button>
     <button class="rail-btn" data-view="settings" title="Pengaturan">⚙️</button>
   </aside>
 
   <!-- sidebar thread (hanya studio) -->
   <aside class="threadbar hidden" id="threadbar">
-    <button id="btn-new-chat" class="btn primary block">＋ Chat baru</button>
-    <button id="btn-delegate" class="btn ghost block">🎯 Delegation…</button>
+    <div class="tb-head"><b>agenthub</b><span class="caret">▼</span></div>
+    <div class="tb-env"><i class="dot"></i> This PC <small id="tb-server-note">· server jalan</small></div>
+    <button id="btn-new-chat" class="tb-action">✎ Chat baru</button>
+    <button id="btn-delegate" class="tb-action">◈ Delegation</button>
+    <div class="tb-label">Personal</div>
     <input id="thread-search" class="search small" placeholder="Cari thread…" type="search">
+    <div class="tb-label">Recents</div>
     <div id="thread-list" class="thread-list"></div>
   </aside>
 
@@ -59,7 +64,7 @@
             <button id="btn-chat-del" class="btn tiny danger hidden" style="margin-left:auto">Hapus</button>
           </div>
           <div id="chat-empty" class="chat-empty">
-            <h1>What are we<br>working on?</h1>
+            <h1>What are we<br>building?</h1>
             <p class="muted">Pilih engine, mulai ngobrol. Delegation bisa mengirim satu prompt ke beberapa agent sekaligus.</p>
           </div>
           <div id="chat-messages" class="chat-messages"></div>
@@ -70,7 +75,7 @@
                 <select id="engine-select"></select>
                 <input id="chat-model" class="model-inline hidden" placeholder="model (auto)">
                 <button id="btn-cwd" class="btn tiny ghost" title="Folder kerja agent CLI">📁 This PC</button>
-                <button id="btn-send" class="btn primary send-btn">↑ Kirim</button>
+                <button id="btn-send" class="btn primary send-btn" title="Kirim">↑</button>
               </div>
             </div>
           </div>
@@ -253,6 +258,12 @@
     </div>
     <div id="del-progress" class="hidden" style="margin-top:12px"></div>
   </div>
+</div>
+
+<!-- Popover pemakaian engine -->
+<div id="usage-pop" class="usage-pop hidden">
+  <h4>Pemakaian engine <button id="usage-close" class="btn tiny ghost">✕</button></h4>
+  <div id="usage-rows"></div>
 </div>
 
 <div id="toast-wrap" class="toast-wrap"></div>
