@@ -143,7 +143,7 @@ const PROMO_MACHINE = {
 };
 
 // ---------- URI / OVERLAY (satu overlay aktif pada satu waktu) ----------
-const UI_LAYERS = ['usage', 'env', 'qr', 'delegate'];
+const UI_LAYERS = ['usage', 'env', 'qr', 'delegate', 'note', 'adopt'];
 const UI_MACHINE = {
   id: 'ui',
   initial: null,
@@ -156,7 +156,7 @@ const UI_MACHINE = {
 };
 
 // ---------- VIEW / ROUTE ----------
-const VIEWS = ['studio', 'tasks', 'promo', 'keys', 'gateway', 'agents', 'alerts', 'settings'];
+const VIEWS = ['studio', 'tasks', 'notes', 'promo', 'keys', 'gateway', 'agents', 'alerts', 'settings'];
 const VIEW_MACHINE = {
   id: 'view',
   initial: 'studio',
@@ -173,6 +173,7 @@ const SSE_SCOPES = {
   hello: [],
   threads: ['threads'],
   tasks: ['tasks'],
+  notes: ['notes'],
   keys: ['keys', 'pool'],
   pool: ['pool', 'keys'],
   agents: ['agents'],

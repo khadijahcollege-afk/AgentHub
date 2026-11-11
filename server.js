@@ -14,6 +14,7 @@ import { routeChat, testPool, poolStatus, poolModels } from './lib/pool.js';
 import { listEngines, runEngine, usageStats } from './lib/harness.js';
 import * as threads from './lib/threads.js';
 import * as tasks from './lib/tasks.js';
+import * as notes from './lib/notes.js';
 import { toast } from './lib/notify.js';
 import {
   TASK_MACHINE, RUN_MACHINE, KEY_MACHINE, AGENT_MACHINE, CONNECTION_MACHINE,
@@ -150,10 +151,12 @@ function appState() {
       refreshHours: config.refreshHours,
       agentCheckMinutes: config.agentCheckMinutes,
       keyCheckHours: config.keyCheckHours,
+      autoPool: config.autoPool !== false,
       baselined: config.baselined,
     },
     token: config.token,
     keys: listKeys(),
+    notes: notes.listNotes(),
     keyPresets: PRESETS,
     defaultModels: DEFAULT_MODELS,
     agents: listAgents(),
@@ -195,6 +198,7 @@ function runtimeStatus() {
     runningCount: running.length,
     threads: threads.listThreads().length,
     tasks: tasks.listTasks().length,
+    notes: notes.listNotes().length,
     tasksByStatus: TASK_STATUSES.reduce((acc, s) => {
       acc[s] = tasks.listTasks().filter((t) => t.status === s).length;
       return acc;
@@ -335,6 +339,10 @@ async function route(req, res) {
     if (!b.key || (!b.baseUrl && !PRESETS[b.preset]?.baseUrl)) {
       return sendJson(res, 400, { error: 'Key dan baseUrl wajib diisi' });
     }
+    // Key baru langsung masuk pool (bisa dimatikan di Pengaturan). Ini yang
+    // membuat promo gratis langsung terpakai agent lewat /v1 tanpa langkah
+    // tambahan: simpan key → siap dipanggil.
+    if (b.pool === undefined) b.pool = config.autoPool !== false;
     const entry = addKey(b);
     await checkKey(entry.id).catch(() => {});
     broadcast('keys');
@@ -572,6 +580,29 @@ async function route(req, res) {
   }
   if (p === '/api/usage' && method === 'GET') return sendJson(res, 200, usageStats());
 
+  // notes
+  if (p === '/api/notes' && method === 'GET') return sendJson(res, 200, notes.listNotes());
+  if (p === '/api/notes' && method === 'POST') {
+    const b = await readBody(req);
+    if (!b.title && !b.body) return sendJson(res, 400, { error: 'judul atau isi catatan wajib' });
+    const n = notes.createNote(b);
+    broadcast('notes');
+    return sendJson(res, 200, n);
+  }
+  if ((m = p.match(/^\/api\/notes\/([a-f0-9]+)$/))) {
+    if (method === 'POST') {
+      const b = await readBody(req);
+      const n = notes.patchNote(m[1], b);
+      broadcast('notes');
+      return sendJson(res, 200, n);
+    }
+    if (method === 'DELETE') {
+      notes.deleteNote(m[1]);
+      broadcast('notes');
+      return sendJson(res, 200, { ok: true });
+    }
+  }
+
   // tasks kanban
   if (p === '/api/tasks' && method === 'GET') return sendJson(res, 200, tasks.listTasks());
   if (p === '/api/tasks' && method === 'POST') {
@@ -611,6 +642,7 @@ async function route(req, res) {
     const b = await readBody(req);
     const num = (v, min, max) => (typeof v === 'number' && v >= min && v <= max ? v : undefined);
     if (typeof b.notify === 'boolean') config.notify = b.notify;
+    if (typeof b.autoPool === 'boolean') config.autoPool = b.autoPool;
     config.refreshHours = num(b.refreshHours, 1, 168) ?? config.refreshHours;
     config.agentCheckMinutes = num(b.agentCheckMinutes, 1, 1440) ?? config.agentCheckMinutes;
     config.keyCheckHours = num(b.keyCheckHours, 1, 168) ?? config.keyCheckHours;

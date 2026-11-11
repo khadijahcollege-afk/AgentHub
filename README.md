@@ -11,9 +11,9 @@ AgentHub watches **free AI model promos** from multiple internet sources, connec
 
 > 🇮🇩 Dokumentasi berbahasa Indonesia: [README.id.md](README.id.md)
 
-| Studio (chat) | Tasks board | Free promo tracking |
-|---|---|---|
-| ![](assets/readme/studio.png) | ![](assets/readme/tasks.png) | ![](assets/readme/promo.png) |
+| Studio (chat) | Tasks board | Notes | Free promo tracking |
+|---|---|---|---|
+| ![](assets/readme/studio.png) | ![](assets/readme/tasks.png) | ![](assets/readme/notes.png) | ![](assets/readme/promo.png) |
 
 ## Why AgentHub?
 
@@ -22,7 +22,8 @@ Free AI API tiers (Groq, Google AI Studio, Cerebras, OpenRouter `:free`, …) ar
 - **💬 Studio** — chat directly with your agents in a native desktop app: pick an engine, type a prompt, watch it stream. Engines include the **free-token Gateway Pool** and installed **CLI harnesses** (Claude Code, Codex, OpenCode, Gemini CLI — auto-detected).
 - **🎯 Delegation** — send one prompt to several agents in parallel; results are collected into a single thread and a task appears on the board.
 - **📋 Tasks board** — Inbox / To do / Running / Needs review / Done.
-- **🎁 Promo tracking** — live from [OpenRouter](https://openrouter.ai), [models.dev](https://models.dev) and the [free-llm-api-resources](https://github.com/raullenchai/free-llm-api-resources) list, plus a curated catalog with signup links. New free model detected → notification + Windows toast.
+- **📝 Notes** — quick per-project notes with pinning, search, and a two-column pinned / recent board.
+- **🎁 Promo tracking** — live from [OpenRouter](https://openrouter.ai), [models.dev](https://models.dev) and the [free-llm-api-resources](https://github.com/raullenchai/free-llm-api-resources) list, plus a curated catalog with signup links. New free model detected → notification + Windows toast. Hit **Pakai di agent** on any free model, paste the promo key, and it joins the gateway pool immediately — ready for `OPENAI_BASE_URL` agents.
 - **🔀 Gateway Pool** — one OpenAI-compatible endpoint (`/v1/chat/completions`, `/v1/models`). `429` → 5-minute cooldown → traffic shifts to the next provider. Rejected keys (401) get disabled automatically. Supports streaming (`stream: true`).
 - **🔑 API key vault** — store keys for 11+ OpenAI-compatible presets (Groq, OpenRouter, Cerebras, Gemini, GitHub Models, Mistral, Together, DeepSeek, xAI, GLM, Hugging Face, custom). Periodic re-validation, keys masked in the UI.
 - **🤖 Agent connectors** — n8n/Make/custom webhooks and LLM endpoints; scheduled health checks with latency history.
@@ -86,7 +87,7 @@ can never disagree:
 ```bash
 npm run machines   # regenerate public/machines.js
 npm run check      # fail if the generated file drifted, then run the tests
-npm test           # 21 tests: machines, HTTP contract, real run + stop
+npm test           # 23 tests: machines, HTTP contract, real run + stop
 ```
 
 Agents driving the app do not have to guess. The contract is served over HTTP:
@@ -97,6 +98,9 @@ Agents driving the app do not have to guess. The contract is served over HTTP:
 | `GET /api/status` | what is running right now, task counts per column |
 | `GET /api/version` | machine contract version + task statuses |
 | `GET /api/events?format=json` | the SSE stream as newline-delimited JSON |
+| `GET/POST /api/notes` | read and create project notes |
+| `POST/DELETE /api/notes/:id` | patch or delete a note |
+| `POST /api/keys` | add a key; with `autoPool` on it joins the gateway pool in one call |
 
 Task movement is strictly linear: `inbox → todo → running → review → done`. A skip is
 rejected with `409` and a body containing `allowed`, so a client can correct itself

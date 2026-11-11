@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.6.0 — 2026-11-11
+- **UI disetel ulang mengikuti benchmark Kybern** — jendela melayang di atas wallpaper
+  gelap, rail ikon 58px dengan tile proyek berwarna, sidebar 236px, hero
+  "Let's work in" + judul proyek, composer dua lapis, chat maksimal 720px dengan
+  bubble user `#202023` dan metadata di bawah teks asisten, baris "Worked for Xs",
+  papan tugas tanpa garis kolom, serta overlay yang lebih tenang. Semua ID dan
+  perilaku lama dipertahankan; suite regresi CDP tetap lulus.
+- **Notes** — tampilan catatan baru (pin, cari, filter proyek, grid pinned 2 kolom /
+  recent auto-fill) dengan penyimpanan lokal di `data/notes.json` dan API
+  `GET/POST /api/notes`, `POST/DELETE /api/notes/:id`.
+- **Promo → agent dalam satu klik** — tombol **Pakai di agent** pada setiap model
+  gratis membuka alur adopsi: tempel key promo, key otomatis masuk pool gateway
+  dengan `poolModel` model tersebut, lalu agent bisa langsung memakai
+  `OPENAI_BASE_URL=<host>/v1` + `OPENAI_MODEL=auto`. Pengaturan `autoPool`
+  (default aktif) membuat setiap key baru langsung siap dipakai agent.
+- **Gateway** — contoh `curl` dan blok env agent (`OPENAI_BASE_URL`,
+  `OPENAI_API_KEY`, `OPENAI_MODEL`) plus tombol salin; hasil tes rotasi menampilkan
+  provider/model yang melayani.
+- **Perbaikan** — glyph caret diganti chevron CSS agar tidak lagi tampil sebagai
+  titik, warna proyek memakai palet tenang (This PC = aksen oranye), pluralisasi
+  "1 delegated agent", dan pemulihan encoding file UI.
+- **DX** — 23 tes (`npm run check`), termasuk kontrak Notes dan perilaku
+  `autoPool` saat key dibuat.
+
 ## 1.5.0 — 2026-11-11
 - **Satu sumber kebenaran untuk semua state** — `lib/machines.js` mendefinisikan 8 mesin
   (tugas, run, koneksi, key, agent, promo, overlay, view) + peta scope SSE.

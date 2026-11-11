@@ -11,9 +11,9 @@
 
 AgentHub memantau **promo model & API AI gratis** dari berbagai sumber internet, menyambung ke **aplikasi agent** Anda, dan menjaga mereka tetap hidup: saat kuota satu provider gratis habis, traffic **otomatis pindah** ke provider berikutnya — semuanya bisa dipantau dari HP.
 
-| Studio (chat) | Papan tugas | Pelacak promo |
-|---|---|---|
-| ![](assets/readme/studio.png) | ![](assets/readme/tasks.png) | ![](assets/readme/promo.png) |
+| Studio (chat) | Papan tugas | Catatan | Pelacak promo |
+|---|---|---|---|
+| ![](assets/readme/studio.png) | ![](assets/readme/tasks.png) | ![](assets/readme/notes.png) | ![](assets/readme/promo.png) |
 
 ## Fitur
 

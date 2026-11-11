@@ -149,3 +149,70 @@ test('/api/version stabil untuk agent', async () => {
   assert.equal(v.machines, 1);
   assert.deepEqual(v.taskStatuses, ['inbox', 'todo', 'running', 'review', 'done']);
 });
+
+test('notes: buat, sematkan, ubah, hapus', async () => {
+  // judul/isi kosong ditolak
+  const bad = await api('/api/notes', { method: 'POST', body: JSON.stringify({}) });
+  assert.equal(bad.status, 400);
+
+  const a = await (await api('/api/notes', {
+    method: 'POST', body: JSON.stringify({ title: 'catatan A', body: 'isi A', projectId: 'alpha' }),
+  })).json();
+  assert.ok(a.id);
+  assert.equal(a.pinned, false);
+  assert.equal(a.projectId, 'alpha');
+
+  const b = await (await api('/api/notes', {
+    method: 'POST', body: JSON.stringify({ title: 'catatan B', body: 'isi B', pinned: true }),
+  })).json();
+
+  // yang disematkan tampil lebih dulu
+  const list = await (await api('/api/notes')).json();
+  assert.equal(list[0].id, b.id);
+  assert.equal(list[0].projectId, 'global');
+
+  const patched = await (await api(`/api/notes/${a.id}`, {
+    method: 'POST', body: JSON.stringify({ title: 'A baru', pinned: true }),
+  })).json();
+  assert.equal(patched.title, 'A baru');
+  assert.equal(patched.pinned, true);
+
+  // state & status ikut membawa notes
+  const st = await (await api('/api/state')).json();
+  assert.equal(st.notes.length, 2);
+  const status = await (await api('/api/status')).json();
+  assert.equal(status.notes, 2);
+
+  const del = await api(`/api/notes/${a.id}`, { method: 'DELETE' });
+  assert.equal(del.status, 200);
+  const after = await (await api('/api/notes')).json();
+  assert.equal(after.length, 1);
+  assert.equal(after[0].id, b.id);
+});
+
+test('key baru otomatis masuk pool gateway (autoPool)', async () => {
+  const st = await (await api('/api/state')).json();
+  assert.equal(st.config.autoPool, true);
+
+  const r = await api('/api/keys', {
+    method: 'POST',
+    body: JSON.stringify({ preset: 'custom', key: 'sk-uji-promo', baseUrl: 'http://127.0.0.1:9/v1', poolModel: 'uji/model-gratis' }),
+  });
+  assert.equal(r.status, 200);
+  const { entry } = await r.json();
+  assert.equal(entry.pool, true);
+  assert.equal(entry.poolModel, 'uji/model-gratis');
+
+  // autoPool dimatikan → key berikutnya tidak masuk pool
+  const off = await api('/api/settings', { method: 'POST', body: JSON.stringify({ autoPool: false }) });
+  assert.equal(off.status, 200);
+  const r2 = await api('/api/keys', {
+    method: 'POST',
+    body: JSON.stringify({ preset: 'custom', key: 'sk-uji-promo-2', baseUrl: 'http://127.0.0.1:9/v1' }),
+  });
+  const { entry: e2 } = await r2.json();
+  assert.equal(e2.pool, false);
+
+  const st2 = await (await api('/api/state')).json();
+  assert.equal(st2.config.autoPool, false);
+});

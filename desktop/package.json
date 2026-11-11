@@ -1,7 +1,7 @@
 {
   "name": "agenthub-desktop",
   "productName": "AgentHub",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "description": "AgentHub desktop shell — jendela asli Windows untuk server AgentHub",
   "main": "main.js",
   "author": "AgentHub Contributors",

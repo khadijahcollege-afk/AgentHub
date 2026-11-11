@@ -3,18 +3,18 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="theme-color" content="#0d0f13">
-<title>agenthub — studio agent</title>
-<link rel="stylesheet" href="/public/style.css?v=1.5.0">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%234f7cff'/%3E%3Ccircle cx='50' cy='42' r='16' fill='white'/%3E%3Crect x='28' y='66' width='44' height='10' rx='5' fill='white'/%3E%3C/svg%3E">
+<meta name="theme-color" content="#0b0b0c">
+<title>AgentHub — studio agent</title>
+<link rel="stylesheet" href="/public/style.css?v=1.6.0">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%23ef7d45'/%3E%3Ccircle cx='50' cy='40' r='15' fill='white'/%3E%3Crect x='29' y='64' width='42' height='10' rx='5' fill='white'/%3E%3C/svg%3E">
 </head>
 <body>
 
 <!-- Gerbang token -->
 <div id="gate" class="gate hidden">
   <div class="gate-card">
-    <div class="logo-big">🛰️</div>
-    <h1>agenthub</h1>
+    <div class="logo-big">AH</div>
+    <h1>AgentHub</h1>
     <p>Masukkan token akses untuk melanjutkan.<br>Token ada di Pengaturan aplikasi di komputer Anda.</p>
     <input id="gate-token" type="password" placeholder="Token akses" autocomplete="off">
     <button id="gate-btn" class="btn primary">Masuk</button>
@@ -27,17 +27,25 @@
     <span id="conn-text">Menghubungkan…</span>
     <button id="conn-retry" class="btn tiny">Coba lagi</button>
   </div>
+
   <!-- rail ikon -->
   <aside class="rail">
-    <button class="rail-btn active" data-view="studio" title="Studio"><svg viewBox="0 0 24 24"><path d="M4 5.5h16v10H9l-5 4z"/></svg></button>
-    <button class="rail-btn" data-view="tasks" title="Tugas"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="5" height="16" rx="1.5"/><rect x="10" y="4" width="5" height="10" rx="1.5"/><rect x="17" y="4" width="4" height="7" rx="1.5"/></svg></button>
-    <button class="rail-btn" data-view="promo" title="Promo API gratis"><svg viewBox="0 0 24 24"><rect x="3" y="8" width="18" height="4" rx="1"/><path d="M5 12v8h14v-8M12 8v12M12 8C10 8 8 7.2 8 5.5S9 3 10 3c1.4 0 2 2 2 5zM12 8c2 0 4-.8 4-2.5S15 3 14 3c-1.4 0-2 2-2 5z"/></svg></button>
-    <button class="rail-btn" data-view="keys" title="API keys"><svg viewBox="0 0 24 24"><circle cx="8" cy="8" r="4"/><path d="M11 11l9 9M17.5 17.5l2-2M14.5 14.5l2-2"/></svg></button>
-    <button class="rail-btn" data-view="gateway" title="Gateway pool"><svg viewBox="0 0 24 24"><path d="M3 7h4l10 10h4M3 17h4l3-3M14 7h7M17 4l3 3-3 3M17 14l3 3-3 3"/></svg></button>
-    <button class="rail-btn" data-view="agents" title="Agent & aplikasi"><svg viewBox="0 0 24 24"><rect x="6" y="7" width="12" height="11" rx="2.5"/><path d="M9 7V4M15 7V4M9 18v2M15 18v2M3 11h3M3 14h3M18 11h3M18 14h3"/><circle cx="10" cy="12.5" r=".9"/><circle cx="14" cy="12.5" r=".9"/></svg></button>
+    <div class="rail-top">
+      <button class="rail-btn active" data-view="studio" title="Studio"><svg viewBox="0 0 24 24"><path d="M4 10.5 12 4l8 6.5V19a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19z"/><path d="M9.5 20.5v-6h5v6"/></svg></button>
+      <button class="rail-btn" data-view="tasks" title="Tugas"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="4"/><path d="M8 9h8M8 13h5"/></svg></button>
+      <button class="rail-btn" data-view="notes" title="Catatan"><svg viewBox="0 0 24 24"><path d="M5 5.5h14M5 12h14M5 18.5h9"/></svg></button>
+      <button class="rail-btn" data-view="promo" title="Promo API gratis"><svg viewBox="0 0 24 24"><rect x="3" y="8" width="18" height="4" rx="1.2"/><path d="M5 12v8h14v-8M12 8v12M12 8C10 8 8 7.2 8 5.5S9 3 10 3c1.4 0 2 2 2 5zM12 8c2 0 4-.8 4-2.5S15 3 14 3c-1.4 0-2 2-2 5z"/></svg></button>
+      <button class="rail-btn" data-view="agents" title="Agent & aplikasi"><svg viewBox="0 0 24 24"><rect x="6" y="7" width="12" height="11" rx="3"/><path d="M9 7V4M15 7V4M9 18v2M15 18v2M3 11h3M3 14h3M18 11h3M18 14h3"/><circle cx="10" cy="12.5" r=".8"/><circle cx="14" cy="12.5" r=".8"/></svg></button>
+      <button class="rail-btn" data-view="gateway" title="Gateway pool"><svg viewBox="0 0 24 24"><circle cx="6" cy="7" r="2.2"/><circle cx="18" cy="7" r="2.2"/><circle cx="12" cy="18" r="2.2"/><path d="M7.7 8.4 10.7 16M16.3 8.4 13.3 16M8.2 7h7.6"/></svg></button>
+      <button class="rail-btn" data-view="keys" title="API keys"><svg viewBox="0 0 24 24"><circle cx="8" cy="8" r="3.6"/><path d="M10.7 10.7 20 20M17.2 17.2l2-2M14.2 14.2l2-2"/></svg></button>
+    </div>
+
+    <!-- ruang / proyek cepat -->
+    <div id="rail-spaces" class="rail-spaces"></div>
+
     <div class="rail-spacer"></div>
-    <button class="rail-btn" id="rail-usage" title="Pemakaian engine"><svg viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg></button>
-    <button class="rail-btn" id="rail-env" title="Environment"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M9 21h6M12 17v4"/></svg></button>
+    <button class="rail-btn" id="rail-usage" title="Pemakaian engine"><svg viewBox="0 0 24 24"><path d="M13 2.5 4.5 13.5H11l-1 8L18.5 10H12z"/></svg></button>
+    <button class="rail-btn" id="rail-env" title="Environment"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="2.5"/><path d="M9 21h6M12 17v4"/></svg></button>
     <button class="rail-btn" data-view="alerts" title="Notifikasi"><svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 1 0-12 0c0 6-2 7-2 7h16s-2-1-2-7"/><path d="M10.5 19a2 2 0 0 0 3 0"/></svg><em id="badge-alerts" class="badge hidden"></em></button>
     <button class="rail-btn" data-view="settings" title="Pengaturan"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
   </aside>
@@ -45,22 +53,22 @@
   <!-- sidebar studio -->
   <aside class="sidebar hidden" id="sidebar">
     <div class="sb-head">
-      <b>agenthub</b><span class="caret">⌄</span>
+      <b id="sb-title">AgentHub</b><span class="caret">▾</span>
       <span class="sb-head-right">
         <button class="icon-btn" id="sb-search-btn" title="Cari"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg></button>
         <button class="icon-btn" data-view="alerts" title="Notifikasi"><svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 1 0-12 0c0 6-2 7-2 7h16s-2-1-2-7"/><path d="M10.5 19a2 2 0 0 0 3 0"/></svg></button>
       </span>
     </div>
     <button class="sb-env" id="env-open">
-      <span class="env-ico"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M9 21h6M12 17v4"/></svg></span>
+      <span class="env-ico"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="2.5"/><path d="M9 21h6M12 17v4"/></svg></span>
       <span class="env-name">This PC<small id="env-note" class="hidden"></small></span>
-      <i class="dot ok"></i><span class="caret">⌄</span>
+      <i class="dot ok"></i><span class="caret">▾</span>
     </button>
-    <button class="sb-action" id="btn-new-chat"><svg viewBox="0 0 24 24"><path d="M4 20h4L20 8l-4-4L4 16z"/></svg> <span>Chat baru</span></button>
-    <button class="sb-action" id="btn-resume"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg> <span>Resume sesi</span></button>
+    <button class="sb-action" id="btn-new-chat"><svg viewBox="0 0 24 24"><path d="M4 20h4L20 8l-4-4L4 16z"/></svg> <span>New chat</span><kbd>⌘N</kbd></button>
+    <button class="sb-action" id="btn-resume"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg> <span>Resume session</span></button>
     <div class="sb-label"><span>Personal</span><span class="sb-label-right"><button class="icon-btn" id="btn-filter-projects" title="Filter proyek"><svg viewBox="0 0 24 24"><path d="M4 6h16l-6 7v5l-4 2v-7z"/></svg></button><button class="icon-btn" id="btn-cwd" title="Ganti folder proyek agent">＋</button></span></div>
-    <div id="sb-projects"></div>
-    <div class="sb-label"><span>Recents</span><span class="caret">▼</span></div>
+    <div id="sb-projects" class="sb-projects"></div>
+    <div class="sb-label"><span>Recents</span><span class="caret">▾</span></div>
     <div id="sb-recents" class="sb-recents"></div>
   </aside>
   <div id="sb-backdrop" class="sb-backdrop hidden"></div>
@@ -75,16 +83,16 @@
           <span id="chat-engine-badge" class="chip hidden"></span>
           <span id="chat-running" class="chip run hidden">Working</span>
           <span class="grow"></span>
-          <button id="btn-stop" class="icon-btn hidden" title="Hentikan run"><svg viewBox="0 0 24 24"><rect x="6.5" y="6.5" width="11" height="11" rx="2"/></svg></button>
-          <button id="btn-chat-del" class="icon-btn hidden" title="Hapus thread">🗑</button>
+          <button id="btn-stop" class="icon-btn hidden" title="Hentikan run"><svg viewBox="0 0 24 24"><rect x="6.5" y="6.5" width="11" height="11" rx="2.5"/></svg></button>
+          <button id="btn-chat-del" class="icon-btn hidden" title="Hapus thread"><svg viewBox="0 0 24 24"><path d="M5 7h14M9 7V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V7M7.5 7l.8 12h7.4l.8-12"/></svg></button>
         </div>
         <div class="chat-scroll" id="chat-scroll">
           <div id="chat-empty" class="hero hidden">
             <div class="hero-sub">Let's work in</div>
-            <div class="hero-title">agenthub <span class="caret">▼</span></div>
+            <div class="hero-title"><span id="hero-project-name">AgentHub</span> <span class="caret">▾</span></div>
             <div id="hero-composer-slot" class="hero-slot"></div>
             <div id="hero-continue" class="hero-continue">
-              <div class="sb-label"><span>Continue</span></div>
+              <div class="continue-label">Continue</div>
               <div id="hero-recent"></div>
             </div>
           </div>
@@ -93,16 +101,16 @@
         </div>
         <div id="composer" class="composer-pill">
           <div class="pill-context">
-            <button class="mini-chip" id="composer-cwd" title="Folder kerja agent CLI"><svg viewBox="0 0 24 24"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H9l2 2h7.5A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5z"/></svg> <span id="cwd-name">This PC</span> <span class="caret">⌄</span></button>
-            <span class="mini-chip static" id="composer-branch" title="Branch git"><svg viewBox="0 0 24 24"><circle cx="7" cy="5.5" r="2"/><circle cx="7" cy="18.5" r="2"/><circle cx="17" cy="9" r="2"/><path d="M7 7.5v9M17 11c0 4-6 3.5-8.5 5.5"/></svg> <span id="cwd-branch">main</span> <span class="caret">⌄</span></span>
+            <button class="mini-chip" id="composer-cwd" title="Folder kerja agent CLI"><svg viewBox="0 0 24 24"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H9l2 2h7.5A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5z"/></svg> <span id="cwd-name">This PC</span> <span class="caret">▾</span></button>
+            <span class="mini-chip static" id="composer-branch" title="Branch git"><svg viewBox="0 0 24 24"><circle cx="7" cy="5.5" r="2"/><circle cx="7" cy="18.5" r="2"/><circle cx="17" cy="9" r="2"/><path d="M7 7.5v9M17 11c0 4-6 3.5-8.5 5.5"/></svg> <span id="cwd-branch">main</span> <span class="caret">▾</span></span>
           </div>
           <div class="pill-main">
             <textarea id="composer-input" rows="1" placeholder="Ask anything, @ to mention, $ skills, or / commands"></textarea>
             <div class="pill-row">
               <button class="mini-btn" data-open-delegate title="Delegation ke banyak agent">＋</button>
-              <span class="access-chip" title="Agent berjalan dengan izin penuh"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/></svg> <b>Full access</b> <span class="caret">⌄</span></span>
+              <span class="access-chip" title="Agent berjalan dengan izin penuh"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/></svg> <b>Full access</b> <span class="caret">▾</span></span>
               <span class="grow"></span>
-              <select id="engine-select"></select>
+              <span class="model-chip"><span class="spark">✳</span><select id="engine-select"></select><span class="effort">High</span><span class="caret">▾</span></span>
               <input id="chat-model" class="model-inline hidden" placeholder="model (auto)">
               <button id="btn-send" class="send-btn" title="Kirim"><svg viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></svg></button>
             </div>
@@ -115,21 +123,42 @@
     <section id="view-tasks" class="view">
       <div class="task-layout">
         <aside class="task-side">
-          <div class="sb-head"><b>Tasks</b><span class="sb-head-right"><button class="icon-btn" title="Baru"><svg viewBox="0 0 24 24"><path d="M4 20h4L20 8l-4-4L4 16z"/></svg></button></span></div>
+          <div class="sb-head"><b>Tasks</b><span class="sb-head-right"><button class="icon-btn" id="btn-task-new" title="Tugas baru"><svg viewBox="0 0 24 24"><path d="M4 20h4L20 8l-4-4L4 16z"/></svg></button></span></div>
           <input id="task-search" class="search small" placeholder="Search" type="search">
           <div id="task-filters"></div>
-          <div class="sb-label"><span>Projects</span><span class="caret">⌄</span></div>
+          <div class="sb-label"><span>Projects</span><span class="caret">▾</span></div>
           <div id="task-projects"></div>
         </aside>
         <div class="task-main">
           <div class="task-top">
             <b id="task-project-name">This PC</b>
             <span class="grow"></span>
-            <button class="icon-btn" id="btn-task-panel" title="Tampilan ringkas"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></svg></button>
-            <button class="icon-btn" id="btn-task-sidebar" title="Sembunyikan sidebar"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></button>
-            <button class="btn ghost tiny" id="btn-task-display">Display <span class="caret">⌄</span></button>
+            <button class="icon-btn" id="btn-task-panel" title="Tampilan ringkas"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M15 4v16"/></svg></button>
+            <button class="icon-btn" id="btn-task-sidebar" title="Sembunyikan sidebar"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M9 4v16"/></svg></button>
+            <button class="btn ghost tiny" id="btn-task-display">Display <span class="caret">▾</span></button>
           </div>
           <div class="task-board" id="kanban"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- NOTES -->
+    <section id="view-notes" class="view">
+      <div class="notes-wrap">
+        <header class="notes-top">
+          <b>Notes</b>
+          <span class="grow"></span>
+          <input id="note-search" class="search note-search" placeholder="Search notes" type="search">
+          <button class="btn ghost tiny" id="btn-note-display">Display <span class="caret">▾</span></button>
+          <button class="btn primary tiny" id="btn-note-new">New note <span class="caret dark">▾</span></button>
+        </header>
+        <div class="notes-body">
+          <div class="notes-pills">
+            <div id="note-filters" class="note-filters"></div>
+            <button class="link-btn" id="btn-note-trash" title="Catatan yang dihapus tidak bisa dikembalikan">Recently deleted</button>
+          </div>
+          <div id="notes-pinned" class="notes-section"></div>
+          <div id="notes-recent" class="notes-section"></div>
         </div>
       </div>
     </section>
@@ -137,9 +166,14 @@
     <!-- PROMO -->
     <section id="view-promo" class="view">
       <header class="view-head">
-        <div><h2>Promo & API Gratis</h2><p class="sub">Sumber live: OpenRouter · models.dev · daftar free-tier GitHub</p></div>
-        <button id="btn-promo-refresh" class="btn">⟳ Cek sekarang</button>
+        <div><h2>Promo & API Gratis</h2><p class="sub">Model gratis langsung bisa dipakai agent lewat gateway — tanpa tempel URL berkali-kali.</p></div>
+        <button id="btn-promo-refresh" class="btn">Cek sekarang</button>
       </header>
+      <div class="adopt-banner">
+        <span class="ab-ico">⚡</span>
+        <div class="ab-main"><b>Free model → agent dalam satu klik</b><span>Pilih model, tempel key promo, dan AgentHub otomatis memasukkannya ke pool gateway. Agent Anda langsung memakai model itu lewat <code>/v1</code>.</span></div>
+        <button class="btn tiny" id="btn-promo-gateway">Lihat endpoint</button>
+      </div>
       <div class="tabs">
         <button class="tab active" data-tab="live">Model Gratis (live)</button>
         <button class="tab" data-tab="cross">Lintas Provider</button>
@@ -156,10 +190,10 @@
     <!-- KEYS -->
     <section id="view-keys" class="view">
       <header class="view-head">
-        <div><h2>API Keys</h2><p class="sub">Simpan & validasi key provider — dipantau berkala otomatis</p></div>
+        <div><h2>API Keys</h2><p class="sub">Key baru otomatis masuk pool dan langsung bisa dipanggil agent lewat <code>/v1</code>.</p></div>
       </header>
       <div class="panel">
-        <h3>➕ Tambah API Key</h3>
+        <h3>Tambah API key</h3>
         <form id="form-key" class="form-grid">
           <label>Preset<select id="key-preset"></select></label>
           <label>Nama <input id="key-name" placeholder="Nama tampilan"></label>
@@ -174,8 +208,8 @@
     <!-- GATEWAY -->
     <section id="view-gateway" class="view">
       <header class="view-head">
-        <div><h2>Gateway Pool</h2><p class="sub">Kuota satu provider habis → otomatis pindah ke berikutnya</p></div>
-        <button id="btn-pool-test" class="btn primary">⚡ Tes Rotasi</button>
+        <div><h2>Gateway Pool</h2><p class="sub">Satu endpoint OpenAI-compatible. Kuota satu provider habis → otomatis pindah ke berikutnya.</p></div>
+        <button id="btn-pool-test" class="btn primary">Tes rotasi</button>
       </header>
       <div class="cards" style="grid-template-columns:repeat(3,1fr)">
         <div class="card stat"><div class="stat-num" id="pool-active">–</div><div class="stat-label">Provider siap melayani</div><div class="stat-foot" id="pool-active-foot"></div></div>
@@ -183,26 +217,27 @@
         <div class="card stat"><div class="stat-num" id="pool-err">–</div><div class="stat-label">Gagal (di-failover)</div><div class="stat-foot">dipindah otomatis</div></div>
       </div>
       <div class="panel">
-        <h3>🔌 Endpoint untuk Agent Anda</h3>
+        <h3>Endpoint untuk agent</h3>
         <p class="muted small">Endpoint OpenAI-compatible — API key-nya = token AgentHub. Model boleh <code>auto</code>, <code>preset/model</code>, atau nama model langsung.</p>
         <div class="url-row"><code id="gw-url">…</code><button id="btn-copy-gw" class="btn tiny">Salin</button></div>
         <div class="url-row"><code id="gw-key">…</code><button id="btn-copy-gwkey" class="btn tiny">Salin</button></div>
+        <div class="env-actions"><button id="btn-copy-env" class="btn tiny primary">Salin env agent</button><span class="muted small">OPENAI_BASE_URL · OPENAI_API_KEY · OPENAI_MODEL</span></div>
         <details class="howto">
           <summary>Contoh pemakaian (curl / n8n / SDK)</summary>
           <pre id="gw-example"></pre>
         </details>
       </div>
       <div class="panel">
-        <h3>📊 Pemakaian Engine (Studio)</h3>
+        <h3>Pemakaian engine (studio)</h3>
         <div id="usage-list" class="item-list"></div>
       </div>
       <div class="panel">
-        <h3>🧰 Anggota Pool <span class="muted small" style="font-weight:400">— angka kecil = didahulukan</span></h3>
+        <h3>Anggota pool <span class="muted small" style="font-weight:400">— angka kecil = didahulukan</span></h3>
         <div id="pool-list" class="item-list"></div>
         <p class="muted small" style="margin-top:10px">Aktifkan key → pool di tab API Keys. Bila kuota habis (429) provider di-cooldown 5 menit dan traffic pindah otomatis.</p>
       </div>
       <div id="pool-test-result" class="panel hidden">
-        <h3>⚡ Hasil Tes Rotasi</h3>
+        <h3>Hasil tes rotasi</h3>
         <div id="pool-test-body"></div>
       </div>
     </section>
@@ -210,10 +245,10 @@
     <!-- AGENTS -->
     <section id="view-agents" class="view">
       <header class="view-head">
-        <div><h2>Agent & Aplikasi</h2><p class="sub">Sambungkan webhook (n8n/Make/custom) atau endpoint OpenAI-compatible</p></div>
+        <div><h2>Agent & Aplikasi</h2><p class="sub">Sambungkan webhook (n8n/Make/custom) atau endpoint LLM OpenAI-compatible.</p></div>
       </header>
       <div class="panel">
-        <h3>➕ Sambungkan Agent</h3>
+        <h3>Sambungkan agent</h3>
         <form id="form-agent" class="form-grid">
           <label>Nama <input id="agent-name" placeholder="mis. Agent Sales n8n" required></label>
           <label>Tipe<select id="agent-type"><option value="webhook">Webhook / HTTP</option><option value="openai">LLM (OpenAI-compatible)</option></select></label>
@@ -232,7 +267,7 @@
     <!-- ALERTS -->
     <section id="view-alerts" class="view">
       <header class="view-head">
-        <div><h2>Notifikasi</h2><p class="sub">Perubahan promo, status key & agent</p></div>
+        <div><h2>Notifikasi</h2><p class="sub">Perubahan promo, status key & agent.</p></div>
         <button id="btn-read-all" class="btn">Tandai dibaca</button>
       </header>
       <div id="alerts-list" class="alerts"></div>
@@ -240,28 +275,29 @@
 
     <!-- SETTINGS -->
     <section id="view-settings" class="view">
-      <header class="view-head"><div><h2>Pengaturan</h2><p class="sub">Konfigurasi AgentHub</p></div></header>
+      <header class="view-head"><div><h2>Pengaturan</h2><p class="sub">Konfigurasi AgentHub.</p></div></header>
       <div class="panel">
-        <h3>🔁 Otomatisasi</h3>
+        <h3>Otomatisasi</h3>
         <form id="form-settings" class="form-grid">
           <label>Refresh sumber promo (jam)<input id="set-refresh" type="number" min="1" max="168"></label>
           <label>Health-check agent (menit)<input id="set-agent" type="number" min="1" max="1440"></label>
           <label>Re-validasi API key (jam)<input id="set-keys" type="number" min="1" max="168"></label>
           <label class="switch-row span2"><input id="set-notify" type="checkbox"><span>Notifikasi Windows (toast) saat ada promo/status baru</span></label>
+          <label class="switch-row span2"><input id="set-autopool" type="checkbox"><span>Key baru otomatis masuk pool gateway (langsung siap dipakai agent)</span></label>
           <div class="span2 form-actions"><button class="btn primary" type="submit">Simpan</button></div>
         </form>
       </div>
       <div class="panel">
-        <h3>🔐 Token Akses</h3>
+        <h3>Token akses</h3>
         <div class="url-row"><code id="set-token">…</code><button id="btn-copy-token" class="btn tiny">Salin</button></div>
         <button id="btn-regen" class="btn" style="margin-top:8px">Regenerate token</button>
       </div>
       <div class="panel">
-        <h3>💻 Info Server</h3>
+        <h3>Info server</h3>
         <div id="server-info" class="kv"></div>
       </div>
       <div class="panel">
-        <h3>📱 Akses dari HP</h3>
+        <h3>Akses dari HP</h3>
         <div class="phone-row">
           <div id="qr-box" class="qr-box"></div>
           <div class="phone-info">
@@ -277,7 +313,7 @@
 <!-- Delegation overlay -->
 <div id="delegate-overlay" class="overlay hidden">
   <div class="overlay-card">
-    <h3>🎯 Delegation — satu prompt, banyak agent</h3>
+    <h3>Delegation — satu prompt, banyak agent</h3>
     <p class="muted small">Prompt yang sama dikirim paralel ke setiap engine. Hasil dikumpulkan di satu thread & task dibuat otomatis.</p>
     <textarea id="del-prompt" rows="3" placeholder="Tulis prompt untuk didelegasikan…"></textarea>
     <div id="del-engines" class="del-engines"></div>
@@ -289,9 +325,58 @@
   </div>
 </div>
 
+<!-- Note editor -->
+<div id="note-overlay" class="overlay hidden">
+  <div class="overlay-card note-card">
+    <div class="note-card-top">
+      <h3 id="note-overlay-title">Catatan baru</h3>
+      <button class="icon-btn" id="btn-note-cancel" title="Tutup">✕</button>
+    </div>
+    <input id="note-title" class="note-title-input" placeholder="Judul catatan" maxlength="160">
+    <textarea id="note-body" rows="10" placeholder="Tulis sesuatu…"></textarea>
+    <div class="note-meta-row">
+      <label class="note-field">Proyek<select id="note-project"></select></label>
+      <label class="switch-row"><input id="note-pinned" type="checkbox"><span>Sematkan</span></label>
+    </div>
+    <div class="form-actions">
+      <button id="btn-note-save" class="btn primary">Simpan</button>
+      <button id="btn-note-del" class="btn danger hidden">Hapus</button>
+      <span class="grow"></span>
+      <span class="muted small" id="note-status"></span>
+    </div>
+  </div>
+</div>
+
+<!-- Adopt free model overlay -->
+<div id="adopt-overlay" class="overlay hidden">
+  <div class="overlay-card adopt-card">
+    <div class="note-card-top">
+      <h3>Pakai model gratis di agent</h3>
+      <button class="icon-btn" id="btn-adopt-cancel" title="Tutup">✕</button>
+    </div>
+    <p class="muted small">Tempel API key promo. Key langsung masuk pool gateway, jadi agent bisa memakainya lewat <code>/v1</code> tanpa setup tambahan.</p>
+    <div class="adopt-model">
+      <span class="chip free">GRATIS</span>
+      <code id="adopt-model">–</code>
+    </div>
+    <div class="form-grid">
+      <label>Provider<select id="adopt-preset"></select></label>
+      <label>Nama key<input id="adopt-name" placeholder="mis. OpenRouter promo"></label>
+      <label class="span2">Base URL<input id="adopt-base" placeholder="https://…/v1"></label>
+      <label class="span2">API Key<input id="adopt-key" type="password" placeholder="sk-… / gsk_… (dari halaman promo)" required></label>
+    </div>
+    <label class="switch-row" style="margin-top:10px"><input id="adopt-pool" type="checkbox" checked><span>Langsung aktifkan di pool gateway</span></label>
+    <div class="form-actions" style="margin-top:12px">
+      <button id="btn-adopt-start" class="btn primary">Aktifkan untuk agent</button>
+      <a id="adopt-signup" class="btn hidden" target="_blank" rel="noreferrer">Ambil key ↗</a>
+    </div>
+    <div id="adopt-result" class="adopt-result hidden"></div>
+  </div>
+</div>
+
 <!-- Popover pemakaian -->
 <div id="usage-pop" class="pop hidden">
-  <h4>⚡ Pemakaian engine</h4>
+  <h4>Pemakaian engine</h4>
   <div id="usage-rows"></div>
   <div class="pop-sep"></div>
   <button class="pop-action" id="usage-manage">⚡ Buka Gateway pool</button>
@@ -301,14 +386,14 @@
 <div id="env-pop" class="pop hidden">
   <div class="pop-label">Environments</div>
   <div class="env-row"><span class="env-ico"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M9 21h6M12 17v4"/></svg></span><span class="env-name">This PC<small>Connected</small></span><span class="ok">✓</span></div>
-  <div class="env-row" id="env-pair"><span class="env-ico"><svg viewBox="0 0 24 24"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/></svg></span><span class="env-name">Pair a device<small>buka QR untuk HP</small></span><span class="caret">›</span></div>
+  <div class="env-row" id="env-pair"><span class="env-ico"><svg viewBox="0 0 24 24"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/></svg></span><span class="env-name">Pair a device<small>buka QR untuk HP</small></span><span class="caret right">›</span></div>
   <div class="pop-sep"></div>
   <button class="pop-action" id="env-manage"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M18.4 5.6L17 7M7 17l-1.4 1.4"/></svg> Manage environments</button>
 </div>
 
 <!-- Popover QR pasang HP -->
 <div id="qr-pop" class="pop hidden" style="left:auto;right:60px;bottom:74px">
-  <h4>📱 Pasang dari HP</h4>
+  <h4>Pasang dari HP</h4>
   <div class="qr-box" id="qr-box-pop"></div>
   <div class="url-row" style="margin-top:10px"><code id="phone-url-pop">…</code></div>
   <p class="muted small" style="margin-top:8px">Harus 1 jaringan WiFi dengan komputer ini.</p>
@@ -316,6 +401,6 @@
 
 <div id="toast-wrap" class="toast-wrap"></div>
 <script src="/public/qrcode.min.js"></script>
-<script type="module" src="/public/app.js?v=1.5.0"></script>
+<script type="module" src="/public/app.js?v=1.6.0"></script>
 </body>
 </html>

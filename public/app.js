@@ -119,12 +119,35 @@ window.__ahMachines = {
 
   const ENGINE_ICON = { pool: '🆓', claude: '✳️', codex: '🔷', opencode: '🟦', gemini: '✨', echo: '🔁' };
   const svgIco = (p) => `<svg viewBox="0 0 24 24">${p}</svg>`;
+  const SPARK_SVG = svgIco('<path d="M12 3.6l1.9 6.5 6.5 1.9-6.5 1.9-1.9 6.5-1.9-6.5L3.6 12l6.5-1.9z"/>');
   const FOLDER_SVG = svgIco('<path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H9l2 2h7.5A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5z"/>');
   const fmtCtx = (n) => (n >= 1000000 ? (n / 1000000).toFixed(n % 1000000 ? 1 : 0) + 'M' : n >= 1000 ? Math.round(n / 1000) + 'K' : n);
   const fmtTime = (ts) => (ts ? new Date(ts).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—');
+  const fmtClock = (ts) => (ts ? new Date(ts).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '');
+  const fmtWhen = (ts) => {
+    if (!ts) return '';
+    const d = new Date(ts);
+    const now = new Date();
+    if (d.toDateString() === now.toDateString()) return fmtClock(ts);
+    const y = new Date(now); y.setDate(now.getDate() - 1);
+    if (d.toDateString() === y.toDateString()) return 'Yesterday';
+    return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+  };
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const icon = (id) => ENGINE_ICON[id] || '🤖';
   const cwdBase = () => (cwd ? cwd.split(/[\\/]/).filter(Boolean).pop() || cwd : 'This PC');
+  const projectLabel = (p) => (!p || p === 'default' ? cwdBase() : p);
+  const hueOf = (s) => { let h = 0; for (const c of String(s)) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
+  // Palet proyek yang tenang (bukan hue acak): oranye, biru, hijau, violet.
+  const PROJECT_HUES = [24, 208, 152, 266, 40, 190];
+  const projectColor = (p) => (!p || p === 'default'
+    ? '#ef7d45'
+    : `hsl(${PROJECT_HUES[hueOf(p) % PROJECT_HUES.length]} 42% 60%)`);
+  const projectInitials = (p) => {
+    const parts = String(p || 'AH').replace(/[^a-zA-Z0-9]+/g, ' ').trim().split(/\s+/).filter(Boolean);
+    return (parts.length > 1 ? parts[0][0] + parts[1][0] : String(parts[0] || 'AH').slice(0, 2)).toUpperCase();
+  };
+  const spark = (color) => `<span class="r-ico" style="color:${color}">${SPARK_SVG}</span>`;
 
   function md(s) {
     let out = esc(s);
@@ -168,6 +191,7 @@ window.__ahMachines = {
       if (slices) {
         // render selektif: papan tugas & tampilan aktif tetap ikut segar
         if (slices.includes('tasks') && view === 'tasks') renderTasks();
+        if (slices.includes('notes') && view === 'notes') renderNotes();
         return;
       }
       if (!deepLinkDone) {
@@ -224,6 +248,7 @@ window.__ahMachines = {
     if (!silentRoute) syncRoute(v, curThread?.id);
     if (v === 'studio') { renderSidebar(); placeComposer(); if (curThread) renderChat(); }
     if (v === 'tasks') renderTasks();
+    if (v === 'notes') renderNotes();
     if (v === 'alerts') markReadSoon();
   }
   $('#btn-side-toggle').addEventListener('click', () => { sidebarOpen = !sidebarOpen; applySidebar(); });
@@ -243,6 +268,8 @@ window.__ahMachines = {
     env: '#env-pop',
     qr: '#qr-pop',
     delegate: '#delegate-overlay',
+    note: '#note-overlay',
+    adopt: '#adopt-overlay',
   };
 
   function setLayer(next) {
@@ -266,14 +293,14 @@ window.__ahMachines = {
   // Klik di luar popover menutupnya — tapi klik pada pemicu bukan "di luar".
   // Tanpa daftar ini, klik #rail-usage membuka lalu langsung menutup popover
   // dalam event yang sama (bug halus yang tidak terlihat di kode).
-  const LAYER_TRIGGERS = ['#rail-usage', '#rail-env', '#env-open', '#env-pair', '[data-open-delegate]'];
+  const LAYER_TRIGGERS = ['#rail-usage', '#rail-env', '#env-open', '#env-pair', '[data-open-delegate]', '#btn-note-new', '.note-cell', '.adopt-btn'];
   const LAYER_TRIGGER_SEL = LAYER_TRIGGERS.join(',');
 
   document.addEventListener('click', (e) => {
     if (!layer) return;
     if (e.target.closest(Object.values(LAYER_EL).join(','))) return;
     if (e.target.closest(LAYER_TRIGGER_SEL)) return;
-    if (layer === 'delegate') return; // overlay modal: hanya tombol Batal/Esc
+    if (layer === 'delegate' || layer === 'note' || layer === 'adopt') return; // overlay modal: hanya tombol tutup/Esc
     setLayer(null);
   });
 
@@ -284,6 +311,7 @@ window.__ahMachines = {
     const want = (s) => !slices || slices.includes('all') || slices.includes(s);
     if (want('threads')) renderSidebar();
     if (want('engines')) renderEngines();
+    if (want('notes')) renderNotes();
     if (want('promo') || want('snapshot')) renderPromo();
     if (want('keys')) renderKeys();
     if (want('pool') || want('keys')) renderGateway();
@@ -310,7 +338,7 @@ window.__ahMachines = {
   async function renderEngines() {
     try { engines = await api('/api/engines'); } catch { engines = engines || []; }
     const sel = $('#engine-select');
-    sel.innerHTML = engines.map((e) => `<option value="${esc(e.id)}" ${e.available ? '' : 'disabled'}>${icon(e.id)} ${esc(e.label)}${e.available ? '' : ' — ' + esc(e.note)}</option>`).join('');
+    sel.innerHTML = engines.map((e) => `<option value="${esc(e.id)}" ${e.available ? '' : 'disabled'}>${esc(e.label)}${e.available ? '' : ' — ' + esc(e.note)}</option>`).join('');
     const saved = localStorage.getItem('ah_engine');
     if (saved && engines.some((e) => e.id === saved && e.available)) sel.value = saved;
     updateEngineUI();
@@ -329,6 +357,8 @@ window.__ahMachines = {
     cwd = v.trim();
     localStorage.setItem('ah_cwd', cwd);
     $('#cwd-name').textContent = cwdBase();
+    const hero = $('#hero-project-name');
+    if (hero) hero.textContent = cwdBase();
   }
   $('#composer-cwd').addEventListener('click', () => {
     const v = prompt('Folder kerja untuk agent CLI (kosongkan = home):', cwd);
@@ -342,42 +372,93 @@ window.__ahMachines = {
 
   // ---------- studio: sidebar ----------
   let threadCache = [];
+  let railProjects = [];
+
+  // Ruang cepat di rail, seperti tile proyek berwarna di Kybern.
+  function renderRailSpaces() {
+    const host = $('#rail-spaces');
+    if (!host) return;
+    host.innerHTML = railProjects.slice(0, 4).map((p) => `
+      <button class="space-tile" data-space="${esc(p)}" title="${esc(projectLabel(p))}"
+        style="background:${projectColor(p)}">${esc(projectInitials(projectLabel(p)))}</button>`).join('') +
+      `<button class="space-tile add" id="rail-add-space" title="Proyek baru / ganti folder">＋</button>`;
+    $$('#rail-spaces [data-space]').forEach((btn) => btn.addEventListener('click', () => {
+      taskProject = btn.dataset.space;
+      taskGlobal = false;
+      go('tasks');
+    }));
+    $('#rail-add-space')?.addEventListener('click', () => {
+      const v = prompt('Folder kerja untuk agent CLI (kosongkan = home):', cwd);
+      if (v !== null) { setCwd(v); renderSidebar(); }
+    });
+  }
+
   async function renderSidebar() {
     try { threadCache = await api('/api/threads'); } catch { return; }
+    let taskList = [];
+    try { taskList = await api('/api/tasks'); } catch { /* opsional */ }
+    railProjects = [...new Set(taskList.map((t) => t.projectId || 'default'))];
+    renderRailSpaces();
+
     const q = threadSearch.toLowerCase();
     const list = q ? threadCache.filter((t) => (t.title + ' ' + t.preview).toLowerCase().includes(q)) : threadCache;
 
     // Recents di sidebar
     $('#sb-recents').innerHTML = list.length
       ? list.map((t) => `
-        <div class="recent-item ${curThread?.id === t.id ? 'active' : ''}" data-id="${t.id}">
-          <span class="r-ico">${icon(t.engine)}</span>
+        <div class="recent-item ${curThread?.id === t.id ? 'active' : ''}" data-id="${t.id}" title="${esc(t.title)}">
+          ${spark(t.running ? 'var(--accent)' : '#7d7d85')}
           <span class="r-title">${esc(t.title)}</span>
-          <span class="r-time">${t.kind === 'delegation' ? '🎯 ' : ''}${t.running ? '⏳' : fmtTime(t.updatedAt)}</span>
+          <span class="r-time">${t.running ? 'Working' : fmtWhen(t.updatedAt)}</span>
         </div>`).join('')
-      : '<p class="muted small" style="padding:6px 10px">Belum ada thread.</p>';
+      : '<p class="muted small" style="padding:6px 9px">Belum ada thread.</p>';
     $$('#sb-recents .recent-item').forEach((el) => el.addEventListener('click', () => openThread(el.dataset.id)));
 
-    // project row (folder kerja)
-    $('#sb-projects').innerHTML = `
-      <div class="project-row"><span class="p-ico">${FOLDER_SVG}</span><span class="p-name">${esc(cwdBase())}</span><span class="p-ext" title="Ganti folder"><svg viewBox="0 0 24 24"><path d="M4 20h4L20 8l-4-4L4 16z"/></svg></span></div>`;
-    $('#sb-projects .project-row').addEventListener('click', () => {
-      const v = prompt('Folder kerja untuk agent CLI (kosongkan = home):', cwd);
-      if (v !== null) setCwd(v);
-      renderSidebar();
+    // Project rows: folder kerja aktif + proyek dari papan tugas
+    const rows = [{ key: '__cwd', label: cwdBase(), folder: true }];
+    for (const p of railProjects) {
+      if (p === 'default') continue;
+      rows.push({ key: p, label: p, color: projectColor(p) });
+    }
+    $('#sb-projects').innerHTML = rows.map((r) => `
+      <div class="project-row" ${r.key === '__cwd' ? 'data-cwd="1"' : `data-project="${esc(r.key)}"`} title="${esc(r.label)}">
+        ${r.folder ? `<span class="p-ico">${FOLDER_SVG}</span>` : `<span class="p-dot" style="background:${r.color}"></span>`}
+        <span class="p-name">${esc(r.label)}</span>
+        <span class="p-ext" title="Ganti folder kerja"><svg viewBox="0 0 24 24"><path d="M4 20h4L20 8l-4-4L4 16z"/></svg></span>
+      </div>`).join('');
+    $$('#sb-projects .project-row').forEach((row) => {
+      row.addEventListener('click', (e) => {
+        if (e.target.closest('.p-ext')) {
+          const v = prompt('Folder kerja untuk agent CLI (kosongkan = home):', cwd);
+          if (v !== null) { setCwd(v); renderSidebar(); }
+          return;
+        }
+        if (row.dataset.cwd) {
+          const v = prompt('Folder kerja untuk agent CLI (kosongkan = home):', cwd);
+          if (v !== null) { setCwd(v); renderSidebar(); }
+        } else {
+          taskProject = row.dataset.project;
+          taskGlobal = false;
+          go('tasks');
+        }
+      });
     });
 
     // Continue di hero
     const hero = $('#hero-recent');
     if (hero) {
-      hero.innerHTML = list.slice(0, 3).map((t) => `
-        <div class="recent-item" data-id="${t.id}">
-          <span class="r-ico">${icon(t.engine)}</span>
+      hero.innerHTML = list.slice(0, 4).map((t) => `
+        <div class="recent-item" data-id="${t.id}" title="${esc(t.title)}">
+          ${spark(t.running ? 'var(--accent)' : '#7d7d85')}
           <span class="r-title">${esc(t.title)}</span>
-          <span class="r-time">${fmtTime(t.updatedAt)}</span>
-        </div>`).join('') || '<p class="muted small" style="padding:4px 10px">Belum ada sesi.</p>';
+          <span class="r-time">${t.running ? 'Working' : fmtWhen(t.updatedAt)}</span>
+        </div>`).join('') || '<p class="muted small" style="padding:4px 9px">Belum ada sesi — kirim prompt pertama.</p>';
       $$('#hero-recent .recent-item').forEach((el) => el.addEventListener('click', () => openThread(el.dataset.id)));
     }
+    const heroTitle = $('#hero-project-name');
+    if (heroTitle) heroTitle.textContent = cwdBase();
+    const sbTitle = $('#sb-title');
+    if (sbTitle) sbTitle.textContent = 'AgentHub';
     $('#env-note').textContent = 'server jalan';
   }
   $('#sb-search-btn').addEventListener('click', () => {
@@ -472,19 +553,19 @@ window.__ahMachines = {
         const st = s.status || 'working';
         const stat = st === 'done' ? `${Math.round((s.ms || 0) / 100) / 10}s Done`
           : st === 'error' ? 'Failed'
-          : `${Math.round((Date.now() - (s.ts || Date.now())) / 1000)}s Working`;
+          : `${Math.max(1, Math.round((Date.now() - (s.ts || Date.now())) / 1000))}s Working`;
         const meta = `${st === 'error' ? 'Error' : 'Review'} · ${esc(s.engine)} · ${esc(cwdBase())}`;
         const body = st === 'working' ? '' : `<div class="deleg-out">${esc((s.content || '').slice(0, 4000))}</div>`;
         return `<details class="deleg-row"><summary>
-          <span class="d-ico" style="background:${hashHue(s.engine)}">${icon(s.engine)}</span>
+          <span class="d-ico" style="background:${projectColor(s.engine)}">${icon(s.engine)}</span>
           <span class="d-main"><b>${esc(engineLabel(s.engine))}</b><span class="deleg-sub">${meta}</span></span>
           <span class="d-stat">${esc(stat)} ›</span></summary>${body}</details>`;
       }).join('');
       html += `<div class="msg assistant"><div class="deleg-card">
-        <div class="deleg-head">👑 <b>${subruns.length} delegated agents</b> <span class="muted small">${subruns.length - working} done · ${working} working</span><span class="grow"></span><span class="caret">▼</span></div>
+        <div class="deleg-head"><span class="r-ico" style="color:#8d8d94">${svgIco('<circle cx="9" cy="8" r="3"/><path d="M3.5 19c0-3 2.5-5 5.5-5s5.5 2 5.5 5"/><circle cx="17" cy="9" r="2.2"/><path d="M16 14c2.6 0 4.5 1.6 4.5 4"/>')}</span><b>${subruns.length} delegated agent${subruns.length === 1 ? '' : 's'}</b> <span class="muted small">${subruns.length - working} done · ${working} working</span><span class="grow"></span><span class="caret">▾</span></div>
         ${rows}
       </div>
-      ${maxMs ? `<div class="worked-row">🪄 Worked for ${Math.round(maxMs / 100) / 10}s <span class="caret">›</span></div>` : ''}
+      ${maxMs ? `<div class="worked-row"><span class="r-ico" style="color:#8d8d94">${svgIco('<path d="M13 2.5 4.5 13.5H11l-1 8L18.5 10H12z"/>')}</span> Worked for ${Math.round(maxMs / 100) / 10}s <span class="grow"></span><span class="caret right">›</span></div>` : ''}
       </div>`;
       subruns = null;
     };
@@ -496,19 +577,13 @@ window.__ahMachines = {
       if (m.subrun) { (subruns = subruns || []).push(m); continue; }
       flushSubruns();
       html += `<div class="msg assistant">
-        <div class="msg-meta"><span class="chip">${icon(m.engine)} ${esc(engineLabel(m.engine))}</span>${m.servedBy ? `<span>via ${esc(m.servedBy)}</span>` : ''}${m.ms ? `<span>Worked for ${Math.round(m.ms / 100) / 10}s</span>` : ''}</div>
         <div class="msg-body">${md(m.content || '')}</div>
+        <div class="msg-foot"><span>${esc(engineLabel(m.engine))}</span>${m.servedBy ? `<span class="mf-sep">·</span><span>via ${esc(m.servedBy)}</span>` : ''}${m.ms ? `<span class="mf-sep">·</span><span>${Math.round(m.ms / 100) / 10}s</span>` : ''}<span class="mf-sep">·</span><span>${fmtClock(m.ts)}</span></div>
       </div>`;
     }
     flushSubruns();
     $('#chat-messages').innerHTML = html;
     $('#chat-messages').scrollTop = $('#chat-messages').scrollHeight;
-  }
-
-  function hashHue(id) {
-    let h = 0;
-    for (const c of id) h = (h * 31 + c.charCodeAt(0)) % 360;
-    return `hsl(${h},45%,42%)`;
   }
 
   // ---------- streaming ----------
@@ -694,9 +769,21 @@ window.__ahMachines = {
   let openCol = null;
   let newTaskDraft = '';   // draft bertahan walau SSE memicu render ulang
 
+  // Kode pendek ala "DIW-6": inisial proyek + nomor urut pembuatan.
+  function taskCode(t, all) {
+    const project = t.projectId || 'default';
+    const base = (project === 'default' ? cwdBase() : project).replace(/[^a-zA-Z0-9]/g, '').slice(0, 3).toUpperCase() || 'AH';
+    const peers = all.filter((x) => (x.projectId || 'default') === project)
+      .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+    const n = peers.findIndex((x) => x.id === t.id) + 1;
+    return `${base}-${n || 1}`;
+  }
+
   async function renderTasks() {
     let list;
     try { list = await api('/api/tasks'); } catch { return; }
+    railProjects = [...new Set(list.map((t) => t.projectId || 'default'))];
+    renderRailSpaces();
     const q = taskSearch.toLowerCase();
     const inProject = (t) => taskProject === 'all' || (t.projectId || 'default') === taskProject;
     const filtered = list.filter((t) => inProject(t)
@@ -720,8 +807,8 @@ window.__ahMachines = {
     const projects = [...new Set(list.map((t) => t.projectId || 'default'))];
     $('#task-projects').innerHTML = projects.map((p) => `
       <div class="filter-row ${taskProject === p ? 'active' : ''}" data-project="${esc(p)}">
-        <span class="p-dot" style="background:${hashHue(p)}"></span>
-        <span class="grow">${esc(p)}</span>
+        <span class="p-dot" style="background:${projectColor(p)}"></span>
+        <span class="grow">${esc(projectLabel(p))}</span>
         <span class="muted small">${list.filter((t) => (t.projectId || 'default') === p).length}</span>
       </div>`).join('');
     $$('#task-projects .filter-row').forEach((el) => el.addEventListener('click', () => {
@@ -730,7 +817,7 @@ window.__ahMachines = {
       renderTasks();
     }));
 
-    $('#task-project-name').textContent = taskProject === 'all' ? cwdBase() : taskProject;
+    $('#task-project-name').textContent = taskProject === 'all' ? cwdBase() : projectLabel(taskProject);
 
     $('#kanban').innerHTML = TASK_COLS.map(([key, label]) => {
       const cards = filtered.filter((t) => t.status === key);
@@ -749,19 +836,19 @@ window.__ahMachines = {
             const canNext = nextStatus && taskCanMove(key, nextStatus);
             return `
           <div class="kcard" data-id="${t.id}">
-            <div class="kcard-top"><span class="id-chip">${esc(t.id.slice(0, 4).toUpperCase())}</span>
+            <div class="kcard-top"><span class="id-chip">${esc(taskCode(t, list))}</span>
               <span class="kcard-acts">
                 ${t.threadId ? `<button class="icon-btn" data-open-thread="${t.threadId}" title="Buka thread">⤢</button>` : ''}
+                <button class="icon-btn" data-del-task="1" title="Hapus">✕</button>
               </span>
             </div>
             <div class="kcard-title">${esc(t.title)}</div>
             <div class="kcard-foot">
               ${canPrev ? `<button class="icon-btn" data-to="${prevStatus}" title="Kembali ke ${TASK_LABELS[prevStatus]}">←</button>` : ''}
               ${canNext ? `<button class="icon-btn" data-to="${nextStatus}" title="Lanjut ke ${TASK_LABELS[nextStatus]}">→</button>` : ''}
-              <button class="icon-btn" data-del-task="1" title="Hapus">🗑</button>
             </div>
           </div>`;
-          }).join('')}
+          }).join('') || '<div class="kcol-empty"></div>'}
         </div>
       </div>`;
     }).join('');
@@ -816,13 +903,225 @@ window.__ahMachines = {
     toast(board.classList.contains('compact') ? 'Tampilan ringkas' : 'Tampilan normal', 1500);
   });
   $('#btn-task-panel').addEventListener('click', () => $('#btn-task-display').click());
+  $('#btn-task-new').addEventListener('click', () => {
+    openCol = openCol === 'inbox' ? null : 'inbox';
+    newTaskDraft = '';
+    renderTasks();
+    setTimeout(() => $(`#kanban .knew[data-status="inbox"]`)?.focus(), 60);
+  });
   $('#btn-task-sidebar').addEventListener('click', () => {
     const side = $('.task-side');
     side.classList.toggle('hidden');
     if (side.classList.contains('hidden')) toast('Sidebar disembunyikan — klik ikon lagi untuk menampilkan', 2200);
   });
 
+  // ---------- notes ----------
+  let noteFilter = 'all';
+  let noteQuery = '';
+  let editingNoteId = null;
+
+  const noteProjectLabel = (p) => (!p || p === 'global' ? 'Global' : projectLabel(p));
+  const noteProjects = () => {
+    const ids = new Set(['global', 'default']);
+    for (const n of state?.notes || []) ids.add(n.projectId || 'global');
+    for (const p of railProjects) ids.add(p);
+    return [...ids];
+  };
+  const noteDate = (ts) => (ts ? new Date(ts).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : '');
+
+  function noteCard(n) {
+    const body = String(n.body || '').trim();
+    return `<div class="note-cell" data-note="${n.id}">
+      <div class="note-preview ${body ? '' : 'empty'}">${body ? esc(body.slice(0, 900)) : 'No text yet'}</div>
+      <div class="note-name">${esc(n.title || 'Untitled')}</div>
+      <div class="note-sub"><span>${noteDate(n.updatedAt)}</span><span class="p-dot" style="background:${projectColor(n.projectId || 'global')}"></span><span>${esc(noteProjectLabel(n.projectId))}</span></div>
+    </div>`;
+  }
+
+  function renderNotes() {
+    if (!state) return;
+    const all = state.notes || [];
+    const q = noteQuery.toLowerCase();
+    const filtered = all.filter((n) => {
+      const project = n.projectId || 'global';
+      const inFilter = noteFilter === 'all' || project === noteFilter;
+      const hay = `${n.title || ''} ${n.body || ''} ${noteProjectLabel(project)}`.toLowerCase();
+      return inFilter && (!q || hay.includes(q));
+    });
+
+    const projects = noteProjects();
+    const pills = [['all', 'All'], ...projects.map((p) => [p, noteProjectLabel(p)])];
+    $('#note-filters').innerHTML = pills.map(([k, label]) => `
+      <button class="note-pill ${noteFilter === k ? 'active' : ''}" data-note-filter="${esc(k)}">
+        ${k === 'all' ? '' : `<span class="p-dot" style="background:${projectColor(k)}"></span>`}${esc(label)}
+      </button>`).join('');
+    $$('#note-filters .note-pill').forEach((btn) => btn.addEventListener('click', () => {
+      noteFilter = btn.dataset.noteFilter;
+      renderNotes();
+    }));
+
+    const pinned = filtered.filter((n) => n.pinned);
+    const recent = filtered.filter((n) => !n.pinned);
+    $('#notes-pinned').innerHTML = pinned.length
+      ? `<h4>Pinned</h4><div class="notes-grid pinned">${pinned.map(noteCard).join('')}</div>`
+      : '';
+    $('#notes-recent').innerHTML = recent.length
+      ? `<h4>Recent</h4><div class="notes-grid recent">${recent.map(noteCard).join('')}</div>`
+      : pinned.length ? ''
+        : `<div class="notes-empty"><b>Belum ada catatan</b><span>Simpan insight, potongan kode, atau keputusan proyek di sini.</span><button class="btn tiny primary" id="notes-empty-new">New note</button></div>`;
+
+    $$('#notes-recent .note-cell, #notes-pinned .note-cell').forEach((el) => el.addEventListener('click', () => openNoteEditor(el.dataset.note)));
+    $('#notes-empty-new')?.addEventListener('click', () => openNoteEditor(null));
+  }
+
+  function openNoteEditor(id) {
+    const n = id ? (state?.notes || []).find((x) => x.id === id) : null;
+    editingNoteId = n?.id || null;
+    $('#note-overlay-title').textContent = n ? 'Edit catatan' : 'Catatan baru';
+    $('#note-title').value = n?.title || '';
+    $('#note-body').value = n?.body || '';
+    $('#note-pinned').checked = !!n?.pinned;
+    const sel = $('#note-project');
+    const ids = noteProjects();
+    sel.innerHTML = ids.map((p) => `<option value="${esc(p)}">${esc(noteProjectLabel(p))}</option>`).join('');
+    sel.value = n?.projectId || (taskProject !== 'all' ? taskProject : 'global');
+    $('#btn-note-del').classList.toggle('hidden', !n);
+    $('#note-status').textContent = n ? `Diubah ${fmtTime(n.updatedAt)}` : 'Belum disimpan';
+    setLayer('note');
+    setTimeout(() => $('#note-title').focus(), 50);
+  }
+
+  $('#btn-note-new').addEventListener('click', () => openNoteEditor(null));
+  $('#btn-note-cancel').addEventListener('click', () => setLayer(null));
+  $('#note-search').addEventListener('input', (e) => { noteQuery = e.target.value; renderNotes(); });
+  $('#btn-note-display').addEventListener('click', () => {
+    $('.notes-body').classList.toggle('compact');
+    toast($('.notes-body').classList.contains('compact') ? 'Catatan ringkas' : 'Catatan normal', 1400);
+  });
+  $('#btn-note-trash').addEventListener('click', () => toast('Catatan yang dihapus tidak bisa dikembalikan', 2600));
+  $('#btn-note-save').addEventListener('click', async () => {
+    const title = $('#note-title').value.trim();
+    const body = $('#note-body').value;
+    if (!title && !body.trim()) return toast('Isi judul atau catatan dulu');
+    const payload = { title: title || 'Untitled', body, projectId: $('#note-project').value, pinned: $('#note-pinned').checked };
+    const btn = $('#btn-note-save');
+    btn.disabled = true;
+    try {
+      if (editingNoteId) await api(`/api/notes/${editingNoteId}`, { method: 'POST', body: JSON.stringify(payload) });
+      else await api('/api/notes', { method: 'POST', body: JSON.stringify(payload) });
+      toast(editingNoteId ? 'Catatan disimpan' : 'Catatan dibuat');
+      setLayer(null);
+      await loadState();
+    } catch (e) { toast('Gagal: ' + e.message); }
+    finally { btn.disabled = false; }
+  });
+  $('#btn-note-del').addEventListener('click', async () => {
+    if (!editingNoteId || !confirm('Hapus catatan ini?')) return;
+    try {
+      await api(`/api/notes/${editingNoteId}`, { method: 'DELETE' });
+      toast('Catatan dihapus');
+      setLayer(null);
+      await loadState();
+    } catch (e) { toast('Gagal: ' + e.message); }
+  });
+
   // ---------- promo ----------
+  const PRESET_FOR_PROVIDER = {
+    openrouter: 'openrouter', groq: 'groq', 'google-ai-studio': 'gemini', google: 'gemini', gemini: 'gemini',
+    'github-models': 'github', github: 'github', mistral: 'mistral', 'mistral-ai': 'mistral',
+    'together-ai': 'together', together: 'together', deepseek: 'deepseek', 'x-ai': 'xai', xai: 'xai',
+    zhipuai: 'glm', zhipu: 'glm', 'z-ai': 'glm', huggingface: 'hf', 'hugging-face': 'hf', hf: 'hf',
+  };
+  function presetForProvider(provider) {
+    const key = String(provider || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    return PRESET_FOR_PROVIDER[key] || 'custom';
+  }
+  function gatewayEnvText() {
+    const s = state?.server;
+    const gw = `${(s?.lanUrl || 'http://127.0.0.1:7788').replace(/\/+$/, '')}/v1`;
+    return `OPENAI_BASE_URL=${gw}\nOPENAI_API_KEY=${state?.token || ''}\nOPENAI_MODEL=auto`;
+  }
+
+  let adoptModelId = '';
+  function syncAdoptPreset() {
+    const preset = $('#adopt-preset').value;
+    const p = state.keyPresets[preset] || {};
+    $('#adopt-base').value = p.baseUrl || '';
+    const short = String(adoptModelId).split('/').pop().replace(/:free$/, '').slice(0, 48);
+    $('#adopt-name').value = `${p.label || 'Custom'} · ${short}`.slice(0, 80);
+    const a = $('#adopt-signup');
+    if (p.signup) { a.href = p.signup; a.classList.remove('hidden'); } else a.classList.add('hidden');
+  }
+  function openAdopt(modelId, preset, name) {
+    adoptModelId = String(modelId || '');
+    $('#adopt-model').textContent = adoptModelId;
+    const sel = $('#adopt-preset');
+    sel.innerHTML = Object.entries(state.keyPresets).map(([k, v]) => `<option value="${k}">${esc(v.label)}</option>`).join('');
+    sel.value = state.keyPresets[preset] ? preset : 'custom';
+    syncAdoptPreset();
+    if (name) {
+      const short = name.replace(/\s*\(free\)\s*/i, '').slice(0, 60);
+      $('#adopt-name').value = `${state.keyPresets[sel.value]?.label || 'Custom'} · ${short}`.slice(0, 80);
+    }
+    $('#adopt-key').value = '';
+    $('#adopt-pool').checked = state.config?.autoPool !== false;
+    $('#adopt-result').classList.add('hidden');
+    $('#adopt-result').innerHTML = '';
+    $('#btn-adopt-start').disabled = false;
+    setLayer('adopt');
+    setTimeout(() => $('#adopt-key').focus(), 60);
+  }
+
+  $('#adopt-preset').addEventListener('change', syncAdoptPreset);
+  $('#btn-adopt-cancel').addEventListener('click', () => setLayer(null));
+  $('#btn-adopt-start').addEventListener('click', async () => {
+    const key = $('#adopt-key').value.trim();
+    if (!key) return toast('Tempel API key promo dulu');
+    const btn = $('#btn-adopt-start');
+    btn.disabled = true;
+    $('#adopt-result').classList.add('hidden');
+    try {
+      const r = await api('/api/keys', {
+        method: 'POST',
+        body: JSON.stringify({
+          preset: $('#adopt-preset').value,
+          name: $('#adopt-name').value.trim(),
+          baseUrl: $('#adopt-base').value.trim(),
+          key,
+          pool: $('#adopt-pool').checked,
+          poolModel: adoptModelId,
+        }),
+      });
+      await loadState();
+      const status = r.entry?.status || 'unknown';
+      const bad = status === 'invalid';
+      const unverified = !bad && status !== 'valid';
+      const title = bad ? '⚠️ Key ditolak provider'
+        : unverified ? '⚠️ Key tersimpan, belum terverifikasi'
+        : '✓ Siap dipakai agent';
+      const note = bad ? 'Periksa kembali key promo Anda — model belum masuk rotasi.'
+        : unverified ? 'Provider tidak menjawab saat validasi. Key tetap masuk pool dan dicek ulang otomatis.'
+        : `Model <code>${esc(adoptModelId)}</code> sudah masuk pool. Arahkan agent ke endpoint ini:`;
+      const gw = `${(state.server.lanUrl || state.server.localUrl).replace(/\/+$/, '')}/v1`;
+      $('#adopt-result').classList.remove('hidden');
+      $('#adopt-result').innerHTML = `
+        <b>${title}</b><br>${note}
+        <div class="url-row" style="margin-top:8px"><code>${esc(gw)}</code></div>
+        <div class="url-row"><code>${esc(state.token)}</code></div>
+        <div class="form-actions"><button class="btn tiny primary" id="adopt-copy">Salin env agent</button><button class="btn tiny" id="adopt-open-gw">Buka gateway</button></div>`;
+      $('#adopt-copy').addEventListener('click', () => navigator.clipboard?.writeText(gatewayEnvText()).then(() => toast('Env agent disalin')));
+      $('#adopt-open-gw').addEventListener('click', () => { setLayer(null); go('gateway'); });
+      toast(bad ? 'Key ditolak provider' : unverified ? 'Key masuk pool (belum terverifikasi)' : 'Model gratis aktif di pool');
+    } catch (e) {
+      toast('Gagal: ' + e.message);
+    } finally { btn.disabled = false; }
+  });
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest('.adopt-btn');
+    if (!b) return;
+    openAdopt(b.dataset.model, b.dataset.preset, b.dataset.name);
+  });
+
   function renderPromo() {
     const models = state.snapshot?.sources?.openrouter?.models || [];
     const q = promoQuery.toLowerCase();
@@ -837,7 +1136,10 @@ window.__ahMachines = {
             <span class="chip">ctx ${fmtCtx(m.context)}</span>
             <span class="chip">${esc(m.provider)}</span>
           </div>
-          <a class="visit" href="${esc(m.page)}" target="_blank" rel="noreferrer">Detail ↗</a>
+          <div class="model-actions">
+            <button class="btn tiny primary adopt-btn" data-model="${esc(m.id)}" data-preset="openrouter" data-name="${esc(m.name)}">Pakai di agent</button>
+            <a class="visit" href="${esc(m.page)}" target="_blank" rel="noreferrer">Detail ↗</a>
+          </div>
         </div>`).join('')}</div>`
       : '<p class="muted">Tidak ada model yang cocok.</p>';
 
@@ -854,7 +1156,10 @@ window.__ahMachines = {
             ${m.context ? `<span class="chip">ctx ${fmtCtx(m.context)}</span>` : ''}
             <span class="chip">${esc(m.provider)}</span>
           </div>
-          <a class="visit" href="${esc(m.page)}" target="_blank" rel="noreferrer">Provider ↗</a>
+          <div class="model-actions">
+            <button class="btn tiny primary adopt-btn" data-model="${esc(m.id)}" data-preset="${esc(presetForProvider(m.provider))}" data-name="${esc(m.name)}">Pakai di agent</button>
+            <a class="visit" href="${esc(m.page)}" target="_blank" rel="noreferrer">Provider ↗</a>
+          </div>
         </div>`).join('')}</div>
         ${crossFiltered.length > 120 ? `<p class="muted small" style="margin-top:12px">Menampilkan 120 dari ${crossFiltered.length} — gunakan pencarian.</p>` : ''}`
       : '<p class="muted">Sumber models.dev belum tersinkron — klik "Cek sekarang".</p>';
@@ -925,6 +1230,11 @@ curl ${s.localUrl}/v1/chat/completions \\
   -H "Authorization: Bearer ${state.token}" \\
   -H "Content-Type: application/json" \\
   -d '{"model":"auto","messages":[{"role":"user","content":"halo"}]}'
+
+# env untuk agent CLI / SDK
+OPENAI_BASE_URL=${gw}
+OPENAI_API_KEY=${state.token}
+OPENAI_MODEL=auto
 
 # n8n / OpenAI SDK / agent lain
 Base URL : ${gw}
@@ -1005,6 +1315,7 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
     $('#set-agent').value = c.agentCheckMinutes;
     $('#set-keys').value = c.keyCheckHours;
     $('#set-notify').checked = !!c.notify;
+    $('#set-autopool').checked = c.autoPool !== false;
     $('#set-token').textContent = state.token;
     const s = state.server;
     $('#server-info').innerHTML = `
@@ -1168,6 +1479,7 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
         method: 'POST',
         body: JSON.stringify({
           notify: $('#set-notify').checked,
+          autoPool: $('#set-autopool').checked,
           refreshHours: +$('#set-refresh').value,
           agentCheckMinutes: +$('#set-agent').value,
           keyCheckHours: +$('#set-keys').value,
@@ -1205,6 +1517,8 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
   });
   $('#btn-copy-gw').addEventListener('click', () => navigator.clipboard?.writeText($('#gw-url').textContent).then(() => toast('Endpoint gateway disalin')));
   $('#btn-copy-gwkey').addEventListener('click', () => navigator.clipboard?.writeText($('#gw-key').textContent).then(() => toast('API key gateway disalin')));
+  $('#btn-copy-env').addEventListener('click', () => navigator.clipboard?.writeText(gatewayEnvText()).then(() => toast('Env agent disalin')));
+  $('#btn-promo-gateway').addEventListener('click', () => go('gateway'));
   $('#btn-copy-url').addEventListener('click', () => navigator.clipboard?.writeText($('#phone-url').textContent).then(() => toast('URL HP disalin')));
   $('#btn-copy-token').addEventListener('click', () => navigator.clipboard?.writeText(state?.token || '').then(() => toast('Token disalin')));
 
