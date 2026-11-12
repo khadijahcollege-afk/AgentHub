@@ -1,7 +1,7 @@
 {
   "name": "agenthub-desktop",
   "productName": "AgentHub",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "description": "AgentHub desktop shell — jendela asli Windows untuk server AgentHub",
   "main": "main.js",
   "author": "AgentHub Contributors",
@@ -20,6 +20,7 @@
     "icon": "build/icon.ico",
     "files": [
       "main.js",
+      "server-connection.cjs",
       "package.json"
     ],
     "extraResources": [
@@ -28,7 +29,7 @@
         "to": "server/server.js"
       },
       {
-        "from": "../server-package.json",
+        "from": "../package.json",
         "to": "server/package.json"
       },
       {
@@ -73,6 +74,34 @@
       "createStartMenuShortcut": true,
       "shortcutName": "AgentHub",
       "uninstallDisplayName": "AgentHub"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png",
+      "category": "public.app-category.developer-tools",
+      "artifactName": "AgentHub-macOS-${version}.${ext}"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "icon": "build/icon.png",
+      "category": "Development",
+      "artifactName": "AgentHub-linux-${version}.${ext}"
     }
   }
 }

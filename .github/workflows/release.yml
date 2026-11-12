@@ -8,6 +8,7 @@ permissions:
   contents: write
 
 jobs:
+  # Installer utama: NSIS + portable ZIP klasik (tanpa shell desktop).
   build-windows:
     runs-on: windows-latest
     steps:
@@ -30,11 +31,76 @@ jobs:
           Copy-Item data\seed-openrouter.json, data\seed-freelist.md stage\data\
           Copy-Item (Get-Command node.exe).Source stage\runtime\node.exe
           Compress-Archive -Path stage\* -DestinationPath AgentHub-Portable.zip -Force
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: |
+            AgentHub-Setup.exe
+            AgentHub-Portable.zip
+          if-no-files-found: error
+
+  # Installer macOS (dmg + zip). Tanpa sertifikat Apple — aplikasi unsigned:
+  # buka lewat klik kanan → Open saat pertama kali.
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build desktop macOS (Electron)
+        run: |
+          cd desktop
+          npm install --no-audit --no-fund
+          npx electron-builder --mac dmg zip --publish never
+          cp dist/AgentHub-macOS-*.dmg ../AgentHub-macOS.dmg
+          cp dist/AgentHub-macOS-*.zip ../AgentHub-macOS-portable.zip
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: |
+            AgentHub-macOS.dmg
+            AgentHub-macOS-portable.zip
+          if-no-files-found: error
+
+  # AppImage + deb untuk Linux, dibangun di runner Linux.
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build desktop Linux (Electron)
+        run: |
+          cd desktop
+          npm install --no-audit --no-fund
+          npx electron-builder --linux AppImage deb --publish never
+          cp dist/AgentHub-linux-*.AppImage ../AgentHub-linux.AppImage
+          cp dist/AgentHub-linux-*.deb ../AgentHub-linux.deb
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: |
+            AgentHub-linux.AppImage
+            AgentHub-linux.deb
+          if-no-files-found: error
+
+  # Satu tempat publikasi supaya semua installer dari tiga OS masuk ke
+  # release yang sama dan tidak saling menimpa.
+  release:
+    needs: [build-windows, build-macos, build-linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           name: AgentHub ${{ github.ref_name }}
           generate_release_notes: true
-          files: |
-            AgentHub-Setup.exe
-            AgentHub-Portable.zip
+          files: artifacts/**/*

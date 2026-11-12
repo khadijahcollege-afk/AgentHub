@@ -1,7 +1,7 @@
 {
   "name": "agenthub",
   "productName": "AgentHub",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "private": true,
   "type": "module",
   "description": "Lightweight Windows control plane that keeps AI agents alive on free API tokens",
@@ -9,8 +9,9 @@
   "license": "MIT",
   "scripts": {
     "start": "node server.js",
-    "test": "node --test \"test/*.test.js\"",
+    "test": "node --test --test-concurrency=4 \"test/*.test.js\"",
     "machines": "node tools/build-machines.mjs",
-    "check": "node tools/build-machines.mjs --check && node --test \"test/*.test.js\""
+    "check": "node tools/build-machines.mjs --check && node --test --test-concurrency=4 \"test/*.test.js\"",
+    "icons": "node tools/export-doc-icons.mjs"
   }
 }

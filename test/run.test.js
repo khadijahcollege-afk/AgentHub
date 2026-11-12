@@ -67,10 +67,16 @@ test.before(async () => {
     ? [
         { id: 'echo', label: 'Echo', cmd: 'cmd', args: ['/c', 'echo', 'ECHO:{prompt}'] },
         { id: 'slow', label: 'Slow', cmd: 'cmd', args: ['/c', 'ping', '-n', '30', '127.0.0.1'] },
+        // harness palsu bernama engine asli: memperlihatkan flag mode izin
+        // yang disisipkan lib/harness.js (lihat pemetaan permission).
+        { id: 'claude', label: 'Claude (uji)', cmd: 'cmd', args: ['/c', 'echo', 'FLAGS:{prompt}'] },
+        { id: 'codex', label: 'Codex (uji)', cmd: 'cmd', args: ['/c', 'echo', 'CODEX:{prompt}'] },
       ]
     : [
         { id: 'echo', label: 'Echo', cmd: 'sh', args: ['-c', 'echo "ECHO:{prompt}"'] },
         { id: 'slow', label: 'Slow', cmd: 'sleep', args: ['30'] },
+        { id: 'claude', label: 'Claude (uji)', cmd: 'sh', args: ['-c', 'echo "FLAGS:{prompt}"'] },
+        { id: 'codex', label: 'Codex (uji)', cmd: 'sh', args: ['-c', 'echo "CODEX:{prompt}"'] },
       ];
   fs.writeFileSync(path.join(dataDir, 'harnesses.json'), JSON.stringify(harnesses));
   child = spawn(process.execPath, ['server.js'], {
@@ -103,9 +109,41 @@ test('run: selesai normal mengirim delta lalu done, thread tidak running', async
 
   const t = await (await api(`/api/threads/${th.id}`)).json();
   assert.equal(t.running, false);
+  assert.equal(t.runState, 'done');
   const last = t.messages.at(-1);
   assert.equal(last.role, 'assistant');
   assert.ok(last.content.includes('ECHO:halo mesin'));
+
+  // stop setelah selesai tidak boleh mengubah state akhir menjadi stopped
+  const stop = await (await api(`/api/threads/${th.id}/stop`, { method: 'POST' })).json();
+  assert.equal(stop.stopped, 0);
+  const afterStop = await (await api(`/api/threads/${th.id}`)).json();
+  assert.equal(afterStop.runState, 'done');
+});
+
+test('run: kiriman kedua ke thread yang sama ditolak 409 (bukan menumpuk)', async () => {
+  const th = await (await api('/api/threads', {
+    method: 'POST', body: JSON.stringify({ engine: 'slow' }),
+  })).json();
+  const first = await api(`/api/threads/${th.id}/send`, {
+    method: 'POST', body: JSON.stringify({ prompt: 'pertama', engine: 'slow' }),
+  });
+  assert.equal(first.status, 200);
+  await sleep(250);
+
+  const second = await api(`/api/threads/${th.id}/send`, {
+    method: 'POST', body: JSON.stringify({ prompt: 'kedua', engine: 'echo' }),
+  });
+  assert.equal(second.status, 409);
+  const body = await second.json();
+  assert.equal(body.code, 'RUN_IN_PROGRESS');
+
+  await api(`/api/threads/${th.id}/stop`, { method: 'POST' });
+  const events = await readEvents(first);
+  assert.equal(events.at(-1).type, 'stopped');
+  const t = await (await api(`/api/threads/${th.id}`)).json();
+  assert.equal(t.runState, 'stopped');
+  assert.equal(t.running, false);
 });
 
 test('run: stop di tengah jalan menghasilkan stopped dan melepas thread', async () => {
@@ -149,4 +187,39 @@ test('run: engine tak dikenal gagal dengan error, bukan menggantung', async () =
   assert.equal(events.at(-1).type, 'error');
   const t = await (await api(`/api/threads/${th.id}`)).json();
   assert.equal(t.running, false);
+});
+
+test('permission: flag CLI disisipkan sesuai tingkat izin', async () => {
+  // claude (harness uji) + 'edits' → --permission-mode acceptEdits
+  const th1 = await (await api('/api/threads', {
+    method: 'POST', body: JSON.stringify({ engine: 'claude' }),
+  })).json();
+  const r1 = await api(`/api/threads/${th1.id}/send`, {
+    method: 'POST', body: JSON.stringify({ prompt: 'uji', engine: 'claude', permission: 'edits' }),
+  });
+  const ev1 = await readEvents(r1);
+  const out1 = ev1.filter((e) => e.type === 'delta').map((e) => e.text).join('');
+  assert.match(out1, /--permission-mode acceptEdits/, `flag edits harus terlihat: ${out1.slice(0, 200)}`);
+
+  // codex + 'ask' → --sandbox read-only
+  const th2 = await (await api('/api/threads', {
+    method: 'POST', body: JSON.stringify({ engine: 'codex' }),
+  })).json();
+  const r2 = await api(`/api/threads/${th2.id}/send`, {
+    method: 'POST', body: JSON.stringify({ prompt: 'uji', engine: 'codex', permission: 'ask' }),
+  });
+  const ev2 = await readEvents(r2);
+  const out2 = ev2.filter((e) => e.type === 'delta').map((e) => e.text).join('');
+  assert.match(out2, /--sandbox read-only/, `flag ask codex harus terlihat: ${out2.slice(0, 200)}`);
+
+  // full → tanpa flag tambahan
+  const th3 = await (await api('/api/threads', {
+    method: 'POST', body: JSON.stringify({ engine: 'claude' }),
+  })).json();
+  const r3 = await api(`/api/threads/${th3.id}/send`, {
+    method: 'POST', body: JSON.stringify({ prompt: 'uji', engine: 'claude', permission: 'full' }),
+  });
+  const ev3 = await readEvents(r3);
+  const out3 = ev3.filter((e) => e.type === 'delta').map((e) => e.text).join('');
+  assert.doesNotMatch(out3, /--permission-mode/, 'full tidak menyuntik flag');
 });
