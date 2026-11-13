@@ -1,6 +1,13 @@
 # Changelog
 
 ## Unreleased — 2026-11-13
+- **Adopsi model: auto-aktif saat klik** — tombol Pakai di agent kini cek
+  key tersimpan SAAT KLIK (bukan hanya saat render kartu), jadi setelah
+  menambah key, semua kartu model provider itu langsung berubah jadi
+  Pakai langsung tanpa perlu refresh halaman. Dialog adopt juga kini
+  mendispatch event change saat set preset, sehingga dropdown custom
+  menampilkan provider yang benar (bukan —).
+- **Pengembangan berkelanjutan (batch 2)**:
 - **Promo Pass 500M** — headline tokens dan kuota harian diperbarui ke 500M
   (sesuai ZCode Global Build terbaru): GLM-5.3 5M/hari, GLM-5.3-Flash 8M/hari.
   Semua referensi 300M hardcoded di UI (sidebar card, tombol claim, tiket)

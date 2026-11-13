@@ -2838,6 +2838,8 @@ window.__ahMachines = {
     const sel = $('#adopt-preset');
     sel.innerHTML = Object.entries(state.keyPresets).map(([k, v]) => `<option value="${k}">${esc(v.label)}</option>`).join('');
     sel.value = state.keyPresets[preset] ? preset : 'custom';
+    // dispatch change agar dropdown custom memperbarui label tombolnya
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
     syncAdoptPreset();
     if (name) {
       const short = name.replace(/\s*\(free\)\s*/i, '').slice(0, 60);
@@ -2959,7 +2961,8 @@ window.__ahMachines = {
   document.addEventListener('click', async (e) => {
     const b = e.target.closest('.adopt-btn');
     if (!b) return;
-    if (b.dataset.quick) {
+    if (b.dataset.quick || usableKeyFor(b.dataset.preset)) {
+      // key tersimpan (ceklah saat klik, bukan hanya saat render kartu) → langsung aktif
       b.disabled = true;
       try {
         await api('/api/models/activate', {
