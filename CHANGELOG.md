@@ -1,6 +1,32 @@
 # Changelog
 
 ## Unreleased — 2026-11-13
+- **Orchestrator** — tim agent AI bekerja paralel di cabang git sendiri,
+  lalu hasilnya ditinjau, digabung, dan diekspor sebagai patch. Mekanisme:
+  `lib/orchestra.js` (mirror repo + branch + worktree per agent, commit,
+  CI per agent, merge no-ff, ekspor `git diff`). Rute
+  `GET/POST /api/orchestra`, `POST /:id/run` (eksekusi paralel via
+  `runEngine` dengan cwd = worktree agent), `POST /:id/merge`,
+  `GET /:id/patch`. Pane di Settings dengan form + board status per agent.
+  Hanya engine CLI (claude/codex/opencode/gemini) — pool tidak bisa mengedit
+  berkas. Regresi `test/orchestra.test.js` (repo git sementara + harness
+  penulis berkas; 130 tes total).
+- **Pengembangan berkelanjutan (batch 2)**:
+- **Tema terang (Light / Dark / Sistem)** — kartu tema di pane Tampilan + baris
+  "Mode" di menu akun (siklus gelap→terang→sistem). Mekanisme: inversi
+  terkendali (invert + hue-rotate 180) di body, media (img/svg/canvas/video)
+  dibalik dua kali agar kembali benar; mode Sistem mengikuti
+  prefers-color-scheme. Preferensi tersimpan localStorage.
+- **Perbaikan bug kritis** —  (querySelector tunggal) dipanggil lalu
+  .forEach() di applyTheme/renderThemeCards mengembalikan null → TypeError
+  menghentikan seluruh module sebelum renderSettingsNav, sehingga nav
+  settings & kartu tema kosong. Diperbaiki menjadi $ (querySelectorAll).
+  Verifikasi visual menunggu browser stabil (IAB sedang dipakai pengguna).
+- **Dropdown custom (pengganti select native)**: popup putih bawaan browser
+  diganti popup bertema UI; select asli tetap di DOM (tersembunyi) sehingga
+  .value & event change tetap bekerja.
+- **Stabilitas suite**: npm test berjalan dengan --test-concurrency=4.
+- **Pengembangan berkelanjutan (batch 2)**:
 - **Semua select native diganti dropdown custom bertema** — popup putih bawaan
   browser (form Preset API key, provider adopt, aturan proyek, engine/mode
   jadwal, proyek catatan) tidak mengikuti tema; kini `upgradeSelects()`
@@ -293,7 +319,7 @@
   port tes dibuat unik per file agar `search` tidak lagi bertabrakan dengan
   `promoPass`/`uploads`. Dokumentasi diperbarui di `README.md`, `README.id.md`,
   dan `STATE-MACHINES.md` (mesin promo pass, kontrak lampiran, peta tes).
-  (Total berjalan kini **117 tes** — lihat catatan DX/AX di atas.)
+  (Total berjalan kini **130 tes** — lihat catatan DX/AX di atas.)
 
 ## 1.6.1 — 2026-11-12
 - **Workspace per thread** — folder kerja kini milik thread (`thread.cwd`), bukan

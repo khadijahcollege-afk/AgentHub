@@ -9,9 +9,9 @@
   "license": "MIT",
   "scripts": {
     "start": "node server.js",
-    "test": "node --test --test-concurrency=4 \"test/*.test.js\"",
+    "test": "node --test --test-concurrency=2 \"test/*.test.js\"",
     "machines": "node tools/build-machines.mjs",
-    "check": "node tools/build-machines.mjs --check && node --test --test-concurrency=4 \"test/*.test.js\"",
+    "check": "node tools/build-machines.mjs --check && node --test --test-concurrency=2 \"test/*.test.js\"",
     "icons": "node tools/export-doc-icons.mjs"
   }
 }

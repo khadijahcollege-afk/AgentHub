@@ -117,6 +117,7 @@ test('UI: pemilih proyek, editor proyek, katalog model, dan effort tersedia', ()
     'update-panel', 'btn-update-check', 'update-status', 'update-current',
     'onboard-card', 'find-bar', 'find-input', 'find-count', 'find-close',
     'theme-cards', 'acct-theme', 'acct-theme-label',
+    'orch-list', 'btn-orch-create',
     'tool-research', 'tool-prompts', 'tool-delegate', 'sbm-schedules',
   ]) {
     assert.ok(ids.includes(id), `${id} wajib tersedia`);
@@ -217,6 +218,17 @@ test('ui: tema terang via inversi terkendali + kartu tema tersimpan', () => {
   assert.ok(app.includes('function applyTheme('), 'applyTheme ada');
   assert.ok(app.includes('ah_theme'), 'preferensi tema tersimpan');
   assert.ok(app.includes('prefers-color-scheme: light'), 'mode Sistem mengikuti OS');
+});
+
+test('ui: orchestrator board tersedia', () => {
+  const app = fs.readFileSync(path.join(ROOT, 'public/app.js'), 'utf8');
+  assert.ok(app.includes('renderOrchestra'), 'fungsi renderOrchestra ada');
+  assert.ok(app.includes('data-orch-run'), 'tombol Jalankan tim ada');
+  assert.ok(app.includes('data-orch-merge'), 'tombol Merge ada');
+  assert.ok(app.includes('/api/orchestra'), 'rute orchestra dipakai');
+  const html = fs.readFileSync(path.join(ROOT, 'public/index.html'), 'utf8');
+  assert.ok(html.includes('orch-prompt'), 'form prompt orchestra ada');
+  assert.ok(html.includes('orch-basedir'), 'form basedir orchestra ada');
 });
 
 test('ui: semua select native diganti dropdown custom bertema', () => {

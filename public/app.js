@@ -80,6 +80,7 @@ window.__ahMachines = {
   let promoPane = localStorage.getItem('ah_promo_pane') === 'free' ? 'free' : 'pass';
   let curThread = null;
   let threadSearch = '';
+  let tagFilter = null; // tag aktif untuk filter sidebar (null = semua)
   let cwd = localStorage.getItem('ah_cwd') || '';
   let taskFilter = 'all';
   let taskSearch = '';
@@ -212,6 +213,7 @@ window.__ahMachines = {
     download: '<path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 20h16"/>',
     paperclip: '<path d="M8.5 12.5l6.2-6.2a3 3 0 0 1 4.2 4.2l-7.6 7.6a5 5 0 0 1-7.1-7.1l7-7"/>',
     shield: '<path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/><path d="M9.5 12l1.8 1.8 3.2-3.6"/>',
+    tag: '<path d="M3.5 12.5 11 5h6.5V11.5L10 19z"/><circle cx="14.5" cy="8.5" r="1"/>',
   };
   const icon = (id) => `<svg class="ico" viewBox="0 0 24 24">${ICON_PATHS[id] || ICON_PATHS.robot}</svg>`;
   const fmtCtx = (n) => (n >= 1000000 ? (n / 1000000).toFixed(n % 1000000 ? 1 : 0) + 'M' : n >= 1000 ? Math.round(n / 1000) + 'K' : n);
@@ -404,6 +406,66 @@ window.__ahMachines = {
       requireValue: opts.requireValue !== false,
     });
   }
+
+  // ---------- dialog tag thread ----------
+  let tagDialogThread = null;
+  let tagDialogTags = [];
+  function renderTagDialog() {
+    const host = $('#tag-current');
+    if (!host) return;
+    host.innerHTML = tagDialogTags.length
+      ? tagDialogTags.map((tg, i) => `
+        <span class="tag-edit" title="Klik untuk hapus">
+          ${icon('tag')}<b>${esc(tg)}</b><i class="tag-x" data-tag-x="${i}">${icon('x')}</i>
+        </span>`).join('')
+      : '<span class="muted small">Belum ada tag.</span>';
+    $$('#tag-current [data-tag-x]').forEach((x) => x.addEventListener('click', () => {
+      tagDialogTags.splice(Number(x.dataset.tagX), 1);
+      renderTagDialog();
+    }));
+  }
+  function openTagDialog(id) {
+    const t = threadCache.find((x) => x.id === id);
+    if (!t) return;
+    tagDialogThread = t;
+    tagDialogTags = [...(t.tags || [])];
+    renderTagDialog();
+    const input = $('#tag-input');
+    input.value = '';
+    $('#tag-dialog').classList.remove('hidden');
+    input.focus();
+  }
+  function closeTagDialog() {
+    $('#tag-dialog').classList.add('hidden');
+    tagDialogThread = null;
+    tagDialogTags = [];
+  }
+  function addTagDialog() {
+    const input = $('#tag-input');
+    const v = input.value.trim().replace(/\s+/g, ' ').slice(0, 24);
+    if (!v) return;
+    if (tagDialogTags.some((x) => x.toLowerCase() === v.toLowerCase())) { input.value = ''; return; }
+    if (tagDialogTags.length >= 8) { toast('Maksimal 8 tag'); return; }
+    tagDialogTags.push(v);
+    input.value = '';
+    renderTagDialog();
+    input.focus();
+  }
+  $('#tag-add').addEventListener('click', addTagDialog);
+  $('#tag-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addTagDialog(); } });
+  $('#tag-cancel').addEventListener('click', closeTagDialog);
+  $('#tag-dialog').addEventListener('click', (e) => { if (e.target.id === 'tag-dialog') closeTagDialog(); });
+  $('#tag-save').addEventListener('click', async () => {
+    if (!tagDialogThread) return closeTagDialog();
+    const id = tagDialogThread.id;
+    const tags = [...tagDialogTags];
+    closeTagDialog();
+    try {
+      await api(`/api/threads/${id}`, { method: 'POST', body: JSON.stringify({ tags }) });
+      toast('Tag disimpan');
+      await loadState({ slices: ['threads'], silent: true });
+    } catch (e) { toast('Gagal: ' + e.message); }
+  });
 
   function pumpDialog() {
     if (dialogActive || !dialogQueue.length) return;
@@ -825,7 +887,19 @@ window.__ahMachines = {
     renderRailSpaces();
 
     const q = threadSearch.toLowerCase();
-    const list = q ? threadCache.filter((t) => (t.title + ' ' + t.preview).toLowerCase().includes(q)) : threadCache;
+    // semua tag yang dipakai (untuk baris filter di atas daftar)
+    const allTags = [...new Set(threadCache.flatMap((t) => t.tags || []))].sort();
+    let list = q ? threadCache.filter((t) => (t.title + ' ' + t.preview).toLowerCase().includes(q)) : threadCache;
+    if (tagFilter) list = list.filter((t) => (t.tags || []).some((x) => x.toLowerCase() === tagFilter.toLowerCase()));
+
+    // baris filter tag (tampil hanya bila ada tag)
+    const tagRow = $('#sb-tagrow');
+    if (tagRow) {
+      tagRow.innerHTML = allTags.length
+        ? allTags.map((tg) => `<button class="tag-chip ${tagFilter === tg ? 'active' : ''}" data-tagfilter="${esc(tg)}">${esc(tg)}</button>`).join('')
+          + (tagFilter ? '<button class="tag-chip clear" data-tagclear title="Hapus filter">✕</button>' : '')
+        : '';
+    }
 
     // Recents di sidebar
     $('#sb-recents').innerHTML = list.length
@@ -833,8 +907,10 @@ window.__ahMachines = {
         <div class="recent-item ${curThread?.id === t.id ? 'active' : ''}" data-id="${t.id}" title="${esc(t.title)}">
           ${spark(t.running ? 'var(--accent)' : '#7d7d85')}
           <span class="r-title">${esc(t.title)}</span>
+          ${(t.tags || []).length ? `<span class="r-tags">${(t.tags || []).slice(0, 3).map((tg) => `<i class="tag-mini" title="${esc(tg)}">${esc(tg)}</i>`).join('')}${(t.tags || []).length > 3 ? `<i class="tag-mini">+${(t.tags || []).length - 3}</i>` : ''}</span>` : ''}
           <span class="r-acts">
             <button class="icon-btn r-act" data-th-pin="${t.id}" title="${t.pinned ? 'Lepas pin' : 'Sematkan'}">${icon('pin')}</button>
+            <button class="icon-btn r-act" data-th-tag="${t.id}" title="Tag">${icon('tag')}</button>
             <button class="icon-btn r-act" data-th-rename="${t.id}" title="Ganti nama">${icon('pencil')}</button>
             <button class="icon-btn r-act" data-th-export="${t.id}" title="Export .md">${icon('external')}</button>
           </span>
@@ -845,6 +921,13 @@ window.__ahMachines = {
       if (e.target.closest('.r-act')) return;
       openThread(el.dataset.id);
     }));
+    // filter tag
+    $$('#sb-tagrow [data-tagfilter]').forEach((b) => b.addEventListener('click', () => {
+      tagFilter = tagFilter === b.dataset.tagfilter ? null : b.dataset.tagfilter;
+      renderSidebar();
+    }));
+    const tagClear = $('#sb-tagrow [data-tagclear]');
+    if (tagClear) tagClear.addEventListener('click', () => { tagFilter = null; renderSidebar(); });
     const threadAct = async (id, patch, msg) => {
       try {
         await api(`/api/threads/${id}`, { method: 'POST', body: JSON.stringify(patch) });
@@ -856,6 +939,7 @@ window.__ahMachines = {
       const t = threadCache.find((x) => x.id === b.dataset.thPin);
       threadAct(b.dataset.thPin, { pinned: !t?.pinned }, t?.pinned ? 'Pin dilepas' : 'Thread disematkan');
     }));
+    $$('#sb-recents [data-th-tag]').forEach((b) => b.addEventListener('click', () => openTagDialog(b.dataset.thTag)));
     $$('#sb-recents [data-th-rename]').forEach((b) => b.addEventListener('click', async () => {
       const t = threadCache.find((x) => x.id === b.dataset.thRename);
       const v = await askPrompt('Judul baru untuk thread ini.', t?.title || '', {
@@ -3479,13 +3563,14 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
     ['schedules', 'Jadwal', '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>'],
     ['server', 'Server', '<ellipse cx="12" cy="5.5" rx="8" ry="2.8"/><path d="M4 5.5v13c0 1.5 3.6 2.8 8 2.8s8-1.3 8-2.8v-13"/><path d="M4 12c0 1.5 3.6 2.8 8 2.8s8-1.3 8-2.8"/>'],
     ['desktop', 'Aplikasi desktop', '<rect x="3" y="4" width="18" height="13" rx="2.5"/><path d="M9 21h6M12 17v4"/>'],
+    ['orchestra', 'Orchestrator', '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>'],
     ['about', 'Tentang', '<circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/>'],
   ];
   let settingsPane = localStorage.getItem('ah_settings_pane') || 'preferences';
   // Kelompok nav ala halaman settings Kybern: Pribadi / Agent / Sistem.
   const SETTINGS_GROUPS = [
     ['Pribadi', ['preferences', 'appearance', 'notifications', 'privacy', 'shortcuts']],
-    ['Agent', ['providers', 'models', 'connectors', 'projects', 'billing', 'schedules']],
+    ['Agent', ['providers', 'models', 'connectors', 'projects', 'billing', 'schedules', 'orchestra']],
     ['Sistem', ['phone', 'server', 'desktop', 'about']],
   ];
 
@@ -3590,13 +3675,15 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
     ['light', 'Terang', '<div class="theme-prev light"><i></i><u></u></div>'],
     ['system', 'Sistem', '<div class="theme-prev system"><i></i><u></u></div>'],
   ];
+  function sysLight() {
+    return !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches);
+  }
   function applyTheme() {
     const pref = localStorage.getItem('ah_theme') || 'dark';
-    const sysLight = window.matchMedia?.('(prefers-color-scheme: light)').matches;
-    const eff = pref === 'system' ? (sysLight ? 'light' : 'dark') : pref;
+    const eff = pref === 'system' ? (sysLight() ? 'light' : 'dark') : pref;
     document.documentElement.dataset.theme = eff;
-    $('#theme-cards .theme-card').forEach((c) => c.classList.toggle('active', c.dataset.theme === pref));
-    $('#acct-theme-label').forEach((el) => { el.textContent = pref === 'system' ? 'Sistem' : (pref === 'light' ? 'Terang' : 'Gelap'); });
+    $$('#theme-cards .theme-card').forEach((c) => c.classList.toggle('active', c.dataset.theme === pref));
+    $$('#acct-theme-label').forEach((el) => { el.textContent = pref === 'system' ? 'Sistem' : (pref === 'light' ? 'Terang' : 'Gelap'); });
   }
   function renderThemeCards() {
     const host = $('#theme-cards');
@@ -3606,11 +3693,11 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
       <button class="theme-card ${pref === id ? 'active' : ''}" data-theme-set="${id}">
         ${prev}<span>${label}</span>
       </button>`).join("");
-    $('#theme-cards .theme-card').forEach((b) => b.addEventListener('click', () => {
+    $$('#theme-cards .theme-card').forEach((b) => b.addEventListener('click', () => {
       localStorage.setItem('ah_theme', b.dataset.themeSet);
       applyTheme();
     }));
-    window.matchMedia?.('(prefers-color-scheme: light)').addEventListener?.('change', applyTheme);
+    if (window.matchMedia) window.matchMedia('(prefers-color-scheme: light)').addEventListener?.('change', applyTheme);
     applyTheme();
   }
   applyTheme();
@@ -3733,6 +3820,61 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
         setTimeout(() => chip?.classList.add('hidden'), 6000);
       } else toast('Belum ada konektor untuk dipulse');
     } catch (e) { toast('Gagal: ' + e.message); }
+  });
+
+  // ---------- orchestrator: tim agent paralel ----------
+  let orchCache = [];
+  async function renderOrchestra() {
+    const host = $('#orch-list');
+    if (!host) return;
+    try { orchCache = await api('/api/orchestra'); } catch { orchCache = []; }
+    host.innerHTML = orchCache.map((o) => {
+      const stCls = { running: 'run', reviewing: '', done: 'ok-chip', error: 'err-chip', idle: '', merging: 'run' }[o.state] || '';
+      const agents = (o.agents || []).map((a) => {
+        const cls = { ok: 'ok-chip', 'ci-failed': 'err-chip', error: 'err-chip', running: 'run', conflict: 'err-chip' }[a.status] || '';
+        return `<div class="orch-agent"><span class="chip ${cls}">${esc(a.engineId)} · ${esc(a.status)}</span>${a.error ? `<small class="err-text">${esc(a.error)}</small>` : ''}</div>`;
+      }).join("");
+      const canMerge = o.state === 'reviewing' && (o.agents || []).some((a) => a.status === 'ok');
+      return `<div class="orch-card" data-orch="${esc(o.id)}">
+        <div class="orch-head"><b>${esc(o.name)}</b><span class="chip ${stCls}">${esc(o.state)}</span><span class="grow"></span>
+          <button class="icon-btn" data-orch-del="${esc(o.id)}" title="Hapus">${icon('x')}</button></div>
+        <div class="orch-agents">${agents}</div>
+        <div class="orch-actions">
+          ${o.state !== 'running' && o.state !== 'reviewing' ? `<button class="btn tiny primary" data-orch-run="${esc(o.id)}">Jalankan tim</button>` : ''}
+          ${canMerge ? `<button class="btn tiny primary" data-orch-merge="${esc(o.id)}">Merge</button>` : ''}
+          ${o.state === 'done' ? `<a class="btn tiny" href="/api/orchestra/${esc(o.id)}/patch?token=${esc(token)}" download>Unduh patch</a>` : ''}
+        </div>
+      </div>`;
+    }).join("") || '<p class="muted small" style="padding:8px 2px">Belum ada orkestrasi. Buat di form di atas.</p>';
+    $('#orch-list [data-orch-run]').forEach((b) => b.addEventListener('click', async () => {
+      b.disabled = true;
+      try { await api(`/api/orchestra/${b.dataset.orchRun}/run`, { method: 'POST' }); toast('Tim agent dijalankan — pantau status di sini'); }
+      catch (e) { toast(e.message); b.disabled = false; }
+      renderOrchestra();
+    }));
+    $('#orch-list [data-orch-merge]').forEach((b) => b.addEventListener('click', async () => {
+      b.disabled = true;
+      try { const r = await api(`/api/orchestra/${b.dataset.orchMerge}/merge`, { method: 'POST' }); toast('Digabung: ' + (r.merged || []).join(', ')); }
+      catch (e) { toast(e.message); }
+      renderOrchestra();
+    }));
+    $('#orch-list [data-orch-del]').forEach((b) => b.addEventListener('click', async () => {
+      await api(`/api/orchestra/${b.dataset.orchDel}`, { method: 'DELETE' });
+      renderOrchestra();
+    }));
+  }
+  $('#btn-orch-create').addEventListener('click', async () => {
+    try {
+      await api('/api/orchestra', { method: 'POST', body: JSON.stringify({
+        name: $('#orch-name').value.trim(),
+        prompt: $('#orch-prompt').value.trim(),
+        agents: (engines || []).filter((e) => e.type === 'cli' && e.available).map((e) => e.id),
+        baseDir: $('#orch-basedir').value.trim(),
+        testCommand: $('#orch-ci').value.trim(),
+      }) });
+      toast('Orkestrasi dibuat');
+      renderOrchestra();
+    } catch (e) { toast(e.message); }
   });
 
   function renderSettings() {
@@ -4069,6 +4211,7 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
 
   // aktifkan pane tersimpan saat boot
   renderSettingsNav();
+  renderThemeCards();
   activateSettingsPane(settingsPane);
 
   // ---------- jadwal (scheduled runs) ----------

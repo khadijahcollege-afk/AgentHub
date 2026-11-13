@@ -103,7 +103,7 @@ states left local on purpose — is in [`STATE-MACHINES.md`](STATE-MACHINES.md).
 ```bash
 npm run machines   # regenerate public/machines.js
 npm run check      # fail if the generated file drifted, then run the tests
-npm test           # 114 tests: machines, HTTP contract, run + stop, recovery, workspace, search, history, promo pass, uploads, prompts, schedules, backup, PWA assets
+npm test           # 130 tests: machines, HTTP contract, run + stop, recovery, workspace, search, history, promo pass, uploads, prompts, schedules, backup, orchestra, context, theme, dropdown, pulse, update
 ```
 
 Agents driving the app do not have to guess. The contract is served over HTTP:

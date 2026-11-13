@@ -73,6 +73,7 @@
     <div class="sb-label"><span>Personal</span><span class="sb-label-right"><button class="icon-btn" id="btn-filter-projects" title="Filter proyek"><svg viewBox="0 0 24 24"><path d="M4 6h16l-6 7v5l-4 2v-7z"/></svg></button><button class="icon-btn" id="btn-cwd" title="Ganti folder proyek agent">＋</button></span></div>
     <div id="sb-projects" class="sb-projects"></div>
     <div class="sb-label"><span>Recents</span><span class="caret">▾</span></div>
+    <div id="sb-tagrow" class="sb-tagrow"></div>
     <div id="sb-recents" class="sb-recents"></div>
     <div id="sb-promo" class="sb-promo hidden"></div>
     <div class="sb-foot">
@@ -537,6 +538,19 @@
             <p class="muted small">"Jalankan saat PC menyala" bisa diaktifkan dari menu tray ikon AgentHub.</p>
           </div>
 
+          <div class="settings-pane" data-pane="orchestra">
+            <h3>Orchestrator</h3>
+            <p class="muted small">Tim agent AI bekerja paralel di cabang git sendiri — hasil ditinjau, digabung, dan diekspor sebagai patch.</p>
+            <div id="orchestra-form" class="form-grid" style="margin-bottom:14px">
+              <label>Nama tim<input id="orch-name" placeholder="mis. Refactor dashboard"></label>
+              <label>Folder dasar (repo git)<input id="orch-basedir" placeholder="C:\proyek\repo"></label>
+              <label class="span2">Prompt untuk agent<textarea id="orch-prompt" rows="2" placeholder="Tugas yang dikerjakan tim…"></textarea></label>
+              <label class="span2">Perintah CI (opsional)<input id="orch-ci" placeholder="npm test"></label>
+              <div class="span2 form-actions"><button class="btn primary" id="btn-orch-create" type="button">Buat orkestrasi</button></div>
+            </div>
+            <div id="orch-list"></div>
+          </div>
+
           <div class="settings-pane" data-pane="about">
             <h3>Tentang</h3>
             <div id="set-about" class="kv"></div>
@@ -817,6 +831,24 @@
       <span class="grow"></span>
       <button id="dialog-cancel" class="btn" type="button">Batal</button>
       <button id="dialog-ok" class="btn primary" type="button">Lanjut</button>
+    </div>
+  </div>
+</div>
+
+<!-- Dialog tag thread -->
+<div id="tag-dialog" class="overlay dialog-overlay hidden" aria-hidden="true">
+  <div class="overlay-card dialog-card" role="dialog" aria-modal="true" aria-labelledby="tag-dialog-title">
+    <h3 id="tag-dialog-title">Tag thread</h3>
+    <p class="muted small" style="margin:2px 0 10px">Maks 8 tag, 24 karakter. Tag dipakai untuk memfilter thread di sidebar.</p>
+    <div id="tag-current" class="tag-current"></div>
+    <div class="tag-add-row">
+      <input id="tag-input" class="search" maxlength="24" placeholder="Tambah tag…" autocomplete="off" spellcheck="false">
+      <button id="tag-add" class="btn" type="button">Tambah</button>
+    </div>
+    <div class="form-actions dialog-actions">
+      <span class="grow"></span>
+      <button id="tag-cancel" class="btn" type="button">Batal</button>
+      <button id="tag-save" class="btn primary" type="button">Simpan</button>
     </div>
   </div>
 </div>

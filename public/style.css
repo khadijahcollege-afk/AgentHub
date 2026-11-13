@@ -1870,3 +1870,16 @@ html[data-theme="light"] video {
 .theme-prev.system {
   background: linear-gradient(100deg, #f2f2f2 50%, #101012 50%);
 }
+
+/* ---------- orchestrator board ---------- */
+.orch-card {
+  margin-top: 10px; padding: 12px 14px;
+  background: #1b1b1e; border: 1px solid #2c2c31; border-radius: 10px;
+}
+.orch-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.orch-head b { font-size: 12.5px; flex: 1; }
+.orch-agents { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.orch-agent { display: grid; gap: 3px; }
+.orch-agent .err-text { color: var(--err); font-size: 10px; }
+.orch-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.orch-actions .btn.tiny { min-width: 80px; }

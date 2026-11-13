@@ -16,3 +16,6 @@ Thumbs.db
 # electron desktop build
 desktop/node_modules/
 desktop/dist/
+
+# ZCode plugin artifact
+.v2c/

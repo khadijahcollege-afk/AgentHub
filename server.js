@@ -22,6 +22,7 @@ import * as notes from './lib/notes.js';
 import * as prompts from './lib/prompts.js';
 import * as schedules from './lib/schedules.js';
 import { backupBundle, restoreBackup } from './lib/backup.js';
+import * as orchestra from './lib/orchestra.js';
 import { contextStats } from './lib/context.js';
 import * as projects from './lib/projects.js';
 import { searchAll } from './lib/search.js';
@@ -820,6 +821,7 @@ async function route(req, res) {
           return sendJson(res, error.statusCode || 400, { error: error.message, code: error.code });
         }
       }
+      if (Array.isArray(b.tags)) patch.tags = threads.sanitizeTags(b.tags);
       if (!Object.keys(patch).length) return sendJson(res, 400, { error: 'Tidak ada yang bisa diubah' });
       const t = threads.patchThread(m[1], patch);
       broadcast('threads');
@@ -1368,6 +1370,97 @@ async function route(req, res) {
     if (!s) return sendJson(res, 404, { error: 'Jadwal tidak ditemukan' });
     executeSchedule(s);
     return sendJson(res, 200, { ok: true, started: true, name: s.name });
+  }
+
+  // ---------- orchestrator: tim agent paralel di cabang git ----------
+  if (p === '/api/orchestra' && method === 'GET') return sendJson(res, 200, orchestra.listOrchestrations());
+  if (p === '/api/orchestra' && method === 'POST') {
+    const b = await readBody(req);
+    try {
+      const o = orchestra.createOrchestration(b);
+      broadcast('orchestra');
+      return sendJson(res, 200, o);
+    } catch (e) {
+      return sendJson(res, e.statusCode || 400, { error: e.message });
+    }
+  }
+  if ((m = p.match(/^\/api\/orchestra\/([a-f0-9]+)$/)) && method === 'GET') {
+    const o = orchestra.getOrchestration(m[1]);
+    if (!o) return sendJson(res, 404, { error: 'Orkestrasi tidak ditemukan' });
+    // sertakan diff per agent (dipotong agar payload wajar)
+    const agents = o.agents.map((a, i) => ({ ...a, diff: orchestra.branchDiff(m[1], i).slice(0, 60000) }));
+    return sendJson(res, 200, { ...o, agents });
+  }
+  if ((m = p.match(/^\/api\/orchestra\/([a-f0-9]+)$/)) && method === 'DELETE') {
+    orchestra.deleteOrchestration(m[1]);
+    broadcast('orchestra');
+    return sendJson(res, 200, { ok: true });
+  }
+  // jalankan tim: mirror + branch + worktree per agent, lalu engine CLI
+  // berjalan PARALEL di worktree masing-masing. Hasil: commit + CI + diff,
+  // state berakhir 'reviewing' saat semua selesai.
+  if ((m = p.match(/^\/api\/orchestra\/([a-f0-9]+)\/run$/)) && method === 'POST') {
+    const o = orchestra.getOrchestration(m[1]);
+    if (!o) return sendJson(res, 404, { error: 'Orkestrasi tidak ditemukan' });
+    if (o.state === 'running') return sendJson(res, 409, { error: 'Orkestrasi sedang berjalan' });
+    try { orchestra.prepareOrchestration(m[1]); orchestra.prepareWorktrees(m[1]); } catch (e) {
+      return sendJson(res, e.statusCode || 500, { error: e.message });
+    }
+    const cliAgents = o.agents.filter((a) => engineType(a.engineId) === 'cli');
+    if (!cliAgents.length) {
+      orchestra.patchOrchestration(m[1], { state: 'error' });
+      return sendJson(res, 400, { error: 'Orchestrator butuh engine CLI (claude/codex/opencode/gemini) — pool tidak bisa mengedit berkas' });
+    }
+    orchestra.patchOrchestration(m[1], { state: 'running', updatedAt: Date.now() });
+    o.agents.forEach((a, i) => {
+      if (engineType(a.engineId) !== 'cli') {
+        orchestra.updateAgent(m[1], i, { status: 'skipped', error: 'bukan engine CLI' });
+        return;
+      }
+      orchestra.updateAgent(m[1], i, { status: 'running', error: null, diff: '', ci: null });
+      const wt = orchestra.agentWorktree(m[1], i);
+      runEngine(a.engineId, o.prompt, { cwd: wt }).then((r) => {
+        orchestra.commitAgent(m[1], i, `orchestra: ${o.name} — ${a.engineId}`);
+        const ci = orchestra.runAgentCi(m[1], i);
+        orchestra.updateAgent(m[1], i, {
+          status: ci.ok ? 'ok' : 'ci-failed',
+          ci: { ok: ci.ok, out: (ci.out || ci.err || '').slice(0, 400) },
+          diff: orchestra.branchDiff(m[1], i).slice(0, 100000),
+          error: ci.ok ? null : (ci.err || ci.out || '').slice(0, 300),
+        });
+      }).catch((e) => {
+        orchestra.updateAgent(m[1], i, { status: 'error', error: String(e.message || e).slice(0, 300) });
+      }).finally(() => {
+        broadcast('orchestra');
+        // semua selesai → masuk review
+        const cur = orchestra.getOrchestration(m[1]);
+        if (cur && !cur.agents.some((x) => x.status === 'running' || x.status === 'pending')) {
+          orchestra.patchOrchestration(m[1], { state: 'reviewing' });
+          broadcast('orchestra');
+        }
+      });
+    });
+    broadcast('orchestra');
+    return sendJson(res, 200, { ok: true, started: true, agents: o.agents.length });
+  }
+  // merge agent yang lulus ke cabang team
+  if ((m = p.match(/^\/api\/orchestra\/([a-f0-9]+)\/merge$/)) && method === 'POST') {
+    try {
+      const r = orchestra.mergeOrchestration(m[1]);
+      broadcast('orchestra');
+      return sendJson(res, 200, r);
+    } catch (e) {
+      return sendJson(res, e.statusCode || 500, { error: e.message });
+    }
+  }
+  // ekspor patch hasil gabungan (untuk diterapkan user ke repo aslinya)
+  if ((m = p.match(/^\/api\/orchestra\/([a-f0-9]+)\/patch$/)) && method === 'GET') {
+    const patch = orchestra.exportPatch(m[1]);
+    res.writeHead(200, {
+      'content-type': 'text/x-diff; charset=utf-8',
+      'content-disposition': `attachment; filename="orchestra-${m[1].slice(0, 6)}.patch"`,
+    });
+    return res.end(patch || '(tidak ada perubahan)');
   }
 
   // cadangan & pulihkan

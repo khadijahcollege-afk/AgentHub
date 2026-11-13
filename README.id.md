@@ -89,7 +89,7 @@ state yang sengaja dibiarkan lokal — ada di [`STATE-MACHINES.md`](STATE-MACHIN
 ```bash
 npm run machines   # regenerasi public/machines.js
 npm run check      # gagal bila file hasil generate drift, lalu jalankan tes
-npm test           # 114 tes: mesin, kontrak HTTP, run + stop, pemulihan, workspace, pencarian, riwayat, promo pass, lampiran, prompt, PWA, jadwal, cadangan
+npm test           # 130 tes: mesin, kontrak HTTP, run + stop, pemulihan, workspace, pencarian, riwayat, promo pass, lampiran, prompt, PWA, jadwal, cadangan, orchestrator, konteks, tema, dropdown, pulse, update
 ```
 
 Agent yang mengemudikan aplikasi tidak perlu menebak; kontraknya disajikan lewat HTTP:
