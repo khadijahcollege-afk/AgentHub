@@ -3065,9 +3065,10 @@ window.__ahMachines = {
   function passBalanceCard(m, p) {
     return `<div class="pp-balance">
       <div class="pp-bal-name" title="${esc(m.label)}">${esc(m.label)}</div>
-      <div class="pp-bal-pct"><b>${m.pct}%</b><span>${esc(p.resetLabel)}</span></div>
+      <div class="pp-bal-pct"><b>${m.pct}%</b><span>terpakai · reset ${esc(p.resetLabel)}</span></div>
       <div class="pp-bal-bar"><i style="width:${m.pct}%"></i></div>
       <div class="pp-bal-used">${fmtNum(m.used)} / ${fmtNum(m.quota)}</div>
+      ${m.pct === 0 ? '<div class="pp-bal-hint">belum dipakai — kirim prompt GLM via gateway</div>' : ''}
     </div>`;
   }
 
@@ -3176,7 +3177,7 @@ window.__ahMachines = {
           <div class="pp-expiry">Expires ${ppPlanDate(p.planExpiresAt)}</div>
         </div>
         <div class="pp-divider"></div>
-        <div class="pp-balance-label">Today's balance</div>
+        <div class="pp-balance-label">Pemakaian hari ini</div>
         <div class="pp-balances">${p.models.map((m) => passBalanceCard(m, p)).join('')}</div>
       </div>
 

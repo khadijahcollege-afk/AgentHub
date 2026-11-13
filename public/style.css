@@ -1883,3 +1883,5 @@ html[data-theme="light"] video {
 .orch-agent .err-text { color: var(--err); font-size: 10px; }
 .orch-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .orch-actions .btn.tiny { min-width: 80px; }
+
+.pp-bal-hint { font-size: 10px; color: var(--muted); margin-top: 3px; font-style: italic; }
