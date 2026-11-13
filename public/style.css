@@ -1887,3 +1887,12 @@ html[data-theme="light"] video {
 .pp-bal-hint { font-size: 10px; color: var(--muted); margin-top: 3px; font-style: italic; }
 
 .token-est { font-size: 10px; color: var(--muted); white-space: nowrap; }
+
+.orch-engines-wrap { margin: 10px 0; }
+.orch-engines { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.orch-eng-label {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: #1b1b1e; border: 1px solid #2c2c31; border-radius: 8px;
+  padding: 7px 14px; font-size: 12px; color: #d6d6dc; cursor: pointer;
+}
+.orch-eng-label input { accent-color: var(--accent); }

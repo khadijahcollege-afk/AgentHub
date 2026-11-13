@@ -3662,6 +3662,7 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
     $$('#settings-nav .set-nav-item').forEach((b) => b.classList.toggle('active', b.dataset.setNav === id));
     if (id === 'schedules') renderSchedules();
     if (id === 'desktop') checkUpdates(true);
+    if (id === 'orchestra') { renderOrchestra(); renderOrchestraEngines(); }
   }
 
   // ---------- dropdown custom untuk semua <select> ----------
@@ -3926,7 +3927,7 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
       await api('/api/orchestra', { method: 'POST', body: JSON.stringify({
         name: $('#orch-name').value.trim(),
         prompt: $('#orch-prompt').value.trim(),
-        agents: (engines || []).filter((e) => e.type === 'cli' && e.available).map((e) => e.id),
+        agents: $('#orch-engines .orch-eng:checked').map((c) => c.dataset.eng),
         baseDir: $('#orch-basedir').value.trim(),
         testCommand: $('#orch-ci').value.trim(),
       }) });
@@ -3935,6 +3936,14 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
     } catch (e) { toast(e.message); }
   });
 
+  function renderOrchestraEngines() {
+    const host = $('#orch-engines');
+    if (!host) return;
+    const cli = (engines || []).filter((e) => e.type === 'cli' && e.available);
+    host.innerHTML = cli.map((e) =>
+      '<label class="orch-eng-label"><input type="checkbox" class="orch-eng" data-eng="' + esc(e.id) + '" checked> ' + esc(e.label) + '</label>'
+    ).join('') || '<p class="muted small">Tidak ada engine CLI terdeteksi. Pasang Claude Code/Codex/OpenCode/Gemini CLI.</p>';
+  }
   function renderSettings() {
     const c = state.config;
     $('#set-refresh').value = c.refreshHours;
