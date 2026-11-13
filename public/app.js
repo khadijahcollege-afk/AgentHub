@@ -2413,9 +2413,11 @@ window.__ahMachines = {
     // jangan buang pilihan user saat SSE memicu render ulang
     const checked = new Set($$('#del-engines input[data-del]:checked').map((i) => i.value));
     $('#del-engines').innerHTML = engines.map((e) => `
-      <label class="switch-row del-engine ${e.available ? '' : 'off'}">
+      <label class="del-eng-card ${e.available ? '' : 'del-off'} ${checked.has(e.id) ? 'del-checked' : ''}">
         <input type="checkbox" value="${esc(e.id)}" data-del ${e.available ? '' : 'disabled'} ${checked.has(e.id) ? 'checked' : ''}>
-        <span>${icon(e.id)} ${esc(e.label)} <span class="muted small">${esc(e.note || '')}</span></span>
+        <span class="del-eng-ico">${icon(e.id)}</span>
+        <span class="del-eng-name">${esc(e.label)}</span>
+        <span class="del-eng-note">${e.available ? 'siap' : 'tidak terdeteksi'}</span>
       </label>`).join('');
   }
 

@@ -570,14 +570,21 @@
 
 <!-- Delegation overlay -->
 <div id="delegate-overlay" class="overlay hidden">
-  <div class="overlay-card">
-    <h3>Delegation — satu prompt, banyak agent</h3>
-    <p class="muted small">Prompt yang sama dikirim paralel ke setiap engine. Hasil dikumpulkan di satu thread & task dibuat otomatis.</p>
-    <textarea id="del-prompt" rows="3" placeholder="Tulis prompt untuk didelegasikan…"></textarea>
+  <div class="overlay-card deleg-card" role="dialog" aria-modal="true" aria-labelledby="deleg-title">
+    <div class="deleg-head">
+      <span class="deleg-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M7.5 8l3.5 8M16.5 8l-3.5 8"/></svg></span>
+      <div>
+        <h3 id="deleg-title">Delegation</h3>
+        <p class="muted small">Satu prompt dikirim paralel ke setiap agent.</p>
+      </div>
+    </div>
+    <label class="deleg-label">Prompt</label>
+    <textarea id="del-prompt" rows="4" placeholder="Tulis tugas untuk dikerjakan tim…"></textarea>
+    <label class="deleg-label">Pilih agent</label>
     <div id="del-engines" class="del-engines"></div>
-    <div class="form-actions" style="margin-top:12px">
-      <button id="btn-del-start" class="btn primary">Jalankan delegation</button>
-      <button id="btn-del-cancel" class="btn">Batal</button>
+    <div class="deleg-actions">
+      <button id="btn-del-start" class="btn primary" type="button"><svg class="ico" viewBox="0 0 24 24"><path d="M13 2.5 4.5 13.5H11l-1 8L18.5 10H12z"/></svg> Jalankan</button>
+      <button id="btn-del-cancel" class="btn" type="button">Batal</button>
     </div>
     <div id="del-progress" class="hidden" style="margin-top:12px"></div>
   </div>
