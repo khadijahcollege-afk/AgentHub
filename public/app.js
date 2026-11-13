@@ -2794,6 +2794,28 @@ window.__ahMachines = {
     const key = String(provider || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
     return PRESET_FOR_PROVIDER[key] || 'custom';
   }
+  // Deteksi preset dari ID model lengkap (bukan hanya provider). Model yang
+  // jalannya lewat OpenRouter (mis. "kilo/openrouter/auto") → preset openrouter.
+  function presetForModel(modelId, provider) {
+    const id = String(modelId || '').toLowerCase();
+    if (id.includes('openrouter')) return 'openrouter';
+    if (id.includes('groq')) return 'groq';
+    if (id.includes('gemini') || id.includes('google')) return 'gemini';
+    if (id.includes('cerebras')) return 'cerebras';
+    if (id.includes('mistral')) return 'mistral';
+    if (id.includes('deepseek')) return 'deepseek';
+    if (id.includes('together')) return 'together';
+    if (id.includes('github')) return 'github';
+    if (id.includes('bigmodel') || id.includes('glm')) return 'glm';
+    if (id.includes('huggingface') || id.includes('hf/')) return 'hf';
+    if (id.includes('xai') || id.includes('grok')) return 'xai';
+    const p = presetForProvider(provider);
+    if (p !== 'custom') return p;
+    // fallback: prefix pertama model ID serupa nama preset
+    const first = id.split('/')[0];
+    if (PRESET_FOR_PROVIDER[first]) return PRESET_FOR_PROVIDER[first];
+    return 'custom';
+  }
   function gatewayEnvText() {
     const s = state?.server;
     const gw = `${(s?.lanUrl || 'http://127.0.0.1:7788').replace(/\/+$/, '')}/v1`;
@@ -3032,7 +3054,7 @@ window.__ahMachines = {
           <span class="spc-logo">A</span><b>AGENTHUB</b><span class="spc-series">GLOBAL BUILD</span>
           <button class="spc-x" data-pp-act="dismiss" title="Sembunyikan kartu promo" aria-label="Sembunyikan kartu promo">✕</button>
         </div>
-        <div class="spc-tokens"><b>${p.phase === 'expired' ? '0' : '300M'}</b><span>tokens</span></div>
+        <div class="spc-tokens"><b>${p.phase === 'expired' ? '0' : fmtCtx(p.headlineTokens)}</b><span>tokens</span></div>
         <div class="spc-foot">
           <span class="spc-phase ${esc(p.phase)}"><i></i>${esc(PASS_PHASE_TEXT[p.phase] || p.phase)} · ${esc(ppShort(p.planExpiresAt))}</span>
           <button class="spc-claim" data-pp-act="open-plan">Lihat</button>
@@ -3104,7 +3126,7 @@ window.__ahMachines = {
             <h3>${fmtNum(p.headlineTokens)} token untuk agent Anda</h3>
             <p>Klaim tiket AgentHub Global Build dan dapatkan kuota harian <b>GLM-5.3</b> + <b>GLM-5.3-Flash</b>. Model langsung masuk pool gateway saat tiket aktif.</p>
             <div class="pp-hero-actions">
-              <button class="pp-btn light" data-pp-act="claim">Claim 300M tokens</button>
+              <button class="pp-btn light" data-pp-act="claim">Claim ${fmtCtx(p.headlineTokens)} tokens</button>
               <button class="btn" data-pp-act="open-free">Lihat model gratis</button>
             </div>
             <p class="muted small">Tiket baru aktif ${ppDayLabel(p.startsAt)} ${ppTime(p.startsAt)} — tidak ada biaya, tanpa kartu kredit.</p>
@@ -3187,7 +3209,7 @@ window.__ahMachines = {
       <div class="pp-ticket-tokens"><b>${fmtNum(p.headlineTokens)}</b> <span>Tokens</span></div>
       <div class="pp-ticket-model">
         <svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15" rx="3"/><path d="M8 3v4M16 3v4M3.5 10h17"/></svg>
-        GLM-5.3-Flash · 300M Tokens
+        GLM-5.3-Flash · ${fmtNum(p.headlineTokens)} Tokens
       </div>
       <div class="pp-ticket-cut" aria-hidden="true"><i></i><i></i></div>
       <div class="pp-ticket-valid">Valid until <span>${ppTicketDate(p.ticketValidUntil)}</span></div>
@@ -3380,7 +3402,7 @@ window.__ahMachines = {
 
     const cross = state.snapshot?.sources?.cross?.models || [];
     const crossFiltered = q ? cross.filter((m) => (m.name + ' ' + m.id + ' ' + m.provider).toLowerCase().includes(q)) : cross;
-    const crossPreset = (m) => presetForProvider(m.provider);
+    const crossPreset = (m) => presetForModel(m.id, m.provider);
     $('#promo-cross').innerHTML = crossFiltered.length
       ? `<p class="muted small" style="margin-bottom:12px">${cross.length} model gratis lintas provider — sumber: <a href="https://models.dev" target="_blank" rel="noreferrer">models.dev</a></p>
         <div class="model-grid">${crossFiltered.slice(0, 120).map((m) => `

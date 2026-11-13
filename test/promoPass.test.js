@@ -95,9 +95,9 @@ test('fase: available → pending → active → expired', () => {
 
 test('saldo: upgrade menambah 50% per tingkat', () => {
   const model = PASS_PLAN.models.find((m) => m.id === 'glm-5.3-flash');
-  assert.equal(quotaFor({ boosts: 0 }, model), 5_000_000);
-  assert.equal(quotaFor({ boosts: 1 }, model), 7_500_000);
-  assert.equal(quotaFor({ boosts: 2 }, model), 10_000_000);
+  assert.equal(quotaFor({ boosts: 0 }, model), 8_000_000);
+  assert.equal(quotaFor({ boosts: 1 }, model), 12_000_000);
+  assert.equal(quotaFor({ boosts: 2 }, model), 16_000_000);
 });
 
 test('hari penagihan berganti pukul 22:59, bukan tengah malam', () => {
@@ -126,10 +126,10 @@ test('publicPass: model, visi, kuota, dan label awal konsisten', () => {
   assert.equal(pub.phase, 'available');
   assert.equal(pub.models.length, 2);
   assert.equal(pub.models[1].vision, true);
-  assert.equal(pub.models[1].quota, 5_000_000);
+  assert.equal(pub.models[1].quota, 8_000_000);
   assert.equal(pub.models[0].enabled, true);
   assert.equal(pub.quotaLabel, '100% Quota');
-  assert.equal(pub.headlineTokens, 300_000_000);
+  assert.equal(pub.headlineTokens, 500_000_000);
 });
 
 test('publicPass: daftar benefit plan dengan kuota dinamis mengikuti boost', () => {
@@ -227,7 +227,7 @@ test('upgrade: +50% kuota dan batas tingkat aman', async () => {
   assert.equal(r.status, 200);
   const p = (await r.json()).pass;
   assert.equal(p.quotaLabel, '150% Quota');
-  assert.equal(p.models.find((m) => m.id === 'glm-5.3-flash').quota, 7_500_000);
+  assert.equal(p.models.find((m) => m.id === 'glm-5.3-flash').quota, 12_000_000);
 
   for (let i = 0; i < 3; i++) await action('upgrade');
   const max = await action('upgrade');
@@ -251,7 +251,7 @@ test('share: teks membawa brand dan kuota, waktu bagikan tersimpan', async () =>
   assert.equal(r.status, 200);
   const j = await r.json();
   assert.match(j.text, /AgentHub GLOBAL BUILD/);
-  assert.match(j.text, /300,000,000/);
+  assert.match(j.text, /500,000,000/);
   assert.ok(j.pass.sharedAt > 0);
 });
 

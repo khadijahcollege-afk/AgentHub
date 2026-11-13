@@ -1,6 +1,16 @@
 # Changelog
 
 ## Unreleased — 2026-11-13
+- **Promo Pass 500M** — headline tokens dan kuota harian diperbarui ke 500M
+  (sesuai ZCode Global Build terbaru): GLM-5.3 5M/hari, GLM-5.3-Flash 8M/hari.
+  Semua referensi 300M hardcoded di UI (sidebar card, tombol claim, tiket)
+  diganti nilai dinamis dari `headlineTokens`.
+- **Deteksi provider dari model ID** — `presetForModel(modelId, provider)`
+  mendeteksi provider dari pola ID model (openrouter, groq, gemini, cerebras,
+  mistral, deepseek, github, glm, hf, xai) sehingga model seperti
+  `kilo/openrouter/auto` terdeteksi sebagai openrouter (sebelumnya custom →
+  Base URL kosong di dialog adopsi). Kartu model lintas provider kini pakai
+  deteksi ini sehingga "Pakai langsung" bekerja untuk lebih banyak model.
 - **Orchestrator** — tim agent AI bekerja paralel di cabang git sendiri,
   lalu hasilnya ditinjau, digabung, dan diekspor sebagai patch. Mekanisme:
   `lib/orchestra.js` (mirror repo + branch + worktree per agent, commit,
