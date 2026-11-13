@@ -21,7 +21,7 @@ Dua bagian yang sengaja dipisah supaya jujur:
 | Installer Windows (Electron bundling) | 78 MB | artefak build |
 | Portable ZIP (tanpa shell desktop) | 33 MB | artefak build |
 | Dependensi npm (server) | **0** | `package.json` |
-| Tes otomatis | **117 lulus** (`npm run check`) | `node --test test/*.test.js` |
+| Tes otomatis | **130 lulus** (`npm run check`) | `node --test test/*.test.js` |
 | Kode | ~3.800 baris `lib/` (server) + ~6.900 baris UI (vanilla JS/CSS/HTML) | `wc -l` |
 
 Cara baca: angka ini menyatakan **biaya berjalan** (mulai, memori, latensi),
@@ -64,6 +64,10 @@ saris publik Nov 2026; kolom AgentHub = terverifikasi tes/UI di repo ini.
 | Identitas perangkat (ID + salin) | ✓ | ✓ | ✓ | parsial | ✓ | ✓ | ✓ |
 | Overlay pintasan yang bisa diklik | ✓ | parsial | ✓ | ✓ | ✓ | ✓ | parsial |
 | Statistik sesi + konteks + cache hit | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | parsial |
+| Orchestrator (tim agent paralel di cabang git) | ✓ | ❌ | ❌ | ❌ | ⚠️ | ⚠️ | ❌ |
+| Thread tags/koleksi | ✓ | ✅ | ❌ | ❌ | ⚠️ | ⚠️ | ✅ |
+| Pulse konektor (sparkline + check-all) | ✓ | ❌ | ❌ | ❌ | ⚠️ | ❌ | ❌ |
+| Tema terang/gelap/sistem | ✓ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ |
 | MCP | ✕ (CLI native) | ✓ | ✓ | ✓ | parsial | ✓ | parsial |
 | Buat gambar/video/musik | ✕ | ✓ | parsial | ✕ | ✕ | ✕ | ✓ |
 | Web search bawaan | ✕ | ✓ | ✓ | ✕ | parsial | ✓ | ✓ |
