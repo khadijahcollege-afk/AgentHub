@@ -1240,6 +1240,16 @@ window.__ahMachines = {
     }));
     positionPop('#mention-pop', '#composer');
   }
+  // estimasi token composer (chars/4 — perkiraan kasar untuk model umum)
+  function updateTokenEst() {
+    const el = $('#token-est');
+    if (!el) return;
+    const text = $('#composer-input').value.trim();
+    if (!text) { el.textContent = ''; return; }
+    const tokens = Math.ceil(text.length / 4);
+    el.textContent = `≈\${tokens.toLocaleString('en-US')} tok`;
+  }
+  $('#composer-input').addEventListener('input', updateTokenEst);
   $('#composer-input').addEventListener('input', (e) => {
     const ta = e.target;
     const m = ta.value.match(/@([^\s@]*)$/);
@@ -1907,6 +1917,9 @@ window.__ahMachines = {
     hide('#hero-continue', !empty);
     hide('#btn-chat-del', !curThread);
     hide('#btn-session-info', !curThread);
+    hide('#btn-sys-prompt', !curThread);
+    if (curThread?.systemPrompt) $('#sys-prompt-badge').classList.remove('hidden');
+    else $('#sys-prompt-badge')?.classList.add('hidden');
     const top = $('#chat-top');
     if (top) top.classList.toggle('ghost-top', empty);
   }
@@ -2202,6 +2215,24 @@ window.__ahMachines = {
     setLayer('session');
     positionPop('#session-pop', '#btn-session-info');
   }
+  $('#btn-sys-prompt').addEventListener('click', async () => {
+    if (!curThread) return;
+    const cur = curThread.systemPrompt || '';
+    const v = await askPrompt('System prompt — instruksi persisten untuk agent di thread ini (diprepend ke setiap pesan).', cur, {
+      title: 'System prompt',
+      placeholder: 'mis. Balas dalam Bahasa Indonesia. Selalu sebutkan sumber berkas.',
+      okLabel: 'Simpan',
+      requireValue: false,
+    });
+    if (v == null) return;
+    const trimmed = v.trim();
+    try {
+      await api(`/api/threads/${curThread.id}`, { method: 'POST', body: JSON.stringify({ systemPrompt: trimmed }) });
+      curThread.systemPrompt = trimmed;
+      $('#sys-prompt-badge').classList.toggle('hidden', !trimmed);
+      toast(trimmed ? 'System prompt disimpan' : 'System prompt dihapus');
+    } catch (e) { toast('Gagal: ' + e.message); }
+  });
   $('#btn-session-info').addEventListener('click', () => {
     if (layer === 'session') setLayer(null);
     else openSessionInfo();
@@ -2248,7 +2279,8 @@ window.__ahMachines = {
     // Lampiran saja (tanpa teks) tetap boleh dikirim: file sering jadi prompt.
     // Regenerate tidak membawa chip composer supaya tidak mengirim file dua kali.
     const sending = directPrompt ? [] : pendingAttachments.slice();
-    const prompt = (directPrompt ?? typed).trim();
+    const sysP = curThread?.systemPrompt?.trim();
+    const prompt = sysP ? sysP + '\\n\\n' + (directPrompt ?? typed).trim() : (directPrompt ?? typed).trim();
     if (!prompt && !sending.length) return;
     setRun('running');
     runCtrl = new AbortController();

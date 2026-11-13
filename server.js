@@ -822,6 +822,7 @@ async function route(req, res) {
         }
       }
       if (Array.isArray(b.tags)) patch.tags = threads.sanitizeTags(b.tags);
+      if (typeof b.systemPrompt === 'string') patch.systemPrompt = b.systemPrompt.trim().slice(0, 4000) || null;
       if (!Object.keys(patch).length) return sendJson(res, 400, { error: 'Tidak ada yang bisa diubah' });
       const t = threads.patchThread(m[1], patch);
       broadcast('threads');

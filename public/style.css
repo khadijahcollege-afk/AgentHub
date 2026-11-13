@@ -1885,3 +1885,5 @@ html[data-theme="light"] video {
 .orch-actions .btn.tiny { min-width: 80px; }
 
 .pp-bal-hint { font-size: 10px; color: var(--muted); margin-top: 3px; font-style: italic; }
+
+.token-est { font-size: 10px; color: var(--muted); white-space: nowrap; }
