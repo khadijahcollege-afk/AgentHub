@@ -64,9 +64,9 @@ saris publik Nov 2026; kolom AgentHub = terverifikasi tes/UI di repo ini.
 | Identitas perangkat (ID + salin) | ✓ | ✓ | ✓ | parsial | ✓ | ✓ | ✓ |
 | Overlay pintasan yang bisa diklik | ✓ | parsial | ✓ | ✓ | ✓ | ✓ | parsial |
 | Statistik sesi + konteks + cache hit | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | parsial |
-| Orchestrator (tim agent paralel di cabang git) | ✓ | ❌ | ❌ | ❌ | ⚠️ | ⚠️ | ❌ |
-| Thread tags/koleksi | ✓ | ✅ | ❌ | ❌ | ⚠️ | ⚠️ | ✅ |
-| Pulse konektor (sparkline + check-all) | ✓ | ❌ | ❌ | ❌ | ⚠️ | ❌ | ❌ |
+| Orchestrator (tim agent paralel di cabang git) | ✓ | ❌ | ❌ | ❌ | parsial | parsial | ❌ |
+| Thread tags/koleksi | ✓ | ✅ | ❌ | ❌ | parsial | parsial | ✅ |
+| Pulse konektor (sparkline + check-all) | ✓ | ❌ | ❌ | ❌ | parsial | ❌ | ❌ |
 | Tema terang/gelap/sistem | ✓ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ |
 | MCP | ✕ (CLI native) | ✓ | ✓ | ✓ | parsial | ✓ | parsial |
 | Buat gambar/video/musik | ✕ | ✓ | parsial | ✕ | ✕ | ✕ | ✓ |
