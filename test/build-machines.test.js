@@ -21,7 +21,8 @@ test('machines: sumber CRLF menghasilkan output LF yang identik', () => {
   try {
     const src = path.join(dir, 'lib-machines.js');
     const outFile = path.join(dir, 'public-machines.js');
-    const original = fs.readFileSync(SRC, 'utf8');
+    // normalisasi dulu: clone ini sendiri bisa sudah ber-CRLF
+    const original = fs.readFileSync(SRC, 'utf8').replace(/\r\n/g, '\n');
     const expected = render(SRC);
 
     // sumber ber-CRLF (kondisi checkout CI Windows) → output tetap LF
