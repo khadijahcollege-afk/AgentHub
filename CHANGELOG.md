@@ -1,6 +1,14 @@
 # Changelog
 
 ## Unreleased — 2026-11-13
+- **CI hijau di GitHub Actions** — runner Windows checkout dengan
+  `core.autocrlf=true`, jadi `lib/machines.js` dan `public/machines.js` ber-CRLF
+  sementara hasil generate ber-LF; langkah `build-machines --check` gagal
+  padahal isinya sama. `render()` dan `--check` kini menormalkan CRLF→LF, plus
+  `.gitattributes` (`* text=auto eol=lf`) agar checkout konsisten di semua OS.
+  Perintah git orkestra membawa identitas eksplisit (`user.name`/`user.email`)
+  karena runner CI tidak punya identitas global. Asersi tes `@ mention` tidak
+  lagi bergantung pada nama folder checkout.
 - **Adopsi model: auto-aktif saat klik** — tombol Pakai di agent kini cek
   key tersimpan SAAT KLIK (bukan hanya saat render kartu), jadi setelah
   menambah key, semua kartu model provider itu langsung berubah jadi

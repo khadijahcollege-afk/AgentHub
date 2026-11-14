@@ -15,8 +15,13 @@ const HEADER = `// DIHASILKAN OTOMATIS dari lib/machines.js — jangan diedit ma
 // Regenerate: node tools/build-machines.mjs
 `;
 
-export function render() {
-  const body = fs.readFileSync(SRC, 'utf8');
+// Normalisasi CRLF → LF. Checkout Windows (core.autocrlf=true, seperti di
+// runner GitHub Actions) memberi akhir baris berbeda; tanpa ini hasil generate
+// tidak deterministik antar mesin dan --check gagal padahal isinya sama.
+function lf(text) { return text.replace(/\r\n/g, '\n'); }
+
+export function render(src = SRC) {
+  const body = lf(fs.readFileSync(src, 'utf8'));
   // buang komentar kepala sumber, ganti dengan penanda generated + ekspor browser
   const stripped = body.replace(/^(\/\/[^\n]*\n)+/, '');
   const plain = stripped.replace(/^export /gm, '');
@@ -27,18 +32,24 @@ export { ${names.join(', ')} };
 `;
 }
 
-const out = render();
-const check = process.argv.includes('--check');
+// Bandingkan dengan normalisasi LF di kedua sisi: aman untuk checkout CRLF.
+export function isSynced(src = SRC, out = OUT) {
+  const cur = fs.existsSync(out) ? lf(fs.readFileSync(out, 'utf8')) : '';
+  return cur === render(src);
+}
 
-if (check) {
-  const cur = fs.existsSync(OUT) ? fs.readFileSync(OUT, 'utf8') : '';
-  if (cur !== out) {
-    console.error('public/machines.js tidak sinkron dengan lib/machines.js — jalankan: node tools/build-machines.mjs');
-    process.exit(1);
+const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (isMain) {
+  if (process.argv.includes('--check')) {
+    if (!isSynced()) {
+      console.error('public/machines.js tidak sinkron dengan lib/machines.js — jalankan: node tools/build-machines.mjs');
+      process.exit(1);
+    }
+    console.log('machines sinkron');
+  } else {
+    fs.mkdirSync(path.dirname(OUT), { recursive: true });
+    fs.writeFileSync(OUT, render());
+    console.log('ditulis', path.relative(ROOT, OUT));
   }
-  console.log('machines sinkron');
-} else {
-  fs.mkdirSync(path.dirname(OUT), { recursive: true });
-  fs.writeFileSync(OUT, out);
-  console.log('ditulis', path.relative(ROOT, OUT));
 }

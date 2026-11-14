@@ -1,0 +1,16 @@
+# Normalisasi akhir baris: checkout selalu LF, di Windows maupun Linux.
+# Tanpa ini runner CI Windows (core.autocrlf=true) memeriksa file CRLF
+# sementara hasil generate memakai LF, sehingga langkah --check gagal.
+* text=auto eol=lf
+
+# Biner: jangan disentuh
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.icns binary
+*.exe  binary
+*.dmg  binary
+*.AppImage binary
+*.zip  binary

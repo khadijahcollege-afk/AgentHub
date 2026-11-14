@@ -325,7 +325,14 @@ test('files: daftar folder untuk @ mention (read-only, tanpa isi file)', async (
   assert.equal(r.status, 200);
   const { entries, cwd } = await r.json();
   assert.ok(Array.isArray(entries));
-  assert.ok(cwd.endsWith('AgentHub') || cwd.endsWith('agenthub'));
+  // path boleh dinormalisasi server (mis. drive case) — bandingkan resolve-nya,
+  // jangan bergantung pada nama folder checkout (Clone/CI bisa beda nama).
+  const samePath = (a, b) => {
+    const na = path.resolve(a);
+    const nb = path.resolve(b);
+    return process.platform === 'win32' ? na.toLowerCase() === nb.toLowerCase() : na === nb;
+  };
+  assert.ok(samePath(cwd, ROOT), `cwd harus ROOT, dapat: ${cwd}`);
   const pkg = entries.find((e) => e.name === 'package.json');
   assert.ok(pkg, 'package.json harus terlihat');
   assert.equal(pkg.dir, false);
