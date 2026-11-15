@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.6.5 — 2026-11-15
+- **Empat free tier ternyata sudah tiada** — audit ke dokumen resmi menemukan
+  katalog masih menjanjikan layanan yang sudah berhenti:
+  - **GitHub Models** pensiun total sejak 30 Juli 2026 (playground, katalog,
+    inference API, BYOK "no longer available to any customer"). Entri lama
+    menyuruh user memakai endpoint yang sudah mati.
+  - **Mistral La Plateforme** — "Free mode ... doesn't include API access";
+    tier Experiment gratis sudah dihapus dari dokumentasi.
+  - **Cerebras** — "doesn't currently offer a no-cost tier that renews
+    automatically"; akun baru hanya $5 kredit setelah menambah kartu, berlaku
+    30 hari.
+  - **Hugging Face Inference** — akun gratis tidak lagi dapat kredit bulanan
+    ("Free Users: None"); PRO $2/bulan.
+- **NVIDIA NIM dikoreksi** — staf NVIDIA menyatakan sistem kredit sudah tidak
+  dipakai dan diganti rate limit, jadi angka "1.000 kredit" usang. Entri
+  duplikat "NVIDIA NIM (update)" dihapus.
+- Katalog: 29 entri sumber, **23 tampil**, 6 disembunyikan.
+
 ## 1.6.4 — 2026-11-15
 - **Promo mati dibuang dari katalog** — Together AI dan xAI (Grok) tidak lagi
   menawarkan yang dijanjikan katalog. Dokumen resmi Together menyatakan
