@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.6.6 — 2026-11-15
+- **Preset mati berhenti ditawarkan** — form "Tambah API key" masih
+  menawarkan **GitHub Models**, padahal layanannya pensiun 30 Juli 2026 dan
+  endpoint `models.inference.ai.azure.com` tidak lagi menjawab. Membersihkan
+  katalog promo saja tidak cukup selama jalur pendaftaran key masih menawarkan
+  provider yang sama.
+- **Ditolak dengan alasan, bukan gagal diam-diam** — `addKey` menolak preset
+  pensiun dengan 400 dan pesan yang menjelaskan sebabnya. Sebelumnya jalur
+  `/api/keys` tidak punya penanganan error sehingga kegagalan berubah jadi 500.
+- **Key lama tidak hilang** — `presetInfo()` tetap memberi label untuk preset
+  pensiun, jadi key berpreset `github` masih tampil di daftar (bisa dihapus atau
+  diedit) alih-alih muncul sebagai id mentah atau lenyap tanpa penjelasan.
+- Preset aktif tetap lengkap: Cerebras, Mistral, Together, dan xAI dipertahankan
+  karena endpoint-nya masih hidup meski free tier-nya sudah berbayar — preset
+  adalah daftar endpoint, bukan daftar promo.
+- Tes: `presets.test.js` (5 tes) plus kontrak `/api/keys` yang memastikan preset
+  pensiun ditolak 400.
+
 ## 1.6.5 — 2026-11-15
 - **Empat free tier ternyata sudah tiada** — audit ke dokumen resmi menemukan
   katalog masih menjanjikan layanan yang sudah berhenti:
