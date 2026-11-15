@@ -10,7 +10,7 @@ import os from 'node:os';
 import { Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { loadConfig, saveConfig, readJson, writeJson, DATA_DIR } from './lib/store.js';
-import { refreshPromo, getCatalog } from './lib/promo.js';
+import { refreshPromo, getCatalog, catalogValiditySummary } from './lib/promo.js';
 import {
   loadPass, claimPass, dismissPass, togglePassModel, addPassModel,
   renamePassModel, upgradePass, markShared, shareText, publicPass, recordUsage,
@@ -309,6 +309,7 @@ function appState() {
     alerts,
     snapshot: snap,
     catalog: getCatalog(),
+    catalogValidity: catalogValiditySummary(),
     promoPass: publicPass(loadPass()),
     pool: poolStatus(),
     server: serverInfo(),

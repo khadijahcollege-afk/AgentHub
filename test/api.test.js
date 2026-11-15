@@ -552,7 +552,13 @@ test('katalog promo: berisi entri hasil riset Nov 2026 dengan sumber', async () 
   for (const c of catalog) {
     assert.ok(c.name && c.url && c.free, `${c.name}: name/url/free wajib`);
     assert.match(c.url, /^https:\/\//, `${c.name}: url harus https`);
+    assert.ok(c.validity, `${c.name}: masing-masing entri membawa status validitas`);
+    assert.notEqual(c.validity.state, 'expired', `${c.name}: promo kedaluwarsa tidak boleh dikirim ke UI`);
   }
+  const summary = state.catalogValidity;
+  assert.ok(summary && typeof summary.active === 'number', 'ringkasan validitas tersedia');
+  assert.equal(summary.active, catalog.length, 'jumlah aktif sama dengan jumlah entri yang dikirim');
+  assert.equal(summary.expired, 0, 'katalog riset masih berlaku');
 });
 
 test('agents: pulse semua konektor — rute check-all idempoten', async () => {

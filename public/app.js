@@ -3671,6 +3671,57 @@ window.__ahMachines = {
     if (p) { renderTicket(p); toast('Tiket diperbarui'); }
   });
 
+  // ---------- promo: validitas & alternatif ----------
+  // Katalog hanya berisi promo yang masih berlaku (server sudah menyaring).
+  // Entri tanpa tanggal berakhir ditandai "tanggal tidak diumumkan" — bukan
+  // dikarang — supaya keputusan user tetap jujur.
+  function promoValidityChip(c) {
+    const v = c.validity || {};
+    if (v.state === 'ending' && v.daysLeft != null) {
+      return `<span class="chip warn">Berakhir ${esc(String(v.daysLeft))} hari lagi</span>`;
+    }
+    if (v.state === 'active' && v.endsAt) return `<span class="chip free">Berlaku</span>`;
+    return '<span class="chip">Tanggal berakhir tidak diumumkan</span>';
+  }
+
+  // Saat tidak ada promo yang valid: jangan biarkan panel kosong. Tawarkan
+  // jalur yang benar-benar tersedia sekarang (model gratis / login provider).
+  function promoCatalogEmpty() {
+    const freeEngines = engines.filter((e) => e.available && e.id.startsWith('opencode-free'));
+    const validity = state.catalogValidity || {};
+    const why = validity.expired
+      ? `${validity.expired} catatan promo sudah berakhir dan disembunyikan.`
+      : 'Belum ada catatan promo yang berlaku saat ini.';
+    return `<div class="promo-empty">
+      <p><b>Tidak ada promo yang berlaku.</b> ${esc(why)}</p>
+      <p class="muted small">Kamu tetap bisa bekerja sekarang lewat jalur gratis yang tidak bergantung pada promo:</p>
+      <div class="model-actions">
+        ${freeEngines.length
+          ? freeEngines.slice(0, 4).map((e) => `<button type="button" class="btn tiny primary" data-promo-alt="${esc(e.id)}">${esc(e.label)}</button>`).join('')
+          : '<button type="button" class="btn tiny" data-promo-alt="openrouter">Login OpenRouter (tanpa tempel key)</button>'}
+        <button type="button" class="btn tiny" data-promo-alt="keys">Tambah API key sendiri</button>
+      </div>
+    </div>`;
+  }
+
+  document.addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-promo-alt]');
+    if (!btn) return;
+    const target = btn.dataset.promoAlt;
+    btn.disabled = true;
+    try {
+      if (target === 'keys') { go('keys'); return; }
+      if (target === 'openrouter') { setPromoPane('free'); return; }
+      const engine = engines.find((x) => x.id === target);
+      if (engine) { await startFreeChat(engine); return; }
+      setPromoPane('free');
+    } catch (err) {
+      toast('Gagal membuka alternatif: ' + err.message);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
   function renderPromo() {
     const models = state.snapshot?.sources?.openrouter?.models || [];
     const q = promoQuery.toLowerCase();
@@ -3719,14 +3770,15 @@ window.__ahMachines = {
         ${crossFiltered.length > 120 ? `<p class="muted small" style="margin-top:12px">Menampilkan 120 dari ${crossFiltered.length} — gunakan pencarian.</p>` : ''}`
       : '<p class="muted">Sumber models.dev belum tersinkron — klik "Cek sekarang".</p>';
 
-    $('#promo-catalog').innerHTML = `<div class="cat-grid">${state.catalog.map((c) => `
+    $('#promo-catalog').innerHTML = state.catalog.length ? `<div class="cat-grid">${state.catalog.map((c) => `
       <div class="cat-card">
         <b>${esc(c.name)}</b>
+        ${promoValidityChip(c)}
         <p>${esc(c.free)}</p>
         <p class="small">${esc(c.note || '')}</p>
         <div class="tags">${(c.tags || []).map((t) => `<span class="chip">${esc(t)}</span>`).join('')}</div>
         <a class="btn primary tiny" href="${esc(c.url)}" target="_blank" rel="noreferrer">Daftar ${icon('external')}</a>
-      </div>`).join('')}</div>`;
+      </div>`).join('')}</div>` : promoCatalogEmpty();
 
     const prov = state.snapshot?.sources?.list?.providers || [];
     $('#promo-list').innerHTML = prov.length
