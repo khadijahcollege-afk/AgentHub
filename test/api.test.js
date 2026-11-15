@@ -354,6 +354,15 @@ test('models: katalog berisi auto dan menolak mask sebagai key', async () => {
   });
   assert.equal(masked.status, 400);
   assert.match((await masked.json()).error, /mask/i);
+
+  // Preset yang layanannya sudah pensiun (GitHub Models, 30 Juli 2026) harus
+  // ditolak sebagai 4xx yang jelas — bukan 500 dan bukan tersimpan diam-diam.
+  const retired = await api('/api/keys', {
+    method: 'POST',
+    body: JSON.stringify({ preset: 'github', key: 'ghp_uji_pensiun', baseUrl: 'https://models.inference.ai.azure.com' }),
+  });
+  assert.equal(retired.status, 400, 'preset pensiun ditolak, bukan diterima');
+  assert.match((await retired.json()).error, /pensiun/i);
 });
 
 test('models: aktif tanpa key baru memakai key tersimpan (tanpa web)', async () => {

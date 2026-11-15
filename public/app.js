@@ -3041,8 +3041,8 @@ window.__ahMachines = {
     adoptModelId = String(modelId || '');
     $('#adopt-model').textContent = adoptModelId;
     const sel = $('#adopt-preset');
-    sel.innerHTML = Object.entries(state.keyPresets).map(([k, v]) => `<option value="${k}">${esc(v.label)}</option>`).join('');
-    sel.value = state.keyPresets[preset] ? preset : 'custom';
+    sel.innerHTML = presetEntries().map(([k, v]) => `<option value="${k}">${esc(v.label)}</option>`).join('');
+    sel.value = presetEntries().some(([k]) => k === preset) ? preset : 'custom';
     // dispatch change agar dropdown custom memperbarui label tombolnya
     sel.dispatchEvent(new Event('change', { bubbles: true }));
     syncAdoptPreset();
@@ -4479,11 +4479,19 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
 
   // ---------- form: key ----------
   const presetSel = $('#key-preset');
+  // Preset pensiun tidak ditawarkan untuk key BARU (endpoint-nya sudah mati),
+  // tapi key lama berpreset itu tetap harus tampil di daftar supaya bisa
+  // dihapus/diedit — bukan hilang tanpa penjelasan.
+  function presetEntries() {
+    return Object.entries(state.keyPresets || {})
+      .filter(([k]) => !state.retiredPresets?.[k])
+      .sort(([, a], [, b]) => (a.label === 'Custom (OpenAI-compatible)' ? 1 : 0) - (b.label === 'Custom (OpenAI-compatible)' ? 1 : 0));
+  }
   function fillPresets() {
     if (!state) return;
     const cur = presetSel.value;
-    presetSel.innerHTML = Object.entries(state.keyPresets).map(([k, v]) => `<option value="${k}">${esc(v.label)}</option>`).join('');
-    if (cur) presetSel.value = cur;
+    presetSel.innerHTML = presetEntries().map(([k, v]) => `<option value="${k}">${esc(v.label)}</option>`).join('');
+    if (cur && presetEntries().some(([k]) => k === cur)) presetSel.value = cur;
   }
   presetSel.addEventListener('change', () => {
     const p = state.keyPresets[presetSel.value];

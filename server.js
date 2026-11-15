@@ -15,7 +15,7 @@ import {
   loadPass, claimPass, dismissPass, togglePassModel, addPassModel,
   renamePassModel, upgradePass, markShared, shareText, publicPass, recordUsage,
 } from './lib/promoPass.js';
-import { listKeys, addKey, removeKey, checkKey, checkAllKeys, setPool, checkingKeyIds, PRESETS, DEFAULT_MODELS, API_FORMATS } from './lib/keys.js';
+import { listKeys, addKey, removeKey, checkKey, checkAllKeys, setPool, checkingKeyIds, PRESETS, RETIRED_PRESETS, DEFAULT_MODELS, API_FORMATS } from './lib/keys.js';
 import { listAgents, addAgent, removeAgent, checkAgent, checkAllAgents, checkingAgentIds } from './lib/agents.js';
 import { routeChat, testPool, poolStatus, poolModels } from './lib/pool.js';
 import { listEngines, runEngine, usageStats, engineType } from './lib/harness.js';
@@ -304,6 +304,9 @@ function appState() {
     projects: projects.listProjects(),
     environments: environments.listEnvironments(),
     keyPresets: PRESETS,
+    // Preset yang endpoint-nya sudah pensiun. UI memakai ini untuk berhenti
+    // menawarkannya pada key baru, tanpa menyembunyikan key lama yang sah.
+    retiredPresets: RETIRED_PRESETS,
     defaultModels: DEFAULT_MODELS,
     agents: listAgents(),
     alerts,
@@ -717,7 +720,13 @@ async function route(req, res) {
     // membuat promo gratis langsung terpakai agent lewat /v1 tanpa langkah
     // tambahan: simpan key → siap dipanggil.
     if (b.pool === undefined) b.pool = config.autoPool !== false;
-    const entry = addKey(b);
+    let entry;
+    try {
+      entry = addKey(b);
+    } catch (error) {
+      // Preset pensiun / input tidak sah: jawab 4xx, bukan 500.
+      return sendJson(res, error.statusCode || 400, { error: error.message });
+    }
     await checkKey(entry.id).catch(() => {});
     broadcast('keys');
     return sendJson(res, 200, { ok: true, entry: listKeys().find((k) => k.id === entry.id) });
