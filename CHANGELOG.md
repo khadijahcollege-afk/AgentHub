@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.6.7 — 2026-11-16
+- **Tab "Daftar Free-Tier" ikut disaring** — tab itu menampilkan salinan mentah
+  dari repo pihak ketiga (free-llm-api-resources) yang tertinggal berbulan-bulan,
+  sehingga masih menjanjikan **GitHub Models, Cerebras, Mistral La Plateforme,
+  Hugging Face, Together AI, dan xAI** sebagai sumber gratis — provider yang
+  baru saja dikeluarkan dari katalog karena dokumen resminya menyatakan
+  sebaliknya. Dua daftar di aplikasi yang sama saling bertentangan.
+- `lib/retired-providers.js` (baru) jadi satu sumber kebenaran: nama provider,
+  alasan, dan URL dokumen resmi. Hanya yang sudah diverifikasi yang masuk —
+  ragu berarti tidak dimasukkan.
+- `getFreeTierProviders()` mengembalikan daftar tersaring **plus** daftar
+  `hidden` berisi nama dan alasannya, jadi yang dibuang tetap bisa
+  dipertanggungjawabkan alih-alih lenyap diam-diam.
+- UI menampilkan satu baris catatan redup berisi provider yang disembunyikan,
+  bukan menghapusnya tanpa penjelasan.
+- `data/seed-freelist.md` sengaja tidak diedit: file itu hasil generate (kepala
+  file melarang edit langsung), penyaringan terjadi saat dibaca.
+- README (en/id): GitHub Models dibuang dari daftar preset, dan dijelaskan bahwa
+  preset adalah daftar **endpoint**, bukan daftar promo.
+- Tes: `retired-providers.test.js` (8 tes, termasuk pencocokan negatif agar
+  penyaringan tidak kebablasan) + kontrak `/api/state` bahwa kept + hidden =
+  jumlah provider di snapshot.
+
 ## 1.6.6 — 2026-11-15
 - **Preset mati berhenti ditawarkan** — form "Tambah API key" masih
   menawarkan **GitHub Models**, padahal layanannya pensiun 30 Juli 2026 dan
