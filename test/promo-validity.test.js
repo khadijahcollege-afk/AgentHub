@@ -37,3 +37,25 @@ test('tanggal rusak tidak membuat promo hilang', () => {
   assert.equal(promoValidity({ validUntil: 'bukan tanggal' }, NOW).state, 'active');
   assert.equal(activePromos([{ validUntil: 'bukan tanggal' }], NOW).length, 1);
 });
+
+// Katalog nyata: setiap validUntil harus tanggal yang benar-benar bisa diparse,
+// supaya salah ketik tidak diam-diam membuat penyaringan tidak pernah aktif.
+test('katalog: setiap validUntil adalah tanggal yang sah', async () => {
+  const { CATALOG } = await import('../lib/catalog.js');
+  const dated = CATALOG.filter((c) => c.validUntil);
+  assert.ok(dated.length > 0, 'minimal satu entri punya batas waktu resmi');
+  for (const entry of dated) {
+    assert.ok(
+      Number.isFinite(Date.parse(entry.validUntil)),
+      `${entry.name}: validUntil "${entry.validUntil}" tidak bisa diparse`,
+    );
+  }
+});
+
+test('katalog: entri berbatas waktu punya sumber di note-nya', async () => {
+  const { CATALOG } = await import('../lib/catalog.js');
+  for (const entry of CATALOG.filter((c) => c.validUntil || c.expired === true)) {
+    assert.match(entry.note, /sumber|tencentcloud|docs\.|Sumber|updated|diperbarui/i,
+      `${entry.name}: entri berbatas waktu wajib menyebut sumber, bukan tanggal karangan`);
+  }
+});

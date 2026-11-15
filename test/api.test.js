@@ -544,11 +544,16 @@ test('stats: statistik sesi thread dihitung dari pesan nyata', async () => {
 test('katalog promo: berisi entri hasil riset Nov 2026 dengan sumber', async () => {
   const state = await (await api('/api/state')).json();
   const catalog = state.catalog || [];
-  assert.ok(catalog.length >= 28, `katalog harus >= 28 entri, ada ${catalog.length}`);
-  const names = catalog.map((c) => c.name).join(' | ');
+  // Kehadiran entri riset diuji pada katalog sumber, bukan pada hasil saring:
+  // entri ber-validUntil (mis. Tencent, 31 Des 2026) memang hilang dari
+  // /api/state setelah kampanyenya berakhir, dan itu perilaku yang benar.
+  const source = (await import('../lib/catalog.js')).CATALOG;
+  const names = source.map((c) => c.name).join(' | ');
   for (const expect of ['OVHcloud AI Endpoints', 'Tencent Cloud TokenHub', 'SiliconFlow', 'Z AI (GLM internasional)', 'DeepInfra DeepStart']) {
-    assert.ok(names.includes(expect), `entri riset "${expect}" harus ada`);
+    assert.ok(names.includes(expect), `entri riset "${expect}" harus ada di katalog sumber`);
   }
+  assert.ok(source.length >= 28, `katalog sumber harus >= 28 entri, ada ${source.length}`);
+  assert.ok(catalog.length > 0, 'katalog aktif tidak boleh kosong');
   for (const c of catalog) {
     assert.ok(c.name && c.url && c.free, `${c.name}: name/url/free wajib`);
     assert.match(c.url, /^https:\/\//, `${c.name}: url harus https`);
@@ -558,7 +563,8 @@ test('katalog promo: berisi entri hasil riset Nov 2026 dengan sumber', async () 
   const summary = state.catalogValidity;
   assert.ok(summary && typeof summary.active === 'number', 'ringkasan validitas tersedia');
   assert.equal(summary.active, catalog.length, 'jumlah aktif sama dengan jumlah entri yang dikirim');
-  assert.equal(summary.expired, 0, 'katalog riset masih berlaku');
+  assert.equal(summary.expired, 0, 'tidak ada entri kedaluwarsa yang lolos ke UI');
+  assert.equal(summary.total, summary.active + summary.expired, 'total = aktif + kedaluwarsa');
 });
 
 test('agents: pulse semua konektor — rute check-all idempoten', async () => {
