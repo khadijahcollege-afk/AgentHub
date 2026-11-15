@@ -919,6 +919,10 @@ label { display: flex; flex-direction: column; gap: 5px; font-size: 11.5px; colo
 .ftl-table { width: 100%; font-size: 11.5px; border-collapse: collapse; margin-top: 6px; }
 .ftl-table td, .ftl-table th { padding: 4px 8px; border-bottom: 1px solid #242428; text-align: left; }
 .ftl-table th { color: var(--muted); font-weight: 600; }
+/* Catatan kecil di bawah daftar: provider yang disembunyikan karena sudah
+   tidak memberi akses gratis. Sengaja redup supaya tidak bersaing dengan
+   kartu provider yang masih hidup. */
+.ftl-hidden { margin-top: 12px; font-size: 11.5px; line-height: 1.6; color: var(--muted); opacity: .85; }
 
 /* ---------- item list ---------- */
 .item-list { display: flex; flex-direction: column; gap: 9px; }

@@ -3780,16 +3780,18 @@ window.__ahMachines = {
         <a class="btn primary tiny" href="${esc(c.url)}" target="_blank" rel="noreferrer">Daftar ${icon('external')}</a>
       </div>`).join('')}</div>` : promoCatalogEmpty();
 
-    const prov = state.snapshot?.sources?.list?.providers || [];
+    const freeTier = state.freeTierProviders || { providers: [], hidden: [] };
+    const prov = freeTier.providers;
     $('#promo-list').innerHTML = prov.length
-      ? prov.map((p) => `
+      ? `${prov.map((p) => `
         <div class="ftl-card">
           <h4>${esc(p.name)} <a href="${esc(p.url)}" target="_blank" rel="noreferrer">situs ${icon('external')}</a></h4>
           ${p.limits ? `<p class="small"><b>Limit:</b> ${esc(p.limits)}</p>` : ''}
           ${(p.notes || []).map((n) => `<p class="muted small">${esc(n)}</p>`).join('')}
           ${p.models.length ? `<div class="ftl-models">${p.models.map((m) => `<a href="${esc(m.url)}" target="_blank" rel="noreferrer">${esc(m.name)}</a>`).join('')}</div>` : ''}
           ${p.rows.length ? `<table class="ftl-table">${p.rows.map((r, i) => `<tr>${r.map((c) => (i === 0 ? `<th>${esc(c)}</th>` : `<td>${esc(c)}</td>`)).join('')}</tr>`).join('')}</table>` : ''}
-        </div>`).join('')
+        </div>`).join('')}
+        ${freeTier.hidden.length ? `<p class="muted small ftl-hidden">${freeTier.hidden.length} provider disembunyikan karena tidak lagi memberi akses gratis: ${freeTier.hidden.map((h) => esc(h.name)).join(', ')}.</p>` : ''}`
       : '<p class="muted">Sumber GitHub belum tersinkron — klik "Cek sekarang".</p>';
   }
 

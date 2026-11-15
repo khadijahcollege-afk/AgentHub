@@ -10,7 +10,7 @@ import os from 'node:os';
 import { Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { loadConfig, saveConfig, readJson, writeJson, DATA_DIR } from './lib/store.js';
-import { refreshPromo, getCatalog, catalogValiditySummary } from './lib/promo.js';
+import { refreshPromo, getCatalog, catalogValiditySummary, getFreeTierProviders } from './lib/promo.js';
 import {
   loadPass, claimPass, dismissPass, togglePassModel, addPassModel,
   renamePassModel, upgradePass, markShared, shareText, publicPass, recordUsage,
@@ -311,6 +311,10 @@ function appState() {
     agents: listAgents(),
     alerts,
     snapshot: snap,
+    // Daftar free-tier pihak ketiga sudah disaring dari provider yang pensiun.
+    // UI memakai ini, bukan state.snapshot mentah, supaya daftar eksternal yang
+    // tertinggal tidak lagi menjanjikan layanan yang sudah tiada.
+    freeTierProviders: getFreeTierProviders(snap),
     catalog: getCatalog(),
     catalogValidity: catalogValiditySummary(),
     promoPass: publicPass(loadPass()),

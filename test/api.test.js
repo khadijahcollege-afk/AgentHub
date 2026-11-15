@@ -582,6 +582,30 @@ test('katalog promo: berisi entri hasil riset Nov 2026 dengan sumber', async () 
   assert.equal(summary.total, source.length, 'total mencakup seluruh katalog sumber');
 });
 
+test('daftar free-tier: /api/state mengirim daftar tersaring, bukan snapshot mentah', async () => {
+  const state = await (await api('/api/state')).json();
+  const ft = state.freeTierProviders;
+  assert.ok(ft, '/api/state wajib mengirim freeTierProviders');
+  assert.ok(Array.isArray(ft.providers), 'providers berupa array');
+  assert.ok(Array.isArray(ft.hidden), 'hidden berupa array');
+
+  // Server uji berjalan tanpa snapshot jaringan, jadi daftarnya kosong. Yang
+  // dikunci di sini adalah bentuk kontrak dan bahwa isinya benar-benar hasil
+  // penyaringan: tidak ada provider pensiun yang lolos, dan tidak ada provider
+  // yang hilang tanpa jejak (kept + hidden = jumlah di snapshot).
+  const names = ft.providers.map((p) => String(p.name));
+  const has = (re) => names.some((n) => re.test(n));
+  assert.equal(has(/github\s*models/i), false, 'GitHub Models tidak boleh muncul lagi');
+  assert.equal(has(/^cerebras$/i), false, 'Cerebras tidak lagi memberi akses gratis');
+  assert.equal(has(/^together/i), false, 'Together AI tidak lagi memberi akses gratis');
+
+  const raw = state.snapshot?.sources?.list?.providers?.length || 0;
+  assert.equal(ft.providers.length + ft.hidden.length, raw, 'tidak ada provider yang hilang tanpa jejak');
+  for (const h of ft.hidden) {
+    assert.ok(h.name && h.reason, 'setiap yang disembunyikan menyebut nama dan alasannya');
+  }
+});
+
 test('agents: pulse semua konektor — rute check-all idempoten', async () => {
   const r = await api('/api/agents/check-all', { method: 'POST' });
   assert.equal(r.status, 200);

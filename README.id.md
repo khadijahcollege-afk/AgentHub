@@ -24,7 +24,7 @@ AgentHub memantau **promo model & API AI gratis** dari berbagai sumber internet,
 - <img src="assets/icons/pin.svg" width="14" align="absmiddle"> **Promo Pass / Start Plan** — klaim tiket AgentHub Global Build (300 juta token, GLM-5.3 + GLM-5.3-Flash dengan Vision) dari kartu sidebar atau tampilan Promo. Tiket menampilkan jadwal drop dan masa berlaku; Start Plan menampilkan saldo harian per model (reset 22:59), toggle model, ubah nama tampilan, tambah model, dan upgrade kuota +50%. Kuota berkurang dari `usage.total_tokens` gateway saat model upstream cocok.
 - <img src="assets/icons/paperclip.svg" width="14" align="absmiddle"> **Lampiran** — tarik-lepas, tempel, atau pilih file dan gambar di composer (8 MB per file, 5 per pesan). Engine CLI menerima path absolut; gateway menerima isi teks inline agar model tanpa akses disk tetap bisa membacanya. Gambar tampil sebagai thumbnail di composer dan percakapan.
 - <img src="assets/icons/pool.svg" width="14" align="absmiddle"> **Gateway Pool** — satu endpoint OpenAI-compatible (`/v1/chat/completions`, `/v1/models`). Kena `429` → cooldown 5 menit → traffic pindah otomatis ke provider berikutnya. Key ditolak (401) → otomatis dimatikan dari rotasi. Mendukung streaming (`stream: true`).
-- <img src="assets/icons/lock.svg" width="14" align="absmiddle"> **Brankas API key** — simpan key 11+ preset (Groq, OpenRouter, Cerebras, Gemini, GitHub Models, Mistral, Together, DeepSeek, xAI, GLM, Hugging Face, custom). Re-validasi berkala, key di-mask di UI.
+- <img src="assets/icons/lock.svg" width="14" align="absmiddle"> **Brankas API key** — simpan key 11 preset OpenAI-compatible (Groq, OpenRouter, Cerebras, Gemini, Mistral, Together, DeepSeek, xAI, GLM, Hugging Face, custom). Preset adalah daftar endpoint, bukan daftar promo: yang akses berbayarnya masih jalan tetap ada meski free tier-nya berakhir, sedangkan endpoint yang pensiun (**GitHub Models**) ditolak dengan alasan yang jelas. Re-validasi berkala, key di-mask di UI.
 - <img src="assets/icons/robot.svg" width="14" align="absmiddle"> **Konektor agent** — webhook n8n/Make/custom dan endpoint LLM; health check terjadwal dengan riwayat latensi.
 - <img src="assets/icons/phone.svg" width="14" align="absmiddle"> **Akses dari HP** — pindai QR, buka dashboard yang sama via WiFi. Realtime via SSE, dilindungi token akses.
 - <img src="assets/icons/globe.svg" width="14" align="absmiddle"> **Akses internet (tunnel opsional)** — satu tombol menyalakan quick tunnel Cloudflare, jadi HP bisa membuka AgentHub lewat **data seluler**, bukan hanya WiFi yang sama. Status jujur (mati/menyala/online/error), bawaan mati, satu klik untuk menghentikan.
@@ -63,7 +63,7 @@ node server.js
 
 ## Mulai cepat
 
-1. **Tambah key gratis** — tab API Keys → pilih preset → tempel key (ambil gratis dari katalog: Groq, OpenRouter, Cerebras, …).
+1. **Tambah key gratis** — tab API Keys → pilih preset → tempel key (ambil yang gratis dari katalog: Groq, Google AI Studio, OpenRouter, …).
 2. **Masuk pool** — tekan **"+ Pool"** pada tiap key valid.
 3. **Arahkan agent ke gateway:**
 

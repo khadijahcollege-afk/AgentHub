@@ -17,7 +17,7 @@ AgentHub watches **free AI model promos** from multiple internet sources, connec
 
 ## Why AgentHub?
 
-Free AI API tiers (Groq, Google AI Studio, Cerebras, OpenRouter `:free`, …) are great — until your agent hits the rate limit at the worst moment. AgentHub solves this with a **Gateway Pool**: your agents point at *one* endpoint, and AgentHub rotates through all your free keys.
+Free AI API tiers (Groq, Google AI Studio, OpenRouter `:free`, …) are great — until your agent hits the rate limit at the worst moment. AgentHub solves this with a **Gateway Pool**: your agents point at *one* endpoint, and AgentHub rotates through all your free keys.
 
 - <img src="assets/icons/spark.svg" width="14" align="absmiddle"> **Studio** — chat directly with your agents in a native desktop app: pick an engine, type a prompt, watch it stream. Engines include the **free-token Gateway Pool** and installed **CLI harnesses** (Claude Code, Codex, OpenCode, Gemini CLI — auto-detected).
 - <img src="assets/icons/shuffle.svg" width="14" align="absmiddle"> **Delegation** — send one prompt to several agents in parallel; results are collected into a single thread and a task appears on the board.
@@ -27,7 +27,7 @@ Free AI API tiers (Groq, Google AI Studio, Cerebras, OpenRouter `:free`, …) ar
 - <img src="assets/icons/pin.svg" width="14" align="absmiddle"> **Promo Pass / Start Plan** — claim the AgentHub Global Build ticket (300M tokens, GLM-5.3 + GLM-5.3-Flash with Vision) from the sidebar card or Promo view. The ticket shows its drop time and validity, Start Plan shows real per-model daily balances (reset 22:59), model toggles, display renaming, extra models, and +50% quota upgrades. Quota is consumed from the gateway's real `usage.total_tokens` whenever the upstream model matches the pass.
 - <img src="assets/icons/paperclip.svg" width="14" align="absmiddle"> **Attachments** — drop, paste, or pick files and images in the composer (8 MB each, 5 per message). CLI engines receive real absolute paths; the gateway receives inlined text so a model without disk access can still read the file. Images render as thumbnails in the composer and transcript.
 - <img src="assets/icons/pool.svg" width="14" align="absmiddle"> **Gateway Pool** — one OpenAI-compatible endpoint (`/v1/chat/completions`, `/v1/models`). `429` → 5-minute cooldown → traffic shifts to the next provider. Rejected keys (401) get disabled automatically. Supports streaming (`stream: true`).
-- <img src="assets/icons/lock.svg" width="14" align="absmiddle"> **API key vault** — store keys for 11+ OpenAI-compatible presets (Groq, OpenRouter, Cerebras, Gemini, GitHub Models, Mistral, Together, DeepSeek, xAI, GLM, Hugging Face, custom). Periodic re-validation, keys masked in the UI.
+- <img src="assets/icons/lock.svg" width="14" align="absmiddle"> **API key vault** — store keys for 11 OpenAI-compatible presets (Groq, OpenRouter, Cerebras, Gemini, Mistral, Together, DeepSeek, xAI, GLM, Hugging Face, custom). Presets are endpoints, not promos: one that paid access still reaches stays listed even if its free tier ended, while retired endpoints (GitHub Models) are refused with a clear reason. Periodic re-validation, keys masked in the UI.
 - <img src="assets/icons/robot.svg" width="14" align="absmiddle"> **Agent connectors** — n8n/Make/custom webhooks and LLM endpoints; scheduled health checks with latency history.
 - <img src="assets/icons/phone.svg" width="14" align="absmiddle"> **Phone access** — scan a QR, open the same dashboard over Wi-Fi. Realtime via SSE, protected by an access token.
 - <img src="assets/icons/globe.svg" width="14" align="absmiddle"> **Internet access (optional tunnel)** — one toggle starts a Cloudflare quick tunnel, so your phone reaches AgentHub over **mobile data**, not just the same Wi-Fi. Honest status display (stopped/starting/online/error), off by default, one click to stop.
@@ -66,7 +66,7 @@ node server.js
 
 ## Quick start
 
-1. **Add free keys** — API Keys tab → pick a preset → paste key (grab free ones from the catalog: Groq, OpenRouter, Cerebras, …).
+1. **Add free keys** — API Keys tab → pick a preset → paste key (grab free ones from the catalog: Groq, Google AI Studio, OpenRouter, …).
 2. **Join the pool** — press **"+ Pool"** on each valid key.
 3. **Point your agents at the gateway:**
 
