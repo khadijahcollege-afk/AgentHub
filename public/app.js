@@ -3721,7 +3721,7 @@ window.__ahMachines = {
     list.innerHTML = state.keys.map((k) => `
       <div class="item" data-id="${k.id}">
         <div class="info">
-          <b>${esc(k.name)}</b> <span class="chip">${esc(k.preset)}</span>
+          <b>${esc(k.name)}</b> <span class="chip">${esc(k.preset)}</span> <span class="chip">${esc(({ chat_completions: 'Chat Completions', anthropic_messages: 'Anthropic Messages', responses: 'Responses' })[k.format] || 'Chat Completions')}</span>
           ${k.pool ? `<span class="chip pool-chip">${icon('shuffle')} pool</span>` : ''}<br>
           <span class="status ${esc(k.status)}">● ${esc(k.statusText || 'belum dicek')}</span>
           <div class="meta">${esc(k.baseUrl)} · key <code>${esc(k.keyMask)}</code>${k.latency ? ' · ' + k.latency + ' ms' : ''} · dicek ${fmtTime(k.lastChecked)}</div>
@@ -4412,7 +4412,7 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
   });
   $('#form-key').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const body = { preset: presetSel.value, name: $('#key-name').value.trim(), baseUrl: $('#key-url').value.trim(), key: $('#key-value').value.trim() };
+    const body = { preset: presetSel.value, name: $('#key-name').value.trim(), baseUrl: $('#key-url').value.trim(), format: $('#key-format').value, key: $('#key-value').value.trim() };
     if (!body.key) return toast('Isi API key-nya dulu');
     try {
       $('#form-key .primary').disabled = true;

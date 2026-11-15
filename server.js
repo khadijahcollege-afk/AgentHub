@@ -15,7 +15,7 @@ import {
   loadPass, claimPass, dismissPass, togglePassModel, addPassModel,
   renamePassModel, upgradePass, markShared, shareText, publicPass, recordUsage,
 } from './lib/promoPass.js';
-import { listKeys, addKey, removeKey, checkKey, checkAllKeys, setPool, checkingKeyIds, PRESETS, DEFAULT_MODELS } from './lib/keys.js';
+import { listKeys, addKey, removeKey, checkKey, checkAllKeys, setPool, checkingKeyIds, PRESETS, DEFAULT_MODELS, API_FORMATS } from './lib/keys.js';
 import { listAgents, addAgent, removeAgent, checkAgent, checkAllAgents, checkingAgentIds } from './lib/agents.js';
 import { routeChat, testPool, poolStatus, poolModels } from './lib/pool.js';
 import { listEngines, runEngine, usageStats, engineType } from './lib/harness.js';
@@ -703,6 +703,9 @@ async function route(req, res) {
     const b = await readBody(req);
     if (!b.key || (!b.baseUrl && !PRESETS[b.preset]?.baseUrl)) {
       return sendJson(res, 400, { error: 'Key dan baseUrl wajib diisi' });
+    }
+    if (b.format !== undefined && !API_FORMATS.includes(b.format)) {
+      return sendJson(res, 400, { error: 'Format API tidak dikenal' });
     }
     // Nilai "sk-…abcd" adalah mask tampilan, bukan key. Menyimpannya menghasilkan
     // key palsu yang selalu gagal saat agent memanggil — tolak di sini.

@@ -3,6 +3,7 @@
 // supaya tidak menyentuh data/dev milik user.
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -261,12 +262,13 @@ test('key baru otomatis masuk pool gateway (autoPool)', async () => {
 
   const r = await api('/api/keys', {
     method: 'POST',
-    body: JSON.stringify({ preset: 'custom', key: 'sk-uji-promo', baseUrl: 'http://127.0.0.1:9/v1', poolModel: 'uji/model-gratis' }),
+    body: JSON.stringify({ preset: 'custom', key: 'sk-uji-promo', baseUrl: 'http://127.0.0.1:9/v1', poolModel: 'uji/model-gratis', format: 'responses' }),
   });
   assert.equal(r.status, 200);
   const { entry } = await r.json();
   assert.equal(entry.pool, true);
   assert.equal(entry.poolModel, 'uji/model-gratis');
+  assert.equal(entry.format, 'responses');
 
   // autoPool dimatikan → key berikutnya tidak masuk pool
   const off = await api('/api/settings', { method: 'POST', body: JSON.stringify({ autoPool: false }) });
@@ -280,6 +282,60 @@ test('key baru otomatis masuk pool gateway (autoPool)', async () => {
 
   const st2 = await (await api('/api/state')).json();
   assert.equal(st2.config.autoPool, false);
+});
+
+test('API keys menolak format protokol yang tidak dikenal', async () => {
+  const response = await api('/api/keys', {
+    method: 'POST',
+    body: JSON.stringify({ preset: 'custom', key: 'sk-invalid-format', baseUrl: 'http://127.0.0.1:9/v1', format: 'unknown_protocol' }),
+  });
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /Format API/);
+});
+
+test('gateway routes selected upstream formats and normalizes Responses JSON', async (t) => {
+  const requests = [];
+  const upstream = createServer(async (req, res) => {
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    requests.push({ method: req.method, url: req.url, headers: req.headers, body: Buffer.concat(chunks).toString() });
+    res.setHeader('content-type', 'application/json');
+    if (req.method === 'GET' && req.url === '/v1/models') {
+      res.end(JSON.stringify({ data: [{ id: 'mock-model' }] }));
+      return;
+    }
+    if (req.method === 'POST' && req.url === '/v1/responses') {
+      res.end(JSON.stringify({ id: 'resp_mock', model: 'mock-model', status: 'completed', output_text: 'normalized response', usage: { input_tokens: 4, output_tokens: 3, total_tokens: 7 } }));
+      return;
+    }
+    res.writeHead(404);
+    res.end(JSON.stringify({ error: 'unexpected mock route' }));
+  });
+  await new Promise((resolve) => upstream.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise((resolve, reject) => upstream.close((error) => error ? reject(error) : resolve())));
+  const baseUrl = `http://127.0.0.1:${upstream.address().port}/v1`;
+  const created = await api('/api/keys', {
+    method: 'POST',
+    body: JSON.stringify({ preset: 'custom', name: 'Responses mock', baseUrl, key: 'sk-local-responses', format: 'responses', pool: true, poolModel: 'mock-model' }),
+  });
+  assert.equal(created.status, 200);
+
+  const response = await api('/v1/chat/completions', {
+    method: 'POST',
+    body: JSON.stringify({ model: 'auto', messages: [{ role: 'user', content: 'hello' }], max_tokens: 20 }),
+  });
+  assert.equal(response.status, 200);
+  const normalized = await response.json();
+  assert.equal(normalized.object, 'chat.completion');
+  assert.equal(normalized.choices[0].message.content, 'normalized response');
+  assert.equal(normalized.usage.total_tokens, 7);
+
+  const probe = requests.find((request) => request.method === 'GET');
+  const routed = requests.find((request) => request.method === 'POST');
+  assert.equal(probe.headers.authorization, 'Bearer sk-local-responses');
+  assert.equal(routed.url, '/v1/responses');
+  assert.equal(routed.headers.authorization, 'Bearer sk-local-responses');
+  assert.deepEqual(JSON.parse(routed.body).input, [{ role: 'user', content: 'hello' }]);
 });
 
 test('models: katalog berisi auto dan menolak mask sebagai key', async () => {

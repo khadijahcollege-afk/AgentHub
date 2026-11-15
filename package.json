@@ -12,6 +12,7 @@
     "test": "node --test --test-concurrency=1 \"test/*.test.js\"",
     "machines": "node tools/build-machines.mjs",
     "check": "node tools/build-machines.mjs --check && node --test --test-concurrency=1 \"test/*.test.js\"",
+    "smoke:formats": "node tools/smoke-api-formats.mjs",
     "icons": "node tools/export-doc-icons.mjs"
   }
 }
