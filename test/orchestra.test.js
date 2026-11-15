@@ -120,3 +120,29 @@ test('orchestra: 401 tanpa token', async () => {
   const r = await fetch(`http://127.0.0.1:${PORT}/api/orchestra`);
   assert.equal(r.status, 401);
 });
+
+test('orchestra: engine sama dapat memiliki dua tugas dan worktree berbeda', async () => {
+  const response = await api('/api/orchestra', { method: 'POST', body: JSON.stringify({
+    prompt: 'Kerjakan tugas masing-masing', baseDir: repoDir,
+    agents: [{ engineId: 'writer', task: 'Tugas pertama' }, { engineId: 'writer', task: 'Tugas kedua' }],
+  }) });
+  assert.equal(response.status, 200);
+  const created = await response.json();
+  assert.deepEqual(created.agents.map(a => a.task), ['Tugas pertama', 'Tugas kedua']);
+  const run = await (await api(`/api/orchestra/${created.id}/run`, { method: 'POST' })).json();
+  assert.equal(run.ok, true);
+  let result;
+  for (let i = 0; i < 100; i++) {
+    await new Promise(resolve => setTimeout(resolve, 200));
+    result = await (await api(`/api/orchestra/${created.id}`)).json();
+    if (result.state === 'reviewing' || result.state === 'error') break;
+  }
+  assert.equal(result.state, 'reviewing');
+  assert.ok(result.agents.every(a => a.status === 'ok'));
+  assert.notEqual(result.agents[0].worktree, result.agents[1].worktree);
+  assert.notEqual(result.agents[0].branch, result.agents[1].branch);
+  const invalid = await api('/api/orchestra', { method: 'POST', body: JSON.stringify({
+    prompt: 'x', baseDir: repoDir, agents: [{ engineId: '../invalid' }],
+  }) });
+  assert.equal(invalid.status, 400);
+});

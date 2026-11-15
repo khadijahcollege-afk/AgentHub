@@ -74,6 +74,52 @@ test('tanpa token → 401', async () => {
   assert.equal(r.status, 401);
 });
 
+test('security: browser protections and cross-site mutations rejected before execution', async () => {
+  const page = await fetch(`http://127.0.0.1:${PORT}/`);
+  assert.equal(page.headers.get('x-frame-options'), 'DENY');
+  assert.equal(page.headers.get('x-content-type-options'), 'nosniff');
+  assert.match(page.headers.get('content-security-policy'), /frame-ancestors 'none'/);
+  const response = await fetch(`http://127.0.0.1:${PORT}/api/terminal`, {
+    method: 'POST', headers: { authorization: `Bearer ${TOKEN}`, origin: 'https://other.example', 'content-type': 'application/json' },
+    body: JSON.stringify({ command: 'echo should-not-run', cwd: dataDir }),
+  });
+  assert.equal(response.status, 403);
+  assert.equal((await api('/api/skills')).headers.get('cache-control'), 'no-store');
+  assert.equal((await fetch(`http://127.0.0.1:${PORT}/api/skills`)).status, 401);
+  assert.equal((await api('/api/openrouter/connect', { method: 'POST', body: JSON.stringify({ model: 'paid/model' }) })).status, 400);
+});
+
+test('terminal: auth, validasi folder, output dan exit code', async () => {
+  const body = JSON.stringify({ command: 'echo terminal-api-ok', cwd: dataDir });
+  assert.equal((await fetch(`http://127.0.0.1:${PORT}/api/terminal`, { method: 'POST', body, headers: { 'content-type': 'application/json' } })).status, 401);
+  assert.equal((await api('/api/terminal', { method: 'POST', body: JSON.stringify({ command: 'echo nope', cwd: 'relative' }) })).status, 400);
+  const response = await api('/api/terminal', { method: 'POST', body });
+  assert.equal(response.status, 200);
+  let session = await response.json();
+  const deadline = Date.now() + 15000;
+  while (session.status === 'running' && Date.now() < deadline) {
+    await new Promise(resolve => setTimeout(resolve, 100));
+    session = await (await api('/api/terminal/' + session.id)).json();
+  }
+  assert.equal(session.status, 'done');
+  assert.equal(session.exitCode, 0);
+  assert.match(session.output, /terminal-api-ok/);
+  assert.equal(session.cwd, dataDir);
+  assert.equal(session.child, undefined);
+});
+
+test('terminal: proses panjang dapat dihentikan', async () => {
+  const command = process.platform === 'win32' ? 'Start-Sleep -Seconds 30' : 'sleep 30';
+  let session = await (await api('/api/terminal', { method: 'POST', body: JSON.stringify({ command, cwd: dataDir }) })).json();
+  assert.equal((await api('/api/terminal/' + session.id, { method: 'DELETE' })).status, 200);
+  const deadline = Date.now() + 15000;
+  do {
+    await new Promise(resolve => setTimeout(resolve, 100));
+    session = await (await api('/api/terminal/' + session.id)).json();
+  } while (['running', 'stopping'].includes(session.status) && Date.now() < deadline);
+  assert.equal(session.status, 'stopped');
+});
+
 test('/api/machines mengembalikan kontrak lengkap', async () => {
   const r = await api('/api/machines');
   assert.equal(r.status, 200);
@@ -405,7 +451,10 @@ test('pwa: manifest, service worker, dan ikon disajikan tanpa token', async () =
   // UI wajib menautkan manifest + mendaftarkan SW
   const html = await (await plain('/')).text();
   assert.match(html, /rel="manifest"\s+href="\/public\/manifest\.webmanifest"/);
-  assert.match(html, /serviceWorker\.register\('\/sw\.js'\)/);
+  assert.match(html, /src="\/public\/pwa\.js"/);
+  const pwa = await (await plain('/public/pwa.js')).text();
+  assert.match(pwa, /serviceWorker\.register\('\/sw\.js'\)/);
+  assert.ok(!html.includes('<script>'), 'script inline tidak boleh melanggar CSP');
 });
 
 test('pwa: shell tetap jalan saat offline karena service worker menyimpan kerangka UI', async () => {

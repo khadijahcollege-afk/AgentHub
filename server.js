@@ -1,6 +1,9 @@
 // AgentHub — server lokal Windows: pantau promo API gratis, API key, dan agent.
 // Nol dependency npm — hanya modul bawaan Node.js.
 import http from 'node:http';
+import { discoverSkills } from './lib/skills.js';
+import { startTerminal, terminalStatus, stopTerminal } from './lib/terminal.js';
+import { connectOpenRouter, connectionStatus } from './lib/openrouter-connect.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -274,7 +277,7 @@ function serverInfo() {
     lanIp: ip,
     localUrl: `http://127.0.0.1:${port}`,
     lanUrl: `http://${ip}:${port}`,
-    phoneUrl: `http://${ip}:${port}/?token=${config.token}`,
+    phoneUrl: `http://${ip}:${port}/`,
     uptimeMs: Date.now() - startedAt,
     platform: `${os.type()} ${os.release()}`,
     hostname: os.hostname(),
@@ -397,9 +400,9 @@ const MIME = {
 };
 
 function serveStatic(res, relPath) {
-  const safe = path.normalize(relPath).replace(/^([.][.][\\/])+/, '');
-  const full = path.join(PUBLIC_DIR, safe);
-  if (!full.startsWith(PUBLIC_DIR)) return sendJson(res, 403, { error: 'Ditolak' });
+  const full = path.resolve(PUBLIC_DIR, relPath);
+  const relative = path.relative(PUBLIC_DIR, full);
+  if (relative.startsWith('..') || path.isAbsolute(relative)) return sendJson(res, 403, { error: 'Ditolak' });
   try {
     const data = fs.readFileSync(full);
     const ext = path.extname(full);
@@ -433,9 +436,24 @@ function serveDownload(res, filePath, downloadName) {
 
 // ---------- routing ----------
 async function route(req, res) {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; font-src 'self'; media-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
   const url = new URL(req.url, 'http://x');
   const p = url.pathname;
   const method = req.method;
+  if (p.startsWith('/api/') || p.startsWith('/v1/')) {
+    res.setHeader('Cache-Control', 'no-store');
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+      const origin = req.headers.origin;
+      let sameOrigin = false;
+      try { sameOrigin = !!origin && new URL(origin).host === req.headers.host; } catch { /* invalid origin */ }
+      if (req.headers['sec-fetch-site'] === 'cross-site' || (origin && !sameOrigin)) {
+        return sendJson(res, 403, { error: 'Permintaan lintas situs ditolak' });
+      }
+    }
+  }
 
   // shell & aset statis terbuka (tidak ada data sensitif di dalamnya)
   if (method === 'GET' && (p === '/' || p === '/index.html')) return serveStatic(res, 'index.html');
@@ -466,12 +484,31 @@ async function route(req, res) {
       res.writeHead(429, { 'content-type': 'application/json', 'retry-after': '30' });
       return res.end(JSON.stringify({ error: 'Terlalu banyak percobaan token salah. Coba lagi nanti.' }));
     }
-    return sendJson(res, 401, { error: 'Token tidak valid. Buka URL dengan ?token=...' });
+    return sendJson(res, 401, { error: 'Token tidak valid. Masukkan token akses pada halaman masuk.' });
   }
   // token valid → bersihkan catatan gagal untuk IP ini
   authFailures.delete(req.socket.remoteAddress || '?');
 
   // ---- SSE ----
+  if (p === '/api/skills' && method === 'GET') return sendJson(res, 200, { skills: discoverSkills(url.searchParams.get('cwd')), automatic: true });
+  if (p === '/api/terminal' || p.startsWith('/api/terminal/')) {
+    try {
+      if (p === '/api/terminal' && method === 'POST') return sendJson(res, 200, startTerminal(await readBody(req)));
+      const terminalMatch = p.match(/^\/api\/terminal\/([a-f0-9]{32})$/);
+      if (terminalMatch && method === 'GET') return sendJson(res, 200, terminalStatus(terminalMatch[1]));
+      if (terminalMatch && method === 'DELETE') { stopTerminal(terminalMatch[1]); return sendJson(res, 200, { ok: true }); }
+      return sendJson(res, 404, { error: 'Sesi terminal tidak ditemukan' });
+    } catch (error) { return sendJson(res, error.statusCode || 500, { error: error.message }); }
+  }
+  if (p === '/api/openrouter/connect' && method === 'POST') {
+    try {
+      const body = await readBody(req);
+      return sendJson(res, 200, await connectOpenRouter(body.model));
+    } catch (error) { return sendJson(res, error.statusCode || 500, { error: error.message }); }
+  }
+  if (p === '/api/openrouter/connection' && method === 'GET') {
+    return sendJson(res, 200, connectionStatus(url.searchParams.get('id')));
+  }
   if (p === '/api/events' && method === 'GET') {
     res.writeHead(200, {
       'content-type': 'text/event-stream',
@@ -1420,7 +1457,9 @@ async function route(req, res) {
       }
       orchestra.updateAgent(m[1], i, { status: 'running', error: null, diff: '', ci: null });
       const wt = orchestra.agentWorktree(m[1], i);
-      runEngine(a.engineId, o.prompt, { cwd: wt }).then((r) => {
+      const agentPrompt = a.task ? `${o.prompt}\n\nTugas khusus agent ${i + 1}:\n${a.task}` : o.prompt;
+      runEngine(a.engineId, agentPrompt, { cwd: wt }).then((r) => {
+        if (r.exitCode != null && r.exitCode !== 0) throw new Error(`CLI keluar dengan kode ${r.exitCode}: ${r.text.slice(-1000)}`);
         orchestra.commitAgent(m[1], i, `orchestra: ${o.name} — ${a.engineId}`);
         const ci = orchestra.runAgentCi(m[1], i);
         orchestra.updateAgent(m[1], i, {

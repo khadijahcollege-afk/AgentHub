@@ -4,12 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#0b0b0c">
+<meta name="description" content="AgentHub: workspace lokal untuk chat AI, delegation, skill terpasang, terminal proyek, dan pemantauan gateway.">
 <title>AgentHub — studio agent</title>
 <link rel="manifest" href="/public/manifest.webmanifest">
 <link rel="apple-touch-icon" href="/public/icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="stylesheet" href="/public/style.css?v=1.6.0">
+<link rel="stylesheet" href="/public/workspace.css?v=20261115">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%23f2905c'/%3E%3Cstop offset='100%25' stop-color='%23e46a30'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='100' height='100' rx='22' fill='url(%23g)'/%3E%3Ccircle cx='50' cy='38' r='16' fill='white'/%3E%3Crect x='30' y='62' width='40' height='10' rx='5' fill='white'/%3E%3C/svg%3E">
 </head>
 <body>
@@ -34,6 +36,7 @@
 
   <!-- rail ikon -->
   <aside class="rail">
+    <div class="workspace-brand" aria-label="AgentHub"><span>AH</span><b>AgentHub<small>Agent workspace</small></b></div>
     <div class="rail-top">
       <button class="rail-btn active" data-view="studio" title="Studio"><svg viewBox="0 0 24 24"><path d="M4 10.5 12 4l8 6.5V19a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19z"/><path d="M9.5 20.5v-6h5v6"/></svg></button>
       <button class="rail-btn" data-view="tasks" title="Tugas"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="4"/><path d="M8 9h8M8 13h5"/></svg></button>
@@ -44,6 +47,7 @@
       <button class="rail-btn" data-view="keys" title="API keys"><svg viewBox="0 0 24 24"><circle cx="8" cy="8" r="3.6"/><path d="M10.7 10.7 20 20M17.2 17.2l2-2M14.2 14.2l2-2"/></svg></button>
     </div>
 
+    <button class="rail-btn" data-view="skills" title="Skills"><svg viewBox="0 0 24 24"><path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5z"/></svg></button>
     <!-- ruang / proyek cepat -->
     <div id="rail-spaces" class="rail-spaces"></div>
 
@@ -96,6 +100,7 @@
           <span id="chat-engine-badge" class="chip hidden"></span>
           <span id="chat-running" class="chip run hidden">Working</span>
           <span class="grow"></span>
+          <button id="btn-terminal" class="btn tiny" aria-controls="terminal-panel" aria-expanded="false" title="Terminal (Ctrl+`)">&gt;_ Terminal</button>
           <div id="find-bar" class="find-bar hidden">
             <input id="find-input" class="search small" placeholder="Cari di thread…" type="search">
             <span id="find-count" class="muted small"></span>
@@ -120,6 +125,13 @@
           <div id="chat-messages" class="chat-messages hidden"></div>
           <div id="bottom-composer-slot" class="bottom-slot"></div>
         </div>
+        <section id="terminal-panel" class="terminal-panel hidden" aria-label="Terminal proyek">
+          <div class="terminal-toolbar"><b>&gt;_ Terminal</b><span id="terminal-status" class="chip">Siap</span><span class="grow"></span><button id="terminal-clear" class="btn tiny" type="button">Bersihkan</button><button id="terminal-stop" class="btn tiny" type="button" disabled>Stop</button><button id="terminal-close" class="btn tiny" type="button" aria-label="Tutup terminal">Tutup</button></div>
+          <div id="terminal-cwd" class="terminal-cwd"></div>
+          <pre id="terminal-output" tabindex="0" aria-label="Output terminal">Jalankan perintah di folder proyek aktif.</pre>
+          <form id="terminal-form"><span aria-hidden="true">&gt;</span><input id="terminal-command" aria-label="Perintah terminal" placeholder="Contoh: npm test" autocomplete="off" spellcheck="false"><button id="terminal-run" class="btn tiny primary">Jalankan</button></form>
+          <p class="terminal-hint">PowerShell di Windows · setiap perintah membuka proses baru · program interaktif belum didukung</p>
+        </section>
         <div id="composer" class="composer-pill">
           <div class="pill-context">
             <button class="mini-chip" id="composer-cwd" title="Folder kerja agent CLI"><svg viewBox="0 0 24 24"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H9l2 2h7.5A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5z"/></svg> <span id="cwd-name">This PC</span> <span class="caret">▾</span></button>
@@ -171,6 +183,12 @@
       </aside>
     </section>
 
+    <section id="view-skills" class="view">
+      <header class="view-head"><div><span class="page-eyebrow">KEMAMPUAN AGENT</span><h2>Skills terpasang</h2><p class="sub">Ditemukan otomatis dari komputer dan proyek aktif. Tersedia untuk chat, delegation, dan Orchestra.</p></div><button id="btn-skills-refresh" class="btn">Pindai ulang</button></header>
+      <div class="panel"><h3>Aktif otomatis</h3><p class="muted small">Agent menerima katalog skill di setiap tugas. Skill yang cocok dengan nama tugas dimuat langsung. Untuk memilih secara eksplisit, tulis <code>/skill nama-skill</code> dalam prompt. Skill menyediakan instruksi; alat tambahan mengikuti kemampuan engine.</p></div>
+      <input id="skills-search" class="search" type="search" placeholder="Cari skill atau sumber instalasi…" aria-label="Cari skills">
+      <p id="skills-summary" class="muted small" role="status"></p><div id="skills-list" class="cat-grid"></div>
+    </section>
     <!-- TASKS -->
     <section id="view-tasks" class="view">
       <div class="task-layout">
@@ -218,7 +236,7 @@
     <!-- PROMO -->
     <section id="view-promo" class="view">
       <header class="view-head">
-        <div><h2>Promo & API Gratis</h2><p class="sub">Klaim kuota promo, lalu pakai model gratis langsung lewat gateway — tanpa tempel URL berkali-kali.</p></div>
+        <div><span class="page-eyebrow">MODEL & AKSES</span><h2>Model gratis & promo</h2><p class="sub">Temukan model, hubungkan akun provider, dan kelola catatan promo Anda.</p></div>
         <div class="seg" role="tablist" aria-label="Jenis promo">
           <button class="seg-btn active" id="promo-tab-pass" data-pane="pass" role="tab" aria-selected="true">Promo Pass</button>
           <button class="seg-btn" id="promo-tab-free" data-pane="free" role="tab" aria-selected="false">Free models</button>
@@ -234,7 +252,7 @@
         </div>
         <div class="adopt-banner">
           <span class="ab-ico"><svg class="ico" viewBox="0 0 24 24"><path d="M13 2.5 4.5 13.5H11l-1 8L18.5 10H12z"/></svg></span>
-          <div class="ab-main"><b>Free model → agent dalam satu klik</b><span>Pilih model, tempel key promo, dan AgentHub otomatis memasukkannya ke pool gateway. Agent Anda langsung memakai model itu lewat <code>/v1</code>.</span></div>
+          <div class="ab-main"><b>Pilih model. Hubungkan sekali. Mulai bekerja.</b><span>OpenCode langsung dipakai melalui CLI. Untuk OpenRouter, login sekali dan akses dipasang otomatis tanpa menempel API key.</span></div>
           <button class="btn tiny" id="btn-promo-gateway">Lihat endpoint</button>
         </div>
         <div class="tabs">
@@ -254,7 +272,7 @@
     <!-- KEYS -->
     <section id="view-keys" class="view">
       <header class="view-head">
-        <div><h2>API Keys</h2><p class="sub">Key baru otomatis masuk pool dan langsung bisa dipanggil agent lewat <code>/v1</code>.</p></div>
+        <div><span class="page-eyebrow">KONEKSI</span><h2>API Keys</h2><p class="sub">Kelola akses provider dan validasi koneksi gateway Anda.</p></div>
       </header>
       <div class="panel">
         <h3>Tambah API key</h3>
@@ -272,7 +290,7 @@
     <!-- GATEWAY -->
     <section id="view-gateway" class="view">
       <header class="view-head">
-        <div><h2>Gateway Pool</h2><p class="sub">Satu endpoint OpenAI-compatible. Kuota satu provider habis → otomatis pindah ke berikutnya.</p></div>
+        <div><span class="page-eyebrow">INFRASTRUKTUR</span><h2>Gateway Pool</h2><p class="sub">Pantau provider, pemakaian, dan rotasi melalui satu endpoint.</p></div>
         <button id="btn-pool-test" class="btn primary">Tes rotasi</button>
       </header>
       <div class="cards" style="grid-template-columns:repeat(3,1fr)">
@@ -309,7 +327,7 @@
     <!-- AGENTS -->
     <section id="view-agents" class="view">
       <header class="view-head">
-        <div><h2>Agent & Aplikasi</h2><p class="sub">Sambungkan webhook (n8n/Make/custom) atau endpoint LLM OpenAI-compatible.</p></div>
+        <div><span class="page-eyebrow">INTEGRASI</span><h2>Agent & aplikasi</h2><p class="sub">Hubungkan workflow dan pantau status koneksi aplikasi Anda.</p></div>
       </header>
       <div class="panel">
         <h3>Sambungkan agent</h3>
@@ -339,7 +357,7 @@
 
     <!-- SETTINGS -->
     <section id="view-settings" class="view">
-      <header class="view-head"><div><h2>Pengaturan</h2><p class="sub">Konfigurasi AgentHub.</p></div></header>
+      <header class="view-head"><div><span class="page-eyebrow">WORKSPACE</span><h2>Pengaturan</h2><p class="sub">Atur model, koneksi, proyek, dan tampilan workspace Anda.</p></div></header>
       <div class="settings-shell">
         <aside class="settings-nav">
           <button class="settings-back" id="btn-settings-back"><svg viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></svg> Kembali ke studio</button>
@@ -552,6 +570,8 @@
             <div class="orch-engines-wrap">
               <label class="muted small">Pilih agent yang bekerja paralel:</label>
               <div id="orch-engines" class="orch-engines"></div>
+              <button type="button" class="btn tiny" id="orch-add-agent">Tambah agen dengan tugas khusus</button>
+              <div id="orch-agent-rows"></div>
             </div>
             <div id="orch-list"></div>
           </div>
@@ -574,15 +594,27 @@
     <div class="deleg-head">
       <span class="deleg-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M7.5 8l3.5 8M16.5 8l-3.5 8"/></svg></span>
       <div>
-        <h3 id="deleg-title">Delegation</h3>
-        <p class="muted small">Satu prompt dikirim paralel ke setiap agent.</p>
+        <span class="page-eyebrow">MULTI-AGENT WORKSPACE</span>
+        <h3 id="deleg-title">Delegasikan ke tim</h3>
+        <p class="muted small">Kirim satu tugas ke beberapa agent dan bandingkan hasilnya.</p>
       </div>
     </div>
-    <label class="deleg-label">Prompt</label>
-    <textarea id="del-prompt" rows="4" placeholder="Tulis tugas untuk dikerjakan tim…"></textarea>
-    <label class="deleg-label">Pilih agent</label>
-    <div id="del-engines" class="del-engines"></div>
+    <div class="deleg-workspace">
+      <section class="deleg-brief">
+        <label class="deleg-label" for="del-prompt"><span class="deleg-step">1</span> Tentukan tugas</label>
+        <p class="deleg-help">Jelaskan tujuan, konteks, dan hasil yang Anda harapkan.</p>
+        <textarea id="del-prompt" rows="7" placeholder="Contoh: Tinjau kode proyek ini. Temukan bug utama dan berikan usulan perbaikannya beserta alasan."></textarea>
+        <div class="deleg-explainer"><b>Bekerja secara paralel</b><p>Setiap agent menerima prompt yang sama. Hasil tersimpan dalam thread dan papan Tugas.</p></div>
+      </section>
+      <section class="deleg-team">
+        <div class="deleg-team-heading"><label class="deleg-label" for="del-agent-search"><span class="deleg-step">2</span> Susun tim</label><span id="del-selected-count" class="chip">0 dipilih</span></div>
+        <input id="del-agent-search" type="search" placeholder="Cari agent atau model…" aria-label="Cari agent delegation" autocomplete="off">
+        <div id="del-engines" class="del-engines"></div>
+        <p id="del-search-empty" class="deleg-help hidden">Tidak ada agent yang cocok dengan pencarian.</p>
+      </section>
+    </div>
     <div class="deleg-actions">
+      <span class="deleg-footer-hint">Pilih minimal satu agent untuk memulai</span>
       <button id="btn-del-start" class="btn primary" type="button"><svg class="ico" viewBox="0 0 24 24"><path d="M13 2.5 4.5 13.5H11l-1 8L18.5 10H12z"/></svg> Jalankan</button>
       <button id="btn-del-cancel" class="btn" type="button">Batal</button>
     </div>
@@ -805,7 +837,8 @@
 
 <!-- Pemilih proyek -->
 <div id="project-overlay" class="overlay hidden">
-  <div class="overlay-card pick-card" style="padding:0">
+  <div class="overlay-card pick-card" style="padding:0" role="dialog" aria-modal="true" aria-labelledby="project-picker-title">
+    <header class="project-picker-head"><b id="project-picker-title">Pilih proyek</b><button id="btn-project-picker-close" class="btn tiny" type="button" aria-label="Tutup pemilih proyek">Tutup <span aria-hidden="true">×</span></button></header>
     <div class="pick-search"><input id="project-search" placeholder="Cari proyek atau folder" type="search"></div>
     <div id="project-rows" class="pick-rows"></div>
     <p class="muted small pick-note">Proyek menyimpan folder sumber dan folder utama untuk agent CLI.</p>
@@ -902,14 +935,7 @@
 </div>
 
 <div id="toast-wrap" class="toast-wrap"></div>
-<script>
-  // PWA Android: pasang service worker agar bisa di-install ke layar utama.
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/sw.js').catch(() => {});
-    });
-  }
-</script>
+<script src="/public/pwa.js"></script>
 <script src="/public/qrcode.min.js"></script>
 <script type="module" src="/public/app.js?v=1.6.0"></script>
 </body>

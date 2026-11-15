@@ -11,6 +11,7 @@ import {
   VIEWS, UI_LAYERS, SSE_SCOPES, scopeSlices, canTransition, allowedNext,
   RULE_FILES, CHANGE_STATUSES,
 } from './machines.js';
+import { findFreeEngine } from './model-access.js';
 
 // Kontrak mesin juga tersedia di runtime browser: agent yang mengemudikan UI
 // lewat CDP bisa membaca aturan yang sama tanpa menebak tombol mana yang ada.
@@ -357,6 +358,7 @@ window.__ahMachines = {
     if (v === 'studio') { renderSidebar(); placeComposer(); if (curThread) renderChat(); }
     if (v === 'tasks') renderTasks();
     if (v === 'notes') renderNotes();
+    if (v === 'skills') loadSkills();
     if (v === 'alerts') markReadSoon();
   }
   $('#btn-side-toggle').addEventListener('click', () => { sidebarOpen = !sidebarOpen; applySidebar(); });
@@ -741,15 +743,23 @@ window.__ahMachines = {
     pop.style.top = `${Math.round(y)}px`;
   }
 
+  function groupedEngines(list) {
+    return [
+      { label: 'Gratis · OpenCode', note: 'Model gratis melalui CLI OpenCode. Tidak perlu Claim Promo Pass.', items: list.filter(e => e.id.startsWith('opencode-free')) },
+      { label: 'Gateway · API provider', note: 'Memerlukan API key dan kuota provider. Klaim lokal tidak mengaktifkan akses.', items: list.filter(e => e.type === 'pool') },
+      { label: 'CLI · sesuai akun', note: 'Menggunakan login, model, dan ketentuan akun CLI masing-masing.', items: list.filter(e => e.type !== 'pool' && !e.id.startsWith('opencode-free')) },
+    ].filter(g => g.items.length);
+  }
+
   function renderEngineMenu() {
     const host = $('#engine-rows');
     if (!host) return;
-    host.innerHTML = engines.map((e) => `
+    host.innerHTML = groupedEngines(engines).map(group => `<div class="engine-category"><b>${esc(group.label)}</b><small>${esc(group.note)}</small></div>` + group.items.map((e) => `
       <div class="pick-row ${currentEngine === e.id ? 'active' : ''}" data-engine="${esc(e.id)}" ${e.available ? '' : 'data-off="1"'} title="${esc(e.note || '')}">
         <span class="pick-ico">${icon(e.id)}</span>
         <span class="pick-main"><b>${esc(e.label)}</b><small>${esc(e.note || '')}</small></span>
         ${currentEngine === e.id ? '<span class="pick-check">✓</span>' : ''}
-      </div>`).join('');
+      </div>`).join('')).join('');
     $$('#engine-rows .pick-row').forEach((row) => row.addEventListener('click', () => {
       if (row.dataset.off) return toast('Engine tidak tersedia — ' + (engines.find((x) => x.id === row.dataset.engine)?.note || ''));
       currentEngine = row.dataset.engine;
@@ -796,6 +806,110 @@ window.__ahMachines = {
   // Proyek menyimpan {id, name, folders[], primaryFolder}. Proyek aktif menentukan
   // folder kerja agent, filter papan tugas, dan branch yang ditampilkan.
   const activeCwd = () => (activeProject ? activeProject.primaryFolder : (cwd || undefined));
+
+  let installedSkills = [];
+  function renderSkills() {
+    const query = $('#skills-search').value.toLocaleLowerCase();
+    const list = installedSkills.filter(s => `${s.name} ${s.description} ${s.source}`.toLocaleLowerCase().includes(query));
+    $('#skills-summary').textContent = `${installedSkills.length} skill terdeteksi otomatis · ${list.length} ditampilkan`;
+    $('#skills-list').innerHTML = list.map(s => `<article class="cat-card"><div class="tags"><span class="chip free">Tersedia otomatis</span><span class="chip">${esc(s.source)}</span></div><b>${esc(s.name)}</b><p>${esc(s.description || 'Instruksi skill lokal')}</p><code class="skill-path">${esc(s.path)}</code><button class="btn tiny" data-use-skill="${esc(s.id)}">Pakai di chat</button></article>`).join('') || '<p class="muted small">Tidak ada skill yang cocok.</p>';
+  }
+  async function loadSkills() {
+    $('#skills-summary').textContent = 'Memindai skill terpasang…';
+    try {
+      const data = await api('/api/skills' + (activeCwd() ? '?cwd=' + encodeURIComponent(activeCwd()) : ''));
+      installedSkills = data.skills;
+      renderSkills();
+    } catch (err) { $('#skills-summary').textContent = 'Gagal membaca skills: ' + err.message; }
+  }
+  $('#btn-skills-refresh').addEventListener('click', loadSkills);
+  $('#skills-search').addEventListener('input', renderSkills);
+  $('#btn-project-picker-close').addEventListener('click', () => setLayer(null));
+  $('#skills-list').addEventListener('click', e => {
+    const button = e.target.closest('[data-use-skill]');
+    if (!button) return;
+    go('studio');
+    $('#composer-input').value = '/skill ' + button.dataset.useSkill + '\n' + $('#composer-input').value;
+    $('#composer-input').dispatchEvent(new Event('input', { bubbles: true }));
+    $('#composer-input').focus();
+  });
+
+  let terminalSession = null;
+  let terminalBusy = false;
+  let terminalTimer;
+  let terminalTranscript = '';
+  let terminalHistory = [];
+  let terminalHistoryIndex = 0;
+  function toggleTerminal(open) {
+    $('#terminal-panel').classList.toggle('hidden', !open);
+    $('#btn-terminal').setAttribute('aria-expanded', String(open));
+    $('#terminal-cwd').textContent = terminalBusy ? terminalSession?.cwd || '' : activeCwd() || 'Pilih folder proyek melalui pemilih folder';
+    if (open) $('#terminal-command').focus();
+  }
+  function renderTerminal(session) {
+    const output = $('#terminal-output');
+    const atBottom = output.scrollHeight - output.scrollTop - output.clientHeight < 48;
+    const labels = { running: 'Berjalan', stopping: 'Menghentikan…', stopped: 'Dihentikan', done: 'Selesai', error: 'Gagal' };
+    terminalBusy = ['running', 'stopping'].includes(session.status);
+    $('#terminal-status').textContent = labels[session.status] + (session.exitCode != null ? ' · exit ' + session.exitCode : '');
+    $('#terminal-stop').disabled = session.status !== 'running';
+    $('#terminal-run').disabled = terminalBusy;
+    $('#terminal-clear').disabled = terminalBusy;
+    $('#terminal-cwd').textContent = session.cwd;
+    output.textContent = terminalTranscript + '> ' + session.command + '\n' + (session.truncated ? '[Output awal dipangkas]\n' : '') + session.output;
+    if (!terminalBusy) output.textContent += '\n[' + labels[session.status] + (session.exitCode != null ? ' · exit ' + session.exitCode : '') + ']\n\n';
+    if (atBottom) output.scrollTop = output.scrollHeight;
+  }
+  async function pollTerminal() {
+    try {
+      terminalSession = await api('/api/terminal/' + terminalSession.id);
+      renderTerminal(terminalSession);
+      if (terminalBusy) terminalTimer = setTimeout(pollTerminal, 500);
+    } catch (err) {
+      $('#terminal-status').textContent = 'Koneksi terputus';
+      toast('Terminal: ' + err.message);
+      terminalTimer = setTimeout(pollTerminal, 3000);
+    }
+  }
+  $('#btn-terminal').addEventListener('click', () => toggleTerminal($('#terminal-panel').classList.contains('hidden')));
+  $('#terminal-close').addEventListener('click', () => toggleTerminal(false));
+  $('#terminal-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    if (terminalBusy) return;
+    const command = $('#terminal-command').value.trim();
+    if (!command) return;
+    if (!activeCwd()) { toast('Pilih folder proyek terlebih dahulu'); return; }
+    terminalBusy = true;
+    $('#terminal-run').disabled = true;
+    try {
+      clearTimeout(terminalTimer);
+      const next = await api('/api/terminal', { method: 'POST', body: JSON.stringify({ command, cwd: activeCwd() }) });
+      terminalTranscript = terminalSession ? $('#terminal-output').textContent.slice(-200000) : '';
+      terminalSession = next;
+      terminalHistory.push(command);
+      terminalHistoryIndex = terminalHistory.length;
+      $('#terminal-command').value = '';
+      renderTerminal(terminalSession);
+      await pollTerminal();
+    } catch (err) { terminalBusy = false; $('#terminal-run').disabled = false; toast('Terminal: ' + err.message); }
+  });
+  $('#terminal-stop').addEventListener('click', async () => {
+    if (!terminalSession) return;
+    try { await api('/api/terminal/' + terminalSession.id, { method: 'DELETE' }); }
+    catch (err) { toast(err.message); }
+  });
+  $('#terminal-clear').addEventListener('click', () => {
+    terminalTranscript = ''; $('#terminal-output').textContent = ''; $('#terminal-status').textContent = 'Siap';
+  });
+  $('#terminal-command').addEventListener('keydown', e => {
+    if (!['ArrowUp', 'ArrowDown'].includes(e.key)) return;
+    e.preventDefault();
+    terminalHistoryIndex = Math.max(0, Math.min(terminalHistory.length, terminalHistoryIndex + (e.key === 'ArrowUp' ? -1 : 1)));
+    e.target.value = terminalHistory[terminalHistoryIndex] || '';
+  });
+  document.addEventListener('keydown', e => {
+    if (e.ctrlKey && e.code === 'Backquote') { e.preventDefault(); toggleTerminal($('#terminal-panel').classList.contains('hidden')); }
+  });
   const activeLabel = () => (activeProject ? activeProject.name : cwdBase());
 
   function updateProjectChips() {
@@ -1247,7 +1361,7 @@ window.__ahMachines = {
     const text = $('#composer-input').value.trim();
     if (!text) { el.textContent = ''; return; }
     const tokens = Math.ceil(text.length / 4);
-    el.textContent = `≈\${tokens.toLocaleString('en-US')} tok`;
+    el.textContent = `≈${tokens.toLocaleString('en-US')} tok`;
   }
   $('#composer-input').addEventListener('input', updateTokenEst);
   $('#composer-input').addEventListener('input', (e) => {
@@ -2215,7 +2329,7 @@ window.__ahMachines = {
     setLayer('session');
     positionPop('#session-pop', '#btn-session-info');
   }
-  $('#btn-sys-prompt').addEventListener('click', async () => {
+  $('#btn-sys-prompt')?.addEventListener('click', async () => {
     if (!curThread) return;
     const cur = curThread.systemPrompt || '';
     const v = await askPrompt('System prompt — instruksi persisten untuk agent di thread ini (diprepend ke setiap pesan).', cur, {
@@ -2412,14 +2526,40 @@ window.__ahMachines = {
   function renderDelegationEngines() {
     // jangan buang pilihan user saat SSE memicu render ulang
     const checked = new Set($$('#del-engines input[data-del]:checked').map((i) => i.value));
-    $('#del-engines').innerHTML = engines.map((e) => `
+    $('#del-engines').innerHTML = groupedEngines(engines).map(group => `<section class="deleg-engine-group"><div class="engine-category"><b>${esc(group.label)}</b><small>${esc(group.note)}</small></div>` + group.items.map((e) => `
       <label class="del-eng-card ${e.available ? '' : 'del-off'} ${checked.has(e.id) ? 'del-checked' : ''}">
         <input type="checkbox" value="${esc(e.id)}" data-del ${e.available ? '' : 'disabled'} ${checked.has(e.id) ? 'checked' : ''}>
         <span class="del-eng-ico">${icon(e.id)}</span>
         <span class="del-eng-name">${esc(e.label)}</span>
-        <span class="del-eng-note">${e.available ? 'siap' : 'tidak terdeteksi'}</span>
-      </label>`).join('');
+        <span class="del-eng-note">${esc(e.note || (e.available ? 'tersedia' : 'tidak terdeteksi'))}</span>
+      </label>`).join('') + '</section>').join('');
+    updateDelegationSelection();
+    filterDelegationAgents();
   }
+
+  function updateDelegationSelection() {
+    const count = $$('#del-engines input[data-del]:checked').length;
+    $('#del-selected-count').textContent = count + ' dipilih';
+    $$('#del-engines .del-eng-card').forEach(card => card.classList.toggle('del-checked', card.querySelector('input').checked));
+    $('.deleg-footer-hint').textContent = count ? count + ' agent akan menerima tugas yang sama' : 'Pilih minimal satu agent untuk memulai';
+  }
+  function filterDelegationAgents() {
+    const query = $('#del-agent-search').value.trim().toLocaleLowerCase();
+    let visible = 0;
+    $$('#del-engines .deleg-engine-group').forEach(group => {
+      let matches = 0;
+      [...group.querySelectorAll('.del-eng-card')].forEach(card => {
+        const match = card.textContent.toLocaleLowerCase().includes(query);
+        card.classList.toggle('hidden', !match);
+        if (match) matches++;
+      });
+      group.classList.toggle('hidden', !matches);
+      visible += matches;
+    });
+    $('#del-search-empty').classList.toggle('hidden', visible > 0);
+  }
+  $('#del-engines').addEventListener('change', updateDelegationSelection);
+  $('#del-agent-search').addEventListener('input', filterDelegationAgents);
 
   $$('[data-open-delegate]').forEach((b) => b.addEventListener('click', () => {
     setLayer('delegate');
@@ -2867,6 +3007,7 @@ window.__ahMachines = {
     if (p.signup) { a.href = p.signup; a.classList.remove('hidden'); } else a.classList.add('hidden');
   }
   function openAdopt(modelId, preset, name) {
+    $('#adopt-overlay').classList.remove('automatic-access');
     adoptModelId = String(modelId || '');
     $('#adopt-model').textContent = adoptModelId;
     const sel = $('#adopt-preset');
@@ -2992,9 +3133,31 @@ window.__ahMachines = {
   // satu tap, tanpa mencari/tempel API key lagi. UI hanya menerima keyMask
   // (key utuh tidak pernah dikirim server ke browser).
   const usableKeyFor = (preset) => (state.keys || []).some((k) => k.preset === preset && k.keyMask && k.status !== 'invalid');
+  function freeEngineFor(modelId) {
+    return findFreeEngine(engines, modelId);
+  }
+
+  async function startFreeChat(engine) {
+    const thread = await api('/api/threads', {
+      method: 'POST', body: JSON.stringify({ engine: engine.id, projectId: activeProject?.id, cwd: activeCwd() }),
+    });
+    currentEngine = engine.id;
+    applyEngine();
+    await setLayer(null);
+    await openThread(thread.id);
+    toast(`${engine.label} siap dipakai — tanpa API key tambahan`);
+  }
+
   document.addEventListener('click', async (e) => {
     const b = e.target.closest('.adopt-btn');
     if (!b) return;
+    b.disabled = true;
+    try {
+      await renderEngines(true);
+      const free = freeEngineFor(b.dataset.model);
+      if (free) { await startFreeChat(free); return; }
+    } catch (err) { toast('Gagal memeriksa akses model: ' + err.message); return; }
+    finally { b.disabled = false; }
     if (b.dataset.quick || usableKeyFor(b.dataset.preset)) {
       // key tersimpan (ceklah saat klik, bukan hanya saat render kartu) → langsung aktif
       b.disabled = true;
@@ -3015,7 +3178,57 @@ window.__ahMachines = {
       finally { b.disabled = false; }
       return;
     }
-    openAdopt(b.dataset.model, b.dataset.preset, b.dataset.name);
+    // No usable credential and no exact free route: let the user choose an
+    // explicitly named free alternative instead of requesting a new API key.
+    const alternatives = engines.filter(engine => engine.available && engine.id.startsWith('opencode-free'));
+    if (b.dataset.preset === 'openrouter' && (b.dataset.model?.endsWith(':free') || b.dataset.model === 'openrouter/free')) {
+      b.disabled = true;
+      try {
+        const connection = await api('/api/openrouter/connect', { method: 'POST', body: JSON.stringify({ model: b.dataset.model }) });
+        $('#adopt-model').textContent = b.dataset.model;
+        $('#adopt-overlay').classList.add('automatic-access');
+        $('#adopt-result').classList.remove('hidden');
+        $('#adopt-result').innerHTML = '<p>Login OpenRouter sekali untuk mengizinkan AgentHub. API key akan diterbitkan dan dipasang otomatis; tidak perlu mencari atau menempelkannya.</p><a class="btn primary" target="_blank" rel="noreferrer" href="' + esc(connection.url) + '">Login dan pasang otomatis</a><p class="muted small">Buka login di komputer tempat AgentHub berjalan. Model tetap mengikuti kuota dan batas akun OpenRouter.</p><p id="oauth-progress" role="status">Menunggu login…</p>';
+        setLayer('adopt');
+        const deadline = Date.now() + 10 * 60 * 1000;
+        const poll = async () => {
+          try {
+            const result = await api('/api/openrouter/connection?id=' + encodeURIComponent(connection.id));
+            if (result.status === 'connected') {
+              await loadState({ silent: true });
+              selectedModel = b.dataset.model;
+              localStorage.setItem('ah_model', selectedModel);
+              const thread = await api('/api/threads', { method: 'POST', body: JSON.stringify({ engine: 'pool', projectId: activeProject?.id, cwd: activeCwd() }) });
+              currentEngine = 'pool'; applyEngine(); await setLayer(null); await openThread(thread.id);
+              toast('Login berhasil — API terpasang otomatis dan model siap dicoba'); return;
+            }
+            if (result.status !== 'pending' || Date.now() >= deadline) {
+              if ($('#oauth-progress')) $('#oauth-progress').textContent = 'Login belum berhasil. Tutup dan klik model untuk mencoba lagi.';
+              return;
+            }
+            setTimeout(poll, 2000);
+          } catch { if ($('#oauth-progress')) $('#oauth-progress').textContent = 'Koneksi terputus. Klik model untuk mencoba lagi.'; }
+        };
+        poll();
+      } catch (err) { toast('Gagal memulai login otomatis: ' + err.message); }
+      finally { b.disabled = false; }
+      return;
+    }
+    $('#adopt-model').textContent = b.dataset.model || '';
+    $('#adopt-overlay').classList.add('automatic-access');
+    $('#adopt-result').classList.remove('hidden');
+    $('#adopt-result').innerHTML = '<p>Model pilihan belum memiliki jalur akses tanpa kredensial yang tersedia. CLI OpenCode belum terdeteksi; pasang atau masuk ke OpenCode agar model gratis dapat ditemukan otomatis.</p>';
+    setLayer('adopt');
+    if (alternatives.length) {
+      $('#adopt-result').classList.remove('hidden');
+      $('#adopt-result').innerHTML = '<p>Akses otomatis untuk model persis ini belum tersedia. Model gratis berikut sudah ditemukan melalui OpenCode. Pilih salah satu untuk langsung chat tanpa mencari API key. Pilihan ini akan memakai model pengganti yang namanya tercantum:</p><div class="model-actions">' + alternatives.map(engine => '<button type="button" class="btn tiny" data-free-alternative="' + esc(engine.id) + '">' + esc(engine.label) + '</button>').join('') + '</div>';
+      $$('#adopt-result [data-free-alternative]').forEach(button => button.addEventListener('click', async () => {
+        button.disabled = true;
+        try { await startFreeChat(alternatives.find(engine => engine.id === button.dataset.freeAlternative)); }
+        catch (err) { toast('Gagal membuka chat: ' + err.message); }
+        finally { button.disabled = false; }
+      }));
+    }
   });
 
   // ---------- promo pass (kartu klaim → Start Plan) ----------
@@ -3036,7 +3249,7 @@ window.__ahMachines = {
     return d.toDateString() === new Date().toDateString() ? 'Today' : ppShort(ts);
   };
 
-  const PASS_PHASE_TEXT = { available: 'Available', pending: 'Pending', active: 'Active', expired: 'Expired' };
+  const PASS_PHASE_TEXT = { available: 'Belum dicatat', pending: 'Jadwal lokal', active: 'Klaim lokal', expired: 'Catatan berakhir' };
 
   function passStatusLine(p) {
     if (p.phase === 'available') {
@@ -3046,7 +3259,7 @@ window.__ahMachines = {
       return `Pending ${ppDayLabel(p.startsAt)} ${ppTime(p.startsAt)} · Expires ${ppPlanDate(p.ticketValidUntil)}`;
     }
     if (p.phase === 'active') {
-      return `Active now · Expires ${ppPlanDate(p.ticketValidUntil)}`;
+      return `Klaim lokal · akses provider belum diverifikasi`;
     }
     return `Expired ${ppPlanDate(p.planExpiresAt)}`;
   }
@@ -3072,7 +3285,7 @@ window.__ahMachines = {
     host.classList.remove('hidden');
     if (!p.claimed) {
       host.innerHTML = `
-        <div class="sb-promo-card" role="button" tabindex="0" data-pp-act="open-plan" aria-label="Buka promo AgentHub Global Build">
+        <div class="sb-promo-card" role="button" tabindex="0" data-pp-act="open-plan">
           <div class="spc-head">
             <span class="spc-logo">A</span><b>AGENTHUB</b><span class="spc-series">GLOBAL BUILD</span>
             <button class="spc-x" data-pp-act="dismiss" title="Sembunyikan kartu promo" aria-label="Sembunyikan kartu promo">✕</button>
@@ -3086,7 +3299,7 @@ window.__ahMachines = {
       return;
     }
     host.innerHTML = `
-      <div class="sb-promo-card is-claimed" role="button" tabindex="0" data-pp-act="open-plan" aria-label="Buka Start Plan">
+      <div class="sb-promo-card is-claimed" role="button" tabindex="0" data-pp-act="open-plan">
         <div class="spc-head">
           <span class="spc-logo">A</span><b>AGENTHUB</b><span class="spc-series">GLOBAL BUILD</span>
           <button class="spc-x" data-pp-act="dismiss" title="Sembunyikan kartu promo" aria-label="Sembunyikan kartu promo">✕</button>
@@ -3162,19 +3375,20 @@ window.__ahMachines = {
           <div class="pp-hero-copy">
             <span class="pp-kicker">PROMO PASS</span>
             <h3>${fmtNum(p.headlineTokens)} token untuk agent Anda</h3>
-            <p>Klaim tiket AgentHub Global Build dan dapatkan kuota harian <b>GLM-5.3</b> + <b>GLM-5.3-Flash</b>. Model langsung masuk pool gateway saat tiket aktif.</p>
+            <p>Catat promo <b>GLM-5.3</b> dan <b>GLM-5.3-Flash</b> di aplikasi. Pencatatan ini tidak mengaktifkan kuota provider. Untuk menggunakan model, hubungkan akses provider atau pilih model gratis OpenCode.</p>
             <div class="pp-hero-actions">
-              <button class="pp-btn light" data-pp-act="claim">Claim ${fmtCtx(p.headlineTokens)} tokens</button>
+              <button class="pp-btn light" data-pp-act="claim">Catat promo lokal</button>
+              <button class="btn" data-pp-act="use-opencode-free">Pakai model gratis OpenCode</button>
               <button class="btn" data-pp-act="open-free">Lihat model gratis</button>
             </div>
-            <p class="muted small">Tiket baru aktif ${ppDayLabel(p.startsAt)} ${ppTime(p.startsAt)} — tidak ada biaya, tanpa kartu kredit.</p>
+            <p class="muted small">Kuota dan kelayakan promo harus dikonfirmasi pada akun provider.</p>
           </div>
           <div class="pp-hero-ticket">${ticketHtml(p)}</div>
         </div>
         <div class="pp-feature-grid">
-          <div class="pp-feature"><b>1 tiket, dua model</b><span>Saldo terpisah untuk GLM-5.3 dan GLM-5.3-Flash, reset tiap hari pukul ${esc(p.resetLabel)}.</span></div>
-          <div class="pp-feature"><b>Langsung ke agent</b><span>Kuota dipakai lewat gateway <code>/v1</code>. Tidak perlu menempel API key berkali-kali.</span></div>
-          <div class="pp-feature"><b>Vision siap pakai</b><span>GLM-5.3-Flash menerima gambar; lampirkan file di composer seperti biasa.</span></div>
+          <div class="pp-feature"><b>Catatan lokal</b><span>Tiket hanya mencatat informasi promo di perangkat ini.</span></div>
+          <div class="pp-feature"><b>Akses melalui provider</b><span>Model memerlukan akses provider yang sudah terhubung dan memiliki kuota.</span></div>
+          <div class="pp-feature"><b>Periksa ketersediaan</b><span>Gunakan katalog model untuk menemukan jalur akses yang tersedia.</span></div>
         </div>`;
       return;
     }
@@ -3188,12 +3402,14 @@ window.__ahMachines = {
     host.innerHTML = `
       <div class="pp-page-head">
         <span class="pp-page-logo">A</span>
-        <h3>Start Plan</h3>
+        <h3>Catatan promo</h3><span class="chip run">Akses provider belum diverifikasi</span>
         <span class="grow"></span>
         ${p.dismissed ? '<button class="btn tiny" data-pp-act="restore">Tampilkan kartu promo</button>' : ''}
         <button class="btn tiny" data-pp-act="show-ticket">Lihat tiket</button>
+        <button class="btn tiny" data-pp-act="use-opencode-free">Pakai model gratis OpenCode</button>
       </div>
 
+      <div class="promo-access-notice"><b>Tiket ini tidak mengaktifkan model atau memberi kuota API.</b><p>Angka saldo dan jadwal di bawah merupakan catatan lokal, bukan saldo akun provider. Untuk menggunakan model, buka katalog dan hubungkan akses yang tersedia.</p><button class="btn primary" data-pp-act="open-free">Buka katalog model</button></div>
       <div class="pp-campaign">
         <div class="pp-campaign-main">
           <b>${esc(p.brand)} ${esc(p.series)}</b>
@@ -3202,7 +3418,7 @@ window.__ahMachines = {
         <div class="pp-campaign-actions">
           <button class="pp-upgrade" data-pp-act="upgrade" ${p.boosts >= 4 ? 'disabled' : ''}>
             <svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 20h16"/></svg>
-            Upgrade <span class="pp-quota">${esc(p.quotaLabel)}</span>
+            Ubah estimasi lokal <span class="pp-quota">${esc(p.quotaLabel)}</span>
           </button>
           <span class="pp-info" title="Upgrade menambah 50% saldo harian per tingkat (maksimal 4x).">i</span>
         </div>
@@ -3214,21 +3430,21 @@ window.__ahMachines = {
           <div class="pp-expiry">Expires ${ppPlanDate(p.planExpiresAt)}</div>
         </div>
         <div class="pp-divider"></div>
-        <div class="pp-balance-label">Pemakaian hari ini</div>
+        <div class="pp-balance-label">Catatan pemakaian lokal · saldo provider belum diverifikasi</div>
         <div class="pp-balances">${p.models.map((m) => passBalanceCard(m, p)).join('')}</div>
       </div>
 
-      ${renderPlanBenefits(p)}
+      <p class="muted small">Benefit kampanye belum dikonfirmasi oleh provider. Catatan ini tidak mengaktifkan prioritas, resource khusus, maupun langganan.</p>
 
       <div class="pp-models-head">
-        <span>Model list</span>
+        <span>Model dalam catatan · bukan daftar akses aktif</span>
         <div class="pp-add-wrap">
           <button class="btn tiny" data-pp-act="addmenu" ${p.addable.length ? '' : 'disabled'}>+ Add model</button>
           ${addMenu}
         </div>
       </div>
       <div class="pp-models">${p.models.map(passModelRow).join('')}</div>
-      <p class="muted small pp-foot-note">Kuota dipakai bersama agent lewat gateway. Pemakaian dihitung dari <code>usage.total_tokens</code> upstream saat model cocok.</p>`;
+      <p class="muted small pp-foot-note">Counter lokal mencatat usage gateway yang cocok. Batas dan sisa kuota sebenarnya ditentukan oleh akun provider.</p>`;
   }
 
   function renderPromoPass() {
@@ -3264,9 +3480,10 @@ window.__ahMachines = {
       avail.innerHTML = p.phase === 'pending'
         ? `<b>GLM-5.3-Flash</b> will be available on <b>${ppLongDate(p.startsAt)}</b>.`
         : p.phase === 'active'
-          ? `<b>GLM-5.3-Flash</b> is available now. Kuota aktif sampai <b>${ppPlanDate(p.planExpiresAt)}</b>.`
+          ? `Klaim tersimpan di aplikasi sampai <b>${ppPlanDate(p.planExpiresAt)}</b>. Akses <b>GLM-5.3-Flash</b> di provider belum diverifikasi. <button class="btn" data-pp-act="use-opencode-free">Pakai model gratis OpenCode</button>`
           : `<b>GLM-5.3-Flash</b> quota has ended on <b>${ppPlanDate(p.planExpiresAt)}</b>.`;
     }
+    if (avail) avail.innerHTML += '<p class="muted small">Claim mencatat plan lokal; tidak menerbitkan API key atau mengaktifkan kuota provider. Untuk memakai promo ini, hubungkan akun atau API key provider yang memiliki akses. Untuk model gratis bawaan OpenCode, pilih engine Gratis · OpenCode.</p>';
     const shareBtn = $('#pp-claim-share');
     if (shareBtn) shareBtn.textContent = p.sharedAt ? 'Shared ✓' : 'Share';
   }
@@ -3344,6 +3561,13 @@ window.__ahMachines = {
       }
       if (act === 'open-plan') { setPromoPane('pass', { silent: true }); go('promo'); setLayer(null); return; }
       if (act === 'open-free') { setPromoPane('free'); return; }
+      if (act === 'use-opencode-free') {
+        await renderEngines(true);
+        const free = engines.find(e => e.id === 'opencode-free' && e.available);
+        if (!free) { toast('CLI OpenCode belum terdeteksi. Pasang OpenCode lalu perbarui daftar engine.'); return; }
+        await startFreeChat(free);
+        return;
+      }
       if (act === 'show-ticket') {
         const p = passState();
         if (p) { renderTicket(p); setLayer('promoClaim'); }
@@ -3409,7 +3633,7 @@ window.__ahMachines = {
     setLayer(null);
     setPromoPane('pass', { silent: true });
     go('promo');
-    toast('Selamat — Start Plan aktif di Promo Pass');
+    toast('Klaim lokal tersimpan — akses provider belum diverifikasi');
   });
   $('#pp-claim-share').addEventListener('click', sharePromoPass);
   $('#pp-claim-reopen').addEventListener('click', () => {
@@ -3420,6 +3644,7 @@ window.__ahMachines = {
   function renderPromo() {
     const models = state.snapshot?.sources?.openrouter?.models || [];
     const q = promoQuery.toLowerCase();
+    const directModels = engines.filter(e => e.id.startsWith('opencode-free') && e.available && (!q || e.label.toLowerCase().includes(q)));
     const filtered = q ? models.filter((m) => (m.name + ' ' + m.id + ' ' + m.provider).toLowerCase().includes(q)) : models;
     $('#promo-live').innerHTML = filtered.length
       ? `<div class="model-grid">${filtered.map((m) => `
@@ -3432,12 +3657,16 @@ window.__ahMachines = {
             <span class="chip">${esc(m.provider)}</span>
           </div>
           <div class="model-actions">
-            <button class="btn tiny primary adopt-btn" data-model="${esc(m.id)}" data-preset="openrouter" data-name="${esc(m.name)}" ${usableKeyFor('openrouter') ? 'data-quick="1"' : ''}>${usableKeyFor('openrouter') ? 'Pakai langsung' : 'Pakai di agent'}</button>
+            <button class="btn tiny primary adopt-btn" data-model="${esc(m.id)}" data-preset="openrouter" data-name="${esc(m.name)}" ${usableKeyFor('openrouter') ? 'data-quick="1"' : ''}>${freeEngineFor(m.id) ? 'Pakai langsung · tanpa key' : usableKeyFor('openrouter') ? 'Pakai · key tersimpan' : 'Cari akses otomatis'}</button>
             <a class="visit" href="${esc(m.page)}" target="_blank" rel="noreferrer">Detail ${icon('external')}</a>
           </div>
+          <small class="muted">${usableKeyFor('openrouter') ? 'API key tersimpan dipakai otomatis; ketersediaan dan batas provider tetap berlaku.' : 'Model gratis via OpenRouter; akun/API key OpenRouter diperlukan. Untuk tanpa key tambahan, pilih Gratis OpenCode di atas.'}</small>
         </div>`).join('')}</div>`
       : '<p class="muted">Tidak ada model yang cocok.</p>';
 
+    if (directModels.length) $('#promo-live').insertAdjacentHTML('afterbegin',
+      '<div class="catalog-section-head"><div><span class="catalog-eyebrow">SIAP DIPILIH</span><h3>Gratis melalui OpenCode</h3><p>Tanpa input API key tambahan. Ketersediaan mengikuti layanan OpenCode.</p></div><span class="catalog-count">' + directModels.length + ' model</span></div><div class="model-grid">' +
+      directModels.map(e => `<div class="model-card direct-model"><div class="meta"><span class="chip free">GRATIS</span><span class="chip">OpenCode CLI</span></div><b>${esc(e.label.replace(/^OpenCode · /, '').replace(/ \(gratis\)$/, ''))}</b><div class="id">${esc(e.model || 'opencode/big-pickle')}</div><div class="model-actions"><button class="btn tiny primary adopt-btn" data-model="${esc(e.model || 'opencode/big-pickle')}" data-name="${esc(e.label)}">Mulai chat</button></div><small class="muted">Akses ditemukan · respons model belum tentu tersedia saat ini</small></div>`).join('') + '</div><div class="catalog-section-head"><div><span class="catalog-eyebrow">LOGIN PROVIDER</span><h3>Model gratis OpenRouter</h3><p>Model sesuai pilihan Anda. Login sekali; key dipasang otomatis.</p></div></div>');
     const cross = state.snapshot?.sources?.cross?.models || [];
     const crossFiltered = q ? cross.filter((m) => (m.name + ' ' + m.id + ' ' + m.provider).toLowerCase().includes(q)) : cross;
     const crossPreset = (m) => presetForModel(m.id, m.provider);
@@ -3689,10 +3918,10 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
       wrap.appendChild(btn);
       wrap.appendChild(pop);
       const render = () => {
-        const opts = [...sel.options].map((o) => ({ v: o.value, l: o.textContent }));
+        const opts = [...sel.options].map((o) => ({ v: o.value, l: o.textContent, group: o.parentElement.tagName === 'OPTGROUP' ? o.parentElement.label : '' }));
         const cur = opts.find((o) => o.v === sel.value);
         btn.innerHTML = (cur ? esc(cur.l) : esc(sel.value || '—')) + ' <span class="caret">▾</span>';
-        pop.innerHTML = opts.map((o) => `
+        pop.innerHTML = opts.map((o, i) => `${o.group && o.group !== opts[i - 1]?.group ? '<div class="dd-group">' + esc(o.group) + '</div>' : ''}
           <div class="dd-item ${o.v === sel.value ? 'active' : ''}" data-v="${esc(o.v)}">${esc(o.l)}</div>`).join('');
       };
       render();
@@ -3804,7 +4033,7 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
       ? projects.slice(0, 6).map((p) => kvRow(p.name, (p.folders || [])[0] || '')).join('') + (projects.length > 6 ? kvRow(`+${projects.length - 6} lain`, '') : '')
       : kvRow('Belum ada proyek', 'buat dari composer atau tombol Kelola');
     const pass = state?.promoPass || null;
-    const phaseLabel = { available: 'bisa diklaim', pending: 'menunggu jadwal', active: 'aktif', expired: 'berakhir' };
+    const phaseLabel = { available: 'belum dicatat', pending: 'jadwal lokal', active: 'klaim lokal; akses provider belum diverifikasi', expired: 'berakhir' };
     $('#set-billing').innerHTML = pass ? [
       kvRow('Plan', pass.planName),
       kvRow('Status', phaseLabel[pass.phase] || pass.phase),
@@ -3832,6 +4061,7 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
   // ---------- pulse konektor: denyut hidup per konektor ----------
   // Denyut = riwayat health check nyata (maks 60 entri per konektor):
   // titik status + sparkline latensi + tombol kirim pulse manual.
+  const pendingPulses = new Map();
   function renderConnectorPulse() {
     const host = $('#connector-pulse');
     if (!host) return;
@@ -3841,6 +4071,8 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
       return;
     }
     host.innerHTML = list.map((a) => {
+      if (pendingPulses.has(a.id) && a.lastChecked !== pendingPulses.get(a.id)) pendingPulses.delete(a.id);
+      const checking = pendingPulses.has(a.id);
       const hist = (a.history || []).slice(-20);
       const maxMs = Math.max(1, ...hist.map((h) => Number(h.ms) || 0));
       const bars = hist.map((h) => {
@@ -3851,27 +4083,33 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
       const when = a.lastChecked ? fmtScheduleWhen(a.lastChecked) : 'belum pernah';
       const latency = a.status === 'ok' && a.latency != null ? `${a.latency} ms` : (a.statusText || a.status || '—');
       return `
-        <div class="pulse-row" data-agent="${esc(a.id)}">
+        <div class="pulse-row ${checking ? 'is-checking' : ''}" data-agent="${esc(a.id)}" aria-busy="${checking}">
           <span class="pulse-dot ${dot}" title="status: ${esc(a.status || 'unknown')}"></span>
           <div class="pulse-main">
             <b>${esc(a.name)}</b>
+            <span class="connector-heartbeat ${checking ? 'checking' : dot}" aria-label="${checking ? 'Memeriksa koneksi' : 'Status koneksi ' + esc(a.status || 'unknown')}"><svg viewBox="0 0 160 32" aria-hidden="true"><path class="heartbeat-track" d="M0 16 H160"/><g class="heartbeat-wave"><path d="M-160 16 H-132 L-124 11 L-117 23 L-108 4 L-99 29 L-90 16 H-28 L-20 11 L-13 23 L-4 4 L5 29 L14 16 H132 L140 11 L147 23 L156 4 L165 29 L174 16 H320"/></g></svg><span>${checking ? 'Memeriksa koneksi…' : dot === 'ok' ? 'Terhubung' : dot === 'err' ? 'Koneksi gagal' : 'Belum terverifikasi'}</span></span>
             <small>${esc(a.type)} · ${esc(String(latency))} · cek terakhir ${esc(when)}</small>
             <div class="pulse-spark">${bars || '<span class="muted small" style="padding:2px 0">belum ada riwayat pulse</span>'}</div>
           </div>
-          <button class="pp-model-ico" data-pulse="${esc(a.id)}" title="Kirim pulse sekarang">${icon('bolt')}</button>
+          <button class="pp-model-ico" data-pulse="${esc(a.id)}" ${checking ? 'disabled' : ''} title="Kirim pulse sekarang">${icon('bolt')}</button>
         </div>`;
     }).join('');
     $$('#connector-pulse [data-pulse]').forEach((b) => b.addEventListener('click', async () => {
       b.disabled = true;
+      const id = b.dataset.pulse;
+      pendingPulses.set(id, (state.agents || []).find(a => a.id === id)?.lastChecked);
+      renderConnectorPulse();
       try {
         await api(`/api/agents/${b.dataset.pulse}/check`, { method: 'POST' });
         toast('Pulse terkirim — hasil muncul saat probe selesai');
-      } catch (e) { toast('Pulse gagal: ' + e.message); }
+      } catch (e) { pendingPulses.delete(id); renderConnectorPulse(); toast('Pulse gagal: ' + e.message); }
       b.disabled = false;
     }));
   }
   $('#btn-pulse-all').addEventListener('click', async () => {
     const chip = $('#pulse-status');
+    for (const a of state.agents || []) pendingPulses.set(a.id, a.lastChecked);
+    renderConnectorPulse();
     try {
       const r = await api('/api/agents/check-all', { method: 'POST' });
       if (r.count) {
@@ -3879,8 +4117,8 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
         if (chip) chip.textContent = `pulse dikirim ke ${r.count} konektor…`;
         toast(`Pulse dikirim ke ${r.count} konektor`);
         setTimeout(() => chip?.classList.add('hidden'), 6000);
-      } else toast('Belum ada konektor untuk dipulse');
-    } catch (e) { toast('Gagal: ' + e.message); }
+      } else { pendingPulses.clear(); renderConnectorPulse(); toast('Belum ada konektor untuk dipulse'); }
+    } catch (e) { pendingPulses.clear(); renderConnectorPulse(); toast('Gagal: ' + e.message); }
   });
 
   // ---------- orchestrator: tim agent paralel ----------
@@ -3893,7 +4131,7 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
       const stCls = { running: 'run', reviewing: '', done: 'ok-chip', error: 'err-chip', idle: '', merging: 'run' }[o.state] || '';
       const agents = (o.agents || []).map((a) => {
         const cls = { ok: 'ok-chip', 'ci-failed': 'err-chip', error: 'err-chip', running: 'run', conflict: 'err-chip' }[a.status] || '';
-        return `<div class="orch-agent"><span class="chip ${cls}">${esc(a.engineId)} · ${esc(a.status)}</span>${a.error ? `<small class="err-text">${esc(a.error)}</small>` : ''}</div>`;
+        return `<div class="orch-agent"><span class="chip ${cls}">${esc(a.engineId)} · ${esc(a.status)}</span>${a.task ? `<small>${esc(a.task)}</small>` : ''}${a.error ? `<small class="err-text">${esc(a.error)}</small>` : ''}</div>`;
       }).join("");
       const canMerge = o.state === 'reviewing' && (o.agents || []).some((a) => a.status === 'ok');
       return `<div class="orch-card" data-orch="${esc(o.id)}">
@@ -3907,19 +4145,19 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
         </div>
       </div>`;
     }).join("") || '<p class="muted small" style="padding:8px 2px">Belum ada orkestrasi. Buat di form di atas.</p>';
-    $('#orch-list [data-orch-run]').forEach((b) => b.addEventListener('click', async () => {
+    $$('#orch-list [data-orch-run]').forEach((b) => b.addEventListener('click', async () => {
       b.disabled = true;
       try { await api(`/api/orchestra/${b.dataset.orchRun}/run`, { method: 'POST' }); toast('Tim agent dijalankan — pantau status di sini'); }
       catch (e) { toast(e.message); b.disabled = false; }
       renderOrchestra();
     }));
-    $('#orch-list [data-orch-merge]').forEach((b) => b.addEventListener('click', async () => {
+    $$('#orch-list [data-orch-merge]').forEach((b) => b.addEventListener('click', async () => {
       b.disabled = true;
       try { const r = await api(`/api/orchestra/${b.dataset.orchMerge}/merge`, { method: 'POST' }); toast('Digabung: ' + (r.merged || []).join(', ')); }
       catch (e) { toast(e.message); }
       renderOrchestra();
     }));
-    $('#orch-list [data-orch-del]').forEach((b) => b.addEventListener('click', async () => {
+    $$('#orch-list [data-orch-del]').forEach((b) => b.addEventListener('click', async () => {
       await api(`/api/orchestra/${b.dataset.orchDel}`, { method: 'DELETE' });
       renderOrchestra();
     }));
@@ -3929,7 +4167,8 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
       await api('/api/orchestra', { method: 'POST', body: JSON.stringify({
         name: $('#orch-name').value.trim(),
         prompt: $('#orch-prompt').value.trim(),
-        agents: $('#orch-engines .orch-eng:checked').map((c) => c.dataset.eng),
+        agents: [...$$('#orch-engines .orch-eng:checked').map((c) => c.dataset.eng),
+          ...$$('#orch-agent-rows .orch-agent-row').map((row) => ({ engineId: row.querySelector('select').value, task: row.querySelector('textarea').value.trim() }))],
         baseDir: $('#orch-basedir').value.trim(),
         testCommand: $('#orch-ci').value.trim(),
       }) });
@@ -3938,13 +4177,33 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
     } catch (e) { toast(e.message); }
   });
 
+  function orchestraEngineGroups(cli) {
+    return [
+      { label: 'Gratis · OpenCode', items: cli.filter(e => e.id.startsWith('opencode-free')) },
+      { label: 'CLI lainnya · sesuai akun', items: cli.filter(e => !e.id.startsWith('opencode-free')) },
+    ].filter(group => group.items.length).map(group => ({ ...group, items: group.items.sort((a, b) => a.label.localeCompare(b.label)) }));
+  }
+
+  $('#orch-add-agent').addEventListener('click', () => {
+    const cli = (engines || []).filter((e) => e.type === 'cli' && e.available);
+    if (!cli.length) return toast('Tidak ada engine CLI tersedia');
+    const row = document.createElement('div');
+    row.className = 'orch-agent-row';
+    row.innerHTML = '<label>Model / engine<select>' + orchestraEngineGroups(cli).map(group => '<optgroup label="' + esc(group.label) + '">' + group.items.map(e => '<option value="' + esc(e.id) + '"' + (e.id === 'opencode-free' ? ' selected' : '') + '>' + esc(e.label) + '</option>').join('') + '</optgroup>').join('') + '</select></label><label>Tugas khusus<textarea rows="2" placeholder="File dan tugas yang menjadi tanggung jawab agen ini"></textarea></label><button type="button" class="btn tiny">Hapus agen</button>';
+    row.querySelector('button').addEventListener('click', () => row.remove());
+    $('#orch-agent-rows').appendChild(row);
+    // Agen khusus menggantikan pilihan tim awal; pengguna dapat memilih ulang.
+    if ($$('#orch-agent-rows .orch-agent-row').length === 1) $$('#orch-engines .orch-eng').forEach(c => { c.checked = false; });
+    upgradeSelects();
+  });
+
   function renderOrchestraEngines() {
     const host = $('#orch-engines');
     if (!host) return;
     const cli = (engines || []).filter((e) => e.type === 'cli' && e.available);
-    host.innerHTML = cli.map((e) =>
-      '<label class="orch-eng-label"><input type="checkbox" class="orch-eng" data-eng="' + esc(e.id) + '" checked> ' + esc(e.label) + '</label>'
-    ).join('') || '<p class="muted small">Tidak ada engine CLI terdeteksi. Pasang Claude Code/Codex/OpenCode/Gemini CLI.</p>';
+    host.innerHTML = orchestraEngineGroups(cli).map(group => '<fieldset class="orch-engine-group"><legend>' + esc(group.label) + ' · ' + group.items.length + '</legend>' + group.items.map((e) =>
+      '<label class="orch-eng-label"><input type="checkbox" class="orch-eng" data-eng="' + esc(e.id) + '"' + (e.optIn ? '' : ' checked') + '> ' + esc(e.label) + '</label>'
+    ).join('') + '</fieldset>').join('') || '<p class="muted small">Tidak ada engine CLI terdeteksi. Pasang Claude Code/Codex/OpenCode/Gemini CLI.</p>';
   }
   function renderSettings() {
     const c = state.config;
@@ -3985,7 +4244,7 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
     const box = $(boxSel);
     if (!box) return;
     box.innerHTML = '';
-    try { new QRCode(box, { text: `${host}/?token=${state.token}`, width: size, height: size, correctLevel: QRCode.CorrectLevel.H }); } catch { }
+    try { new QRCode(box, { text: `${host}/`, width: size, height: size, correctLevel: QRCode.CorrectLevel.H }); } catch { }
   }
 
   async function renderTunnel() {
@@ -4003,10 +4262,10 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
     if (body) {
       if (t.url) {
         body.innerHTML = `
-          <div class="url-row"><code>${esc(t.url)}/?token=${esc(state.token)}</code><button class="btn tiny" id="btn-copy-tunnel">Salin</button></div>
+          <div class="url-row"><code>${esc(t.url)}/</code><button class="btn tiny" id="btn-copy-tunnel">Salin</button></div>
           <div class="qr-frame"><div id="qr-box-tunnel"></div></div>`;
         makeTunnelQr(t.url, '#qr-box-tunnel', 160);
-        $('#btn-copy-tunnel')?.addEventListener('click', () => navigator.clipboard?.writeText(`${t.url}/?token=${state.token}`).then(() => toast('Link internet disalin')));
+        $('#btn-copy-tunnel')?.addEventListener('click', () => navigator.clipboard?.writeText(`${t.url}/`).then(() => toast('Link internet disalin')));
       } else if (t.error) {
         body.innerHTML = `<p class="err small" style="margin-top:8px">${esc(t.error)}</p>`;
       } else if (t.status === 'starting') {
@@ -4022,9 +4281,9 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
       if (t.url) {
         tb.innerHTML = `
           <div class="qr-frame"><div id="qr-box-tunnel-pop"></div></div>
-          <div class="url-row" style="margin-top:8px"><code>${esc(t.url)}/?token=${esc(state.token)}</code><button class="btn tiny" id="btn-copy-tunnel-pop">Salin</button></div>`;
+          <div class="url-row" style="margin-top:8px"><code>${esc(t.url)}/</code><button class="btn tiny" id="btn-copy-tunnel-pop">Salin</button></div>`;
         makeTunnelQr(t.url, '#qr-box-tunnel-pop', 148);
-        $('#btn-copy-tunnel-pop')?.addEventListener('click', () => navigator.clipboard?.writeText(`${t.url}/?token=${state.token}`).then(() => toast('Link internet disalin')));
+        $('#btn-copy-tunnel-pop')?.addEventListener('click', () => navigator.clipboard?.writeText(`${t.url}/`).then(() => toast('Link internet disalin')));
       } else if (t.status === 'starting') {
         tb.innerHTML = '<p class="muted small">Menghubungkan tunnel…</p>';
       } else {
@@ -4291,7 +4550,7 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
   function fillScheduleEngines() {
     const sel = $('#sched-engine');
     if (!sel || sel.options.length) return;
-    sel.innerHTML = engines.map((e) => `<option value="${esc(e.id)}">${esc(e.label)}</option>`).join('');
+    sel.innerHTML = groupedEngines(engines).map(group => `<optgroup label="${esc(group.label)}">` + group.items.map((e) => `<option value="${esc(e.id)}">${esc(e.label)}</option>`).join('') + '</optgroup>').join('');
   }
 
   async function renderSchedules() {
@@ -4760,14 +5019,15 @@ Jangan mengarang — bila data tidak ada di folder, katakan tidak ada.`;
     let usage;
     try { usage = await api('/api/usage'); } catch { return toast('Gagal memuat pemakaian'); }
     const max = Math.max(1, ...usage.map((u) => u.runs));
-    $('#usage-rows').innerHTML = usage.map((u) => {
+    const activeUsage = usage.filter(u => u.runs > 0).sort((a, b) => b.runs - a.runs);
+    $('#usage-rows').innerHTML = '<div class="usage-summary"><b>' + usage.reduce((n, u) => n + u.runs, 0) + '</b><span>total run · ' + activeUsage.length + ' engine digunakan</span></div>' + activeUsage.map((u) => {
       const pct = Math.round((u.runs / max) * 100);
       return `<div class="usage-row">
         <div class="u-top"><span class="u-name"><span class="u-ico">${icon(u.id)}</span><b>${esc(u.label)}</b></span><span class="u-num">${u.runs} run</span></div>
         <div class="u-bar"><i style="width:${pct}%"></i></div>
         <div class="u-sub"><span>${u.ok} ok · ${u.failed} gagal</span><span>${u.ok ? 'avg ' + Math.round(u.avgMs / 100) / 10 + 's' : '—'}</span></div>
       </div>`;
-    }).join('');
+    }).join('') + (!activeUsage.length ? '<p class="muted small">Belum ada pemakaian. Jalankan tugas dari Studio untuk melihat statistik.</p>' : '');
   });
   $('#usage-manage').addEventListener('click', () => {
     setLayer(null);
