@@ -563,8 +563,14 @@ test('katalog promo: berisi entri hasil riset Nov 2026 dengan sumber', async () 
   const summary = state.catalogValidity;
   assert.ok(summary && typeof summary.active === 'number', 'ringkasan validitas tersedia');
   assert.equal(summary.active, catalog.length, 'jumlah aktif sama dengan jumlah entri yang dikirim');
-  assert.equal(summary.expired, 0, 'tidak ada entri kedaluwarsa yang lolos ke UI');
+  // Yang diuji bukan "tidak ada yang berakhir", tapi bahwa yang berakhir
+  // benar-benar disaring: jumlahnya cocok dengan hitungan di katalog sumber
+  // dan tidak satu pun ikut terkirim ke UI.
+  const { promoValidity } = await import('../lib/promo-validity.js');
+  const expectedExpired = source.filter((c) => promoValidity(c).state === 'expired').length;
+  assert.equal(summary.expired, expectedExpired, 'jumlah kedaluwarsa cocok dengan katalog sumber');
   assert.equal(summary.total, summary.active + summary.expired, 'total = aktif + kedaluwarsa');
+  assert.equal(summary.total, source.length, 'total mencakup seluruh katalog sumber');
 });
 
 test('agents: pulse semua konektor — rute check-all idempoten', async () => {
