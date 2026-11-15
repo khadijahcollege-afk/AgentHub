@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.6.4 — 2026-11-15
+- **Promo mati dibuang dari katalog** — Together AI dan xAI (Grok) tidak lagi
+  menawarkan yang dijanjikan katalog. Dokumen resmi Together menyatakan
+  "doesn't currently offer free trials" (akses butuh kredit minimum $15), dan
+  program $150/bulan xAI berakhir 2025 dengan halaman resminya kini 404.
+  Keduanya ditandai `expired` sehingga berhenti tampil sebagai promo berlaku.
+- **Catatan kredit diperjelas** — Baseten (kredit hanya untuk workspace baru,
+  tanpa free tier permanen) dan SambaNova ($5 developer tier berlaku 3 bulan
+  sejak diberikan) kini menjelaskan batas waktunya sebagai durasi relatif,
+  bukan tanggal karangan.
+- **Katalog menyaring dua arah** — 30 entri sumber, 28 tampil, 2 disembunyikan:
+  lewat `validUntil` (Tencent, 31 Des 2026) dan lewat penanda `expired` untuk
+  program yang sudah dihentikan.
+- **Tes katalog tidak lagi mengunci "expired 0"** — yang diuji adalah
+  konsistensi: jumlah kedaluwarsa cocok dengan katalog sumber dan tidak satu
+  pun ikut terkirim ke UI.
+
 ## 1.6.3 — 2026-11-15
 - **Tanggal berlaku promo yang benar-benar terverifikasi** — Tencent Cloud
   TokenHub diberi `validUntil` 31 Desember 2026 sesuai halaman resmi "New User
