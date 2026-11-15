@@ -2,7 +2,9 @@
 // Prinsip: API dan data pengguna TIDAK PERNAH di-cache (berisi token & percakapan);
 // yang di-cache hanya aset statis UI supaya buka ulang terasa instan.
 // Bila ganti file statis, naikkan CACHE agar cache lama dibuang.
-const CACHE = 'agenthub-shell-v5';
+// Query versi di index.html (?v=1.6.7) yang membuat aset baru langsung dipakai
+// pada pemuatan pertama; CACHE yang dinaikkan mencegah entri lama menumpuk.
+const CACHE = 'agenthub-shell-v6';
 
 const SHELL = [
   '/public/style.css',
