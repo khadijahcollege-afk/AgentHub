@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.6.2 — 2026-11-15
+- **Format API per key** — form "Tambah API key" kini punya pilihan
+  Chat Completions, Anthropic Messages, dan Responses. Format disimpan per
+  key; key lama tetap berjalan sebagai Chat Completions. Gateway tetap satu
+  endpoint OpenAI-compatible untuk agent, tapi request dirutekan ke
+  `/chat/completions`, `/v1/messages`, atau `/v1/responses` sesuai format key,
+  lengkap dengan auth header, konversi body (riwayat tool-call, gambar,
+  tool_choice, stop), normalisasi respons, dan konversi streaming SSE.
+- **Promo hanya yang berlaku** — katalog disaring di server; entri yang sudah
+  lewat tidak pernah dikirim ke UI. Entri tanpa tanggal berakhir ditandai
+  "tanggal berakhir tidak diumumkan" (tidak dikarang), yang berakhir ≤7 hari
+  diberi badge peringatan, dan saat tidak ada promo muncul alternatif nyata:
+  model gratis OpenCode, login OpenRouter, atau tambah API key sendiri.
+- **Jendela desktop frameless** — minimize, maximize/restore, dan close pindah
+  ke dalam header UI; sudut luar jendela transparan dan area drag mengikuti
+  header.
+- **Skills, terminal proyek, koneksi OpenRouter** — penemuan skill otomatis,
+  panel terminal per perintah, dan alur PKCE OpenRouter dengan pertukaran
+  kredensial di sisi server.
+- Uji lokal baru: `npm run smoke:formats` menguji ketiga format API
+  end-to-end dengan upstream tiruan, tanpa API key sungguhan.
+
 ## Unreleased — 2026-11-13
 - **CI hijau di GitHub Actions** — runner Windows checkout dengan
   `core.autocrlf=true`, jadi `lib/machines.js` dan `public/machines.js` ber-CRLF
