@@ -1,7 +1,7 @@
 {
   "name": "agenthub-desktop",
   "productName": "AgentHub",
-  "version": "1.6.2",
+  "version": "1.6.3",
   "description": "AgentHub desktop shell — jendela asli Windows untuk server AgentHub",
   "main": "main.js",
   "author": "AgentHub Contributors",
@@ -18,7 +18,9 @@
     "appId": "tech.agenthub.desktop",
     "productName": "AgentHub",
     "icon": "build/icon.ico",
-    "directories": { "output": "../dist/AgentHub-desktop" },
+    "directories": {
+      "output": "../dist/AgentHub-desktop"
+    },
     "files": [
       "main.js",
       "preload.cjs",
@@ -65,7 +67,7 @@
         }
       ],
       "icon": "build/icon.ico",
-    "artifactName": "AgentHub-Setup-${version}.${ext}",
+      "artifactName": "AgentHub-Setup-${version}.${ext}",
       "signAndEditExecutable": false
     },
     "nsis": {

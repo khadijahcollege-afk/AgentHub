@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.6.3 — 2026-11-15
+- **Tanggal berlaku promo yang benar-benar terverifikasi** — Tencent Cloud
+  TokenHub diberi `validUntil` 31 Desember 2026 sesuai halaman resmi "New User
+  Free Trial Package". Ini membuat penyaringan promo akhirnya menyaring sesuatu,
+  bukan sekadar mekanisme yang belum terpakai.
+- **Fakta katalog diperbaiki** — Z AI hanya menulis "Limited-time Free" tanpa
+  tanggal berakhir, Cohere hanya menyebut key "may have an expiration date",
+  dan batas Qwen (90 hari) serta NVIDIA (30 hari) bergantung waktu aktivasi.
+  Semuanya dijelaskan di catatan entri, bukan dikarang jadi tanggal tetap.
+- **Tes katalog tidak lagi rapuh terhadap waktu** — kehadiran entri riset diuji
+  pada katalog sumber, jadi entri yang kampanyenya berakhir (dan memang harus
+  hilang dari UI) tidak membuat tes gagal sendiri. Ditambah tes yang memastikan
+  setiap `validUntil` adalah tanggal sah dan menyebut sumbernya.
+
 ## 1.6.2 — 2026-11-15
 - **Format API per key** — form "Tambah API key" kini punya pilihan
   Chat Completions, Anthropic Messages, dan Responses. Format disimpan per
