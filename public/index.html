@@ -110,6 +110,11 @@
           <button id="btn-changes" class="icon-btn hidden" title="Perubahan & aturan proyek"><svg viewBox="0 0 24 24"><path d="M7 4v12a3 3 0 0 0 3 3h7"/><path d="M17 16l3 3-3 3"/><circle cx="7" cy="4" r="2"/></svg><span id="changes-count" class="icon-badge hidden">0</span></button>
           <button id="btn-stop" class="icon-btn hidden" title="Hentikan run"><svg viewBox="0 0 24 24"><rect x="6.5" y="6.5" width="11" height="11" rx="2.5"/></svg></button>
           <button id="btn-chat-del" class="icon-btn hidden" title="Hapus thread"><svg viewBox="0 0 24 24"><path d="M5 7h14M9 7V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V7M7.5 7l.8 12h7.4l.8-12"/></svg></button>
+          <div class="window-controls hidden" id="window-controls" aria-label="Kontrol jendela">
+            <button type="button" data-window-control="minimize" title="Minimize" aria-label="Minimize"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 9h8"/></svg></button>
+            <button type="button" data-window-control="toggle-maximize" title="Maximize" aria-label="Maximize"><svg class="maximize-icon" viewBox="0 0 12 12" aria-hidden="true"><rect x="2.5" y="2.5" width="7" height="7" rx=".6"/></svg><svg class="restore-icon" viewBox="0 0 12 12" aria-hidden="true"><path d="M4 2.5h5.5V8M8 4H3v5h5z"/></svg></button>
+            <button type="button" class="window-close" data-window-control="close" title="Close" aria-label="Close"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="m3 3 6 6M9 3 3 9"/></svg></button>
+          </div>
         </div>
         <div class="chat-scroll" id="chat-scroll">
           <div id="chat-empty" class="hero hidden">

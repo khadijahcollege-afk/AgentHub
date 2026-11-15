@@ -1,6 +1,6 @@
 // AgentHub Desktop — jendela dan tray dengan server internal.
 // Server yang sudah hidup hanya dipakai jika versi dan token lokal cocok.
-const { app, BrowserWindow, Tray, Menu, shell, dialog } = require('electron');
+const { app, BrowserWindow, Tray, Menu, shell, dialog, ipcMain } = require('electron');
 const { spawn } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -99,9 +99,13 @@ function openExternal(url) {
 function createWindow() {
   win = new BrowserWindow({
     width: 1280, height: 840, minWidth: 420, minHeight: 560,
-    backgroundColor: '#0d0f13', autoHideMenuBar: true,
+    frame: false, transparent: true, backgroundColor: '#00000000', autoHideMenuBar: true,
+    roundedCorners: true,
     icon: trayIconPath(), title: `AgentHub ${VERSION}`, show: false,
-    webPreferences: { spellcheck: false, nodeIntegration: false, contextIsolation: true, sandbox: true },
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.cjs'),
+      spellcheck: false, nodeIntegration: false, contextIsolation: true, sandbox: true,
+    },
   });
   win.webContents.setWindowOpenHandler(({ url }) => {
     openExternal(url);
@@ -118,6 +122,23 @@ function createWindow() {
     if (!quitting) { event.preventDefault(); win.hide(); }
   });
 }
+ipcMain.on('agenthub:window-control', (event, action) => {
+  if (!win || win.isDestroyed() || event.sender !== win.webContents) return;
+  if (action === 'minimize') win.minimize();
+  else if (action === 'toggle-maximize') win.isMaximized() ? win.unmaximize() : win.maximize();
+  else if (action === 'close') win.hide();
+});
+ipcMain.handle('agenthub:window-state', (event) => {
+  if (!win || win.isDestroyed() || event.sender !== win.webContents) return { maximized: false };
+  return { maximized: win.isMaximized() };
+});
+app.on('browser-window-created', (_event, createdWindow) => {
+  const notifyWindowState = () => createdWindow.webContents.send('agenthub:window-state-changed', {
+    maximized: createdWindow.isMaximized(),
+  });
+  createdWindow.on('maximize', notifyWindowState);
+  createdWindow.on('unmaximize', notifyWindowState);
+});
 async function showWindow() {
   if (opening || quitting) return;
   opening = true;
@@ -127,7 +148,7 @@ async function showWindow() {
       const result = await probe();
       if (result.state !== 'ready') throw new Error(result.reason || 'Server tidak tersedia.');
       const cfg = localConfig();
-      await win.loadURL(`http://127.0.0.1:${cfg.port}/?token=${encodeURIComponent(cfg.token)}`);
+      await win.loadURL(`http://127.0.0.1:${cfg.port}/?token=${encodeURIComponent(cfg.token)}&desktop=1`);
     }
     if (win.isMinimized()) win.restore();
     win.show();

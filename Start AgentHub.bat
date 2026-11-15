@@ -22,6 +22,10 @@ for /f "tokens=1,2 delims==" %%a in ('"%NODEEXE%" get-info.js') do set %%a=%%b
 
 :open
 echo Membuka jendela AgentHub...
+if exist "%~dp0dist\AgentHub-desktop\win-unpacked\AgentHub.exe" (
+  start "" "%~dp0dist\AgentHub-desktop\win-unpacked\AgentHub.exe"
+  exit /b 0
+)
 if exist "%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe" (
   start "" "%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe" --app=%URL%
 ) else if exist "%ProgramFiles%\Microsoft\Edge\Application\msedge.exe" (

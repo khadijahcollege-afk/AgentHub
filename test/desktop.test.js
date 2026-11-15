@@ -255,6 +255,31 @@ test('desktop: tray punya cek pembaruan + unduh versi baru', () => {
   assert.ok(main.includes('Unduh versi baru'), 'tautan unduh di menu tray');
 });
 
+test('desktop: jendela mendukung sudut transparan', () => {
+  const main = fs.readFileSync(path.join(ROOT, 'desktop/main.js'), 'utf8');
+  assert.match(main, /frame:\s*false/);
+  assert.match(main, /transparent:\s*true/);
+  assert.match(main, /roundedCorners:\s*true/);
+  assert.match(main, /preload: path\.join\(__dirname, 'preload\.cjs'\)/);
+  assert.match(main, /backgroundColor:\s*'#00000000'/);
+  const preload = fs.readFileSync(path.join(ROOT, 'desktop/preload.cjs'), 'utf8');
+  assert.match(preload, /contextBridge\.exposeInMainWorld/);
+  assert.match(preload, /\['minimize', 'toggle-maximize', 'close'\]/);
+  const css = fs.readFileSync(path.join(ROOT, 'public/workspace.css'), 'utf8');
+  assert.match(css, /html, body\s*\{\s*background:\s*transparent/);
+  assert.match(css, /electron-desktop \.chat-top \{ -webkit-app-region: drag/);
+  const html = fs.readFileSync(path.join(ROOT, 'public/index.html'), 'utf8');
+  assert.match(html, /id="window-controls"/);
+});
+
+test('launcher: prioritaskan jendela Electron di atas mode app browser', () => {
+  const launcher = fs.readFileSync(path.join(ROOT, 'agenthub-launch.vbs'), 'utf8');
+  assert.ok(launcher.indexOf('dist\\AgentHub-desktop\\win-unpacked\\AgentHub.exe') < launcher.indexOf('--app='));
+  assert.ok(launcher.includes('WScript.Quit'));
+  const batch = fs.readFileSync(path.join(ROOT, 'Start AgentHub.bat'), 'utf8');
+  assert.ok(batch.indexOf('dist\\AgentHub-desktop\\win-unpacked\\AgentHub.exe') < batch.indexOf('--app=%URL%'));
+});
+
 test('docs: dokumen GitHub bebas emoji dan ikonnya berasal dari UI', () => {
   // Glyph tipografis yang dipakai UI (✓ ✕ → ⇄ ⌘ ● ×) diizinkan;
   // yang dilarang adalah emoji berwarna per-platform.

@@ -32,6 +32,36 @@ window.__ahMachines = {
   // ---------- token ----------
   let token = localStorage.getItem('ah_token') || '';
   const urlParams = new URLSearchParams(location.search);
+  if (urlParams.get('desktop') === '1' && window.agentHubDesktop) {
+    document.documentElement.classList.add('electron-desktop');
+    const controls = document.getElementById('window-controls');
+    if (controls) {
+      controls.classList.remove('hidden');
+      controls.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-window-control]');
+        if (button) window.agentHubDesktop.controlWindow(button.dataset.windowControl);
+      });
+      const updateWindowState = async () => {
+        const { maximized } = await window.agentHubDesktop.getWindowState();
+        controls.classList.toggle('is-maximized', maximized);
+        const button = controls.querySelector('[data-window-control="toggle-maximize"]');
+        if (button) {
+          button.title = maximized ? 'Restore' : 'Maximize';
+          button.setAttribute('aria-label', button.title);
+        }
+      };
+      window.agentHubDesktop.onWindowState(({ maximized }) => {
+        controls.classList.toggle('is-maximized', maximized);
+        const button = controls.querySelector('[data-window-control="toggle-maximize"]');
+        if (button) {
+          button.title = maximized ? 'Restore' : 'Maximize';
+          button.setAttribute('aria-label', button.title);
+        }
+      });
+      updateWindowState();
+      window.addEventListener('focus', updateWindowState);
+    }
+  }
   const urlToken = urlParams.get('token');
   const urlView = urlParams.get('view');
   const urlThread = urlParams.get('thread');

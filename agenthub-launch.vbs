@@ -50,7 +50,14 @@ If Not HealthOk() Then
   Next
 End If
 
-' buka jendela app di Edge (mode --app), fallback browser default
+' Buka jendela Electron tanpa title bar browser bila runtime desktop tersedia.
+desktopExe = appDir & "\dist\AgentHub-desktop\win-unpacked\AgentHub.exe"
+If fso.FileExists(desktopExe) Then
+  sh.Run q & desktopExe & q, 1, False
+  WScript.Quit
+End If
+
+' Edge app mode hanya fallback untuk paket lama tanpa runtime Electron.
 edge = ""
 p86 = sh.ExpandEnvironmentStrings("%ProgramFiles(x86)%")
 p64 = sh.ExpandEnvironmentStrings("%ProgramFiles%")

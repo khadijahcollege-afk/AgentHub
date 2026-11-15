@@ -18,8 +18,10 @@
     "appId": "tech.agenthub.desktop",
     "productName": "AgentHub",
     "icon": "build/icon.ico",
+    "directories": { "output": "../dist/AgentHub-desktop" },
     "files": [
       "main.js",
+      "preload.cjs",
       "server-connection.cjs",
       "package.json"
     ],
@@ -63,7 +65,7 @@
         }
       ],
       "icon": "build/icon.ico",
-      "artifactName": "AgentHub-Setup-${version}.${ext}",
+    "artifactName": "AgentHub-Setup-${version}.${ext}",
       "signAndEditExecutable": false
     },
     "nsis": {
