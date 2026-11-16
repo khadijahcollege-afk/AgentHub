@@ -60,6 +60,10 @@ test.before(async () => {
     sources: { openrouter: { models: [] }, list: { providers: [] }, cross: { models: [] } },
     knownIds: [], lastRefresh: Date.now(),
   }));
+  // Katalog skill harus ada juga di runner CI yang tidak memasang skill user.
+  const skillDir = path.join(dataDir, '.agents', 'skills', 'code-review');
+  fs.mkdirSync(skillDir, { recursive: true });
+  fs.writeFileSync(path.join(skillDir, 'SKILL.md'), '---\nname: code-review\ndescription: Periksa kode dan review perubahan.\n---\nPeriksa kode proyek dan laporkan kesalahan.\n');
   // Harness uji harus aman terhadap pembungkusan cmdline Windows (cmd.exe /c),
   // jadi pakai perintah shell sederhana, bukan `node -e` dengan tanda kutip.
   const isWin = process.platform === 'win32';
@@ -296,7 +300,7 @@ test('prompt CLI: spasi & metakarakter sampai utuh, redirection harness tetap ja
   const promptOf = (out) => JSON.parse(out.match(/SINK:(.*)$/s)[1]);
   const sendSink = async (prompt) => {
     const th = await (await api('/api/threads', {
-      method: 'POST', body: JSON.stringify({ engine: 'sink' }),
+      method: 'POST', body: JSON.stringify({ engine: 'sink', cwd: dataDir }),
     })).json();
     const res = await api(`/api/threads/${th.id}/send`, {
       method: 'POST', body: JSON.stringify({ prompt, engine: 'sink' }),

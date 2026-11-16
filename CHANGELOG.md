@@ -1,6 +1,10 @@
 # Changelog
 
 ## 1.6.13 — 2026-11-16
+- Panduan Android/iPhone/web kini tersedia langsung di situs dan tab halaman
+  unduh: akses QR bertoken, pemasangan PWA, kebutuhan server aktif dan HTTPS.
+- Tes pengiriman prompt memakai fixture skill proyek agar tidak bergantung
+  pada skill yang terpasang di komputer pengembang atau runner CI.
 - **Prompt terpotong di Windows (bug lama, serius)** — `lib/harness.js`
   membungkus CLI lewat `cmd.exe` dengan escape `""`. Itu bukan escape yang sah
   untuk argv, jadi **setiap prompt yang mengandung spasi** sampai ke CLI sebagai

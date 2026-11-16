@@ -185,7 +185,7 @@
   </div>
 
   <div class="dl-card">
-    <div class="tabs" role="tablist" aria-label="Pilih sistem operasi">
+    <div class="tabs" role="tablist" aria-label="Pilih platform">
       <button class="tab active" id="tab-win" type="button" data-os="win" role="tab" aria-selected="true" aria-controls="os-win" tabindex="0">
         <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5h7v6H4zM13 5.5h7v6h-7zM4 13h7v6H4zM13 13h7v6h-7z"/></svg>
         Windows
@@ -193,6 +193,10 @@
       <button class="tab" id="tab-other" type="button" data-os="other" role="tab" aria-selected="false" aria-controls="os-other" tabindex="-1">
         <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v9M12 12c0 4-3 6-6 6 0-4 2-6 6-6zM12 12c0 4 3 6 6 6 0-4-2-6-6-6z"/></svg>
         Linux / macOS
+      </button>
+      <button class="tab" id="tab-web" type="button" data-os="web" role="tab" aria-selected="false" aria-controls="os-web" tabindex="-1">
+        <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg>
+        Android / iPhone / Web
       </button>
     </div>
 
@@ -229,6 +233,17 @@
       <pre class="code">git / salin folder AgentHub
 node server.js        <span class="cm"># butuh Node.js 18+</span></pre>
       <p style="color:var(--muted);margin-top:12px;font-size:13.5px">UI web-nya responsif — dari Linux/macOS tetap bisa dibuka di browser dan HP.</p>
+    </div>
+    <div id="os-web" role="tabpanel" aria-labelledby="tab-web" tabindex="0" hidden>
+      <h2>AgentHub di Android, iPhone, dan browser</h2>
+      <p>Versi web berjalan dari server AgentHub di komputer Anda. Jalankan AgentHub dan biarkan komputer menyala, lalu buka dashboard. Belum ada unduhan APK atau aplikasi App Store terpisah.</p>
+      <div class="alt"><a class="btn-alt" href="/">Buka dashboard server ini</a></div>
+      <div class="steps">
+        <div class="step"><b>Browser</b>Di komputer server, buka <code>http://localhost:7788</code> (port bawaan). Dari HP atau perangkat lain, pindai QR di <strong>Pengaturan → Telepon</strong>. QR sudah menyertakan token akses.</div>
+        <div class="step"><b>Android</b>Buka tautan QR di Chrome. Untuk memasang PWA, gunakan URL dashboard HTTPS, lalu pilih <strong>Instal aplikasi</strong> atau <strong>Tambahkan ke layar utama</strong> dari menu browser.</div>
+        <div class="step"><b>iPhone / iPad</b>Buka tautan QR di Safari, lalu pilih <strong>Bagikan → Tambahkan ke Layar Utama</strong>. Gunakan HTTPS untuk dukungan PWA penuh.</div>
+      </div>
+      <p style="margin-top:16px;color:var(--muted)">Akses lokal memerlukan WiFi yang sama. Untuk data seluler dan URL HTTPS, aktifkan tunnel opsional di Pengaturan (memerlukan cloudflared). Cache offline menyimpan antarmuka; agent tetap memerlukan server yang berjalan.</p>
     </div>
   </div>
 

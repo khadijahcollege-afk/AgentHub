@@ -85,7 +85,19 @@
       <span class="badge"><svg class="ic" aria-hidden="true"><use href="#route"/></svg>Auto-failover on free tokens</span>
       <span class="badge"><svg class="ic" aria-hidden="true"><use href="#book"/></svg>MIT</span>
     </div>
+    <div class="badges"><a class="btn-alt" href="#web-mobile"><svg class="ic" aria-hidden="true"><use href="#phone"/></svg>Android / iPhone / Web</a></div>
   </div>
+
+  <section class="dl-card" id="web-mobile" aria-labelledby="web-title">
+    <h2 id="web-title">Use AgentHub on Android, iPhone, or the web</h2>
+    <p>The dashboard runs in your browser. Start AgentHub on your computer and keep it running, then open its dashboard URL. This website provides downloads and instructions; your dashboard is hosted by your own AgentHub server.</p>
+    <div class="steps">
+      <div class="step"><b>Web browser</b>On the host computer, open <code>http://localhost:7788</code> (default port). On another device, use the dashboard URL or scan the QR in Settings → Phone. The QR includes your access token.</div>
+      <div class="step"><b>Android</b>Open the QR link in Chrome. For an installed PWA, use an HTTPS dashboard URL, then choose <strong>Install app</strong> or <strong>Add to Home screen</strong> from the browser menu.</div>
+      <div class="step"><b>iPhone / iPad</b>Open the QR link in Safari, then tap <strong>Share → Add to Home Screen</strong>. Use HTTPS for full PWA support. There is currently no separate App Store or APK download.</div>
+    </div>
+    <p style="margin-top:16px;color:var(--muted)">For local Wi-Fi access, the phone and computer must share a network. For access over mobile data and an HTTPS URL, enable the optional tunnel in Settings (requires cloudflared). PWA offline support covers the interface; agents still require the running server.</p>
+  </section>
 
   <div class="dl-card">
     <div class="dl-main">

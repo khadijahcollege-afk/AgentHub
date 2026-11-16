@@ -45,8 +45,10 @@ AgentHub jalan di semua perangkat Anda — satu server lokal, lima cara pasang:
 | **Windows portable** | `AgentHub-Portable.zip` | Extract → `Start AgentHub.bat` (jendela browser, tanpa shell desktop) |
 | **macOS** | `AgentHub-macOS.dmg` | [Releases](https://github.com/khadijahcollege-afk/AgentHub/releases/latest) — dibangun CI. Belum ditandatangani: klik kanan → **Open** saat pertama |
 | **Linux** | `AgentHub-linux.AppImage` / `.deb` | [Releases](https://github.com/khadijahcollege-afk/AgentHub/releases/latest) — dibangun CI. `chmod +x` AppImage |
-| **Android** | PWA (web app terpasang) | Buka dashboard di Chrome → **Instal** — ikon di home screen, layar penuh, kerangka offline |
-| **iOS / iPhone** | PWA | Buka dashboard di Safari → **Bagikan** → **Tambahkan ke Layar Utama** |
+| **Android** | Web / PWA | Pindai QR dashboard → buka di Chrome. Untuk dukungan PWA penuh, gunakan HTTPS → **Instal aplikasi** / **Tambahkan ke layar utama** |
+| **iOS / iPhone** | Web / PWA | Pindai QR dashboard → buka di Safari → **Bagikan** → **Tambahkan ke Layar Utama**. Gunakan HTTPS untuk dukungan PWA penuh |
+
+Dashboard web disajikan oleh server AgentHub Anda yang sedang berjalan; GitHub Pages menampilkan situs unduhan. Komputer server harus tetap menyala. Akses browser lewat WiFi lokal bisa memakai HTTP; dukungan PWA penuh memerlukan HTTPS (tersedia melalui tunnel Cloudflare opsional). Belum ada paket APK atau App Store terpisah. Cache offline menyimpan antarmuka; operasi agent memerlukan server.
 | **OS apa pun (web)** | tidak perlu | `node server.js` (Node 18+) — jalan di browser mana pun, UI responsif |
 
 Installer macOS/Linux dibangun otomatis oleh [.github/workflows/release.yml](.github/workflows/release.yml) saat tag `v*` dipush — tiga runner membangun target native masing-masing dan satu job memuat semuanya ke GitHub Release yang sama. Build macOS belum ditandatangani (tanpa sertifikat Apple); aplikasinya identik di semua platform karena server dan UI-nya sama. Untuk akses lewat data seluler, nyalakan tunnel opsional di Pengaturan → *Telepon*.

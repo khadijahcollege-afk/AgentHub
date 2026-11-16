@@ -48,8 +48,10 @@ AgentHub runs everywhere you do — one local server, five ways to install:
 | **Windows portable** | `AgentHub-Portable.zip` | Extract → `Start AgentHub.bat` (browser window, no desktop shell) |
 | **macOS** | `AgentHub-macOS.dmg` | [Releases](https://github.com/khadijahcollege-afk/AgentHub/releases/latest) — built by CI. Unsigned: right-click → **Open** on first launch |
 | **Linux** | `AgentHub-linux.AppImage` / `.deb` | [Releases](https://github.com/khadijahcollege-afk/AgentHub/releases/latest) — built by CI. `chmod +x` the AppImage |
-| **Android** | PWA (installable web app) | Open the dashboard in Chrome → **Install** — home-screen icon, full-screen, offline shell |
-| **iOS / iPhone** | PWA | Open the dashboard in Safari → **Share** → **Add to Home Screen** |
+| **Android** | Web / PWA | Scan the dashboard QR → open in Chrome. For full PWA support, use HTTPS → **Install app** / **Add to Home screen** |
+| **iOS / iPhone** | Web / PWA | Scan the dashboard QR → open in Safari → **Share** → **Add to Home Screen**. Use HTTPS for full PWA support |
+
+The web dashboard is served by your running AgentHub server; GitHub Pages hosts the download website. Keep the host computer running. Local Wi-Fi browser access works over HTTP; full PWA support requires HTTPS (available through the optional Cloudflare tunnel). There is no separate APK or App Store package. Offline caching covers the interface; agent operations require the server.
 | **Any OS (web)** | none | `node server.js` (Node 18+) — works in any browser, UI fully responsive |
 
 macOS/Linux installers are built automatically by [.github/workflows/release.yml](.github/workflows/release.yml) when a `v*` tag is pushed — three runners build their native targets and one job publishes them all to the same GitHub Release. The macOS build is unsigned (no Apple certificate); the app itself is identical everywhere because the server and UI are the same on every platform. To reach AgentHub over mobile data, start the optional tunnel in Settings → *Phone*.
