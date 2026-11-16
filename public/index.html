@@ -143,6 +143,7 @@
           <b id="chat-title"></b>
           <span id="chat-engine-badge" class="chip hidden"></span>
           <span id="chat-running" class="chip run hidden">Working</span>
+          <span id="chat-tool" class="chip tool hidden"></span>
           <span class="grow"></span>
           <button id="btn-terminal" class="btn tiny" aria-controls="terminal-panel" aria-expanded="false" title="Terminal (Ctrl+`)">&gt;_ Terminal</button>
           <div id="find-bar" class="find-bar hidden">
@@ -693,6 +694,47 @@
               <button class="btn primary" id="mem-add">Ingat</button>
             </div>
             <div id="mem-list" class="mem-list"></div>
+          </div>
+
+          <div class="settings-pane" data-pane="mcp">
+            <h3>Server MCP</h3>
+            <p class="muted small">Model Context Protocol memberi agent tool dari luar AgentHub — GitHub, database, browser, apa pun yang menyediakan server MCP. Tool-nya muncul untuk model dengan nama <code>mcp__&lt;server&gt;__&lt;tool&gt;</code>. Kredensial (header/env) tidak pernah ditampilkan kembali oleh API.</p>
+            <div id="mcp-list" class="mcp-list"></div>
+            <form id="mcp-form" class="form-grid">
+              <label>Nama server<input id="mcp-name" placeholder="mis. github" autocomplete="off"></label>
+              <label>Transport
+                <select id="mcp-type">
+                  <option value="stdio">stdio — proses lokal</option>
+                  <option value="http">http — endpoint jarak jauh</option>
+                </select>
+              </label>
+              <label class="span2" id="mcp-stdio-command">Perintah<input id="mcp-command" placeholder="mis. npx atau path absolut node" autocomplete="off"></label>
+              <label class="span2" id="mcp-stdio-args">Argumen (satu per baris)<textarea id="mcp-args" rows="3" placeholder="-y&#10;@modelcontextprotocol/server-github"></textarea></label>
+              <label class="span2 hidden" id="mcp-http-url">URL<input id="mcp-url" placeholder="https://contoh/mcp" autocomplete="off"></label>
+              <label class="span2 hidden" id="mcp-http-headers">Header (JSON, mis. {"Authorization":"Bearer …"})<textarea id="mcp-headers" rows="2" placeholder="{}"></textarea></label>
+              <div class="span2 form-actions">
+                <button class="btn primary" type="submit" id="mcp-save">Simpan server</button>
+                <button class="btn" type="button" id="mcp-refresh">Muat ulang katalog</button>
+                <span class="muted small" id="mcp-status"></span>
+              </div>
+            </form>
+          </div>
+
+          <div class="settings-pane" data-pane="hooks">
+            <h3>Hook siklus hidup</h3>
+            <p class="muted small">Hook adalah program lokal yang dijalankan pada event agent: <code>SessionStart</code>, <code>UserPromptSubmit</code>, <code>PreToolUse</code>, <code>PermissionRequest</code>, <code>PostToolUse</code>, <code>PostToolUseFailure</code>, <code>Stop</code>. Hook menerima JSON di stdin dan boleh membalas JSON; exit code 2 memblokir. Hook dari folder proyek hanya berjalan setelah Anda menyetujui digest deklarasinya.</p>
+            <label class="mem-toggle"><input type="checkbox" id="set-hooks-on"><span>Jalankan hook pada setiap run</span></label>
+            <div class="form-grid">
+              <label>Event
+                <select id="hook-event"></select>
+              </label>
+              <label>Matcher<input id="hook-matcher" placeholder="* atau Bash atau Write|Edit" autocomplete="off"></label>
+              <label class="span2">Perintah<input id="hook-command" placeholder="node" autocomplete="off"></label>
+              <label class="span2">Argumen (satu per baris)<textarea id="hook-args" rows="2" placeholder="C:\\path\\guard.mjs"></textarea></label>
+              <div class="span2 form-actions"><button class="btn primary" type="button" id="hook-add">Tambah hook ke event</button></div>
+            </div>
+            <div id="hook-list" class="hook-list"></div>
+            <div id="hook-trust" class="hook-trust"></div>
           </div>
 
           <div class="settings-pane" data-pane="shortcuts">

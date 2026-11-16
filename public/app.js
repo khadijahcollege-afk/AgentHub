@@ -187,6 +187,10 @@ window.__ahMachines = {
     if (stop) stop.classList.toggle('hidden', next !== 'running');
     const chip = $('#chat-running');
     if (chip) chip.classList.toggle('hidden', next !== 'running');
+    // Chip tool ikut hilang ketika run berakhir; menyisakan teks tool terakhir
+    // setelah selesai membuat status run terlihat menggantung.
+    const toolChip = $('#chat-tool');
+    if (toolChip && next !== 'running') { toolChip.classList.add('hidden'); toolChip.textContent = ''; }
   }
 
   // Server adalah sumber kebenaran untuk run yang sedang berjalan. Saat thread
@@ -266,6 +270,9 @@ window.__ahMachines = {
     tag: '<path d="M3.5 12.5 11 5h6.5V11.5L10 19z"/><circle cx="14.5" cy="8.5" r="1"/>',
     plus: '<path d="M12 5v14M5 12h14"/>',
     sound: '<path d="M4 9.5v5h3.5L12 18V6L7.5 9.5z"/><path d="M15.5 9a4.5 4.5 0 0 1 0 6"/><path d="M18 6.8a8 8 0 0 1 0 10.4"/>',
+    play: '<path d="M8 5.5v13l10-6.5z"/>',
+    pause: '<rect x="8" y="5.5" width="3" height="13" rx="1"/><rect x="13.5" y="5.5" width="3" height="13" rx="1"/>',
+    plug: '<path d="M9 4v5M15 4v5"/><path d="M7 9h10v3a5 5 0 0 1-10 0z"/><path d="M12 17v3"/>',
   };
   const icon = (id) => `<svg class="ico" viewBox="0 0 24 24">${ICON_PATHS[id] || ICON_PATHS.robot}</svg>`;
   // Tanda centang & silang sebagai SVG, bukan karakter ✓/✕: bentuknya sama di
@@ -475,6 +482,7 @@ window.__ahMachines = {
         if (slices.includes('tasks') && view === 'tasks') renderTasks();
         if (slices.includes('notes') && view === 'notes') renderNotes();
         if (slices.includes('memory') && view === 'settings' && settingsPane === 'memory') renderMemory();
+    if (slices.includes('config') && view === 'settings' && settingsPane === 'mcp') renderMcp();
         return;
       }
       if (!deepLinkDone) {
@@ -2083,20 +2091,28 @@ window.__ahMachines = {
   });
   $('#effort-label').textContent = effortLabel(effort);
 
-  // ---------- mode izin (chip Full access) ----------
-  // 4 tingkat ala aplikasi agent populer; flag CLI-nya dipetakan di harness.
-  const PERMISSION_LABELS = { ask: 'Minta persetujuan', edits: 'Setujui edit', plan: 'Plan mode', full: 'Full access' };
+  // ---------- mode izin (chip akses) ----------
+  // Lima mode mengikuti ZCode: plan → build → edit → guarded → yolo. Nama lama
+  // (ask/edits/full) tetap diterima sebagai alias agar pilihan yang sudah
+  // tersimpan di localStorage tidak berubah arti diam-diam.
+  const PERMISSION_LABELS = {
+    plan: 'Plan mode', build: 'Setujui dulu', edit: 'Setujui edit',
+    guarded: 'Guarded', yolo: 'Full access',
+    ask: 'Setujui dulu', edits: 'Setujui edit', full: 'Full access',
+  };
   function renderAccessMenu() {
     const opts = [
-      ['ask', 'Minta persetujuan', 'Selalu tanya sebelum mengedit berkas atau menjalankan perintah'],
-      ['edits', 'Setujui edit', 'Edit berkas bebas; perintah tetap dikonfirmasi'],
-      ['plan', 'Plan mode', 'Baca & rencana saja — Claude/Codex/Gemini masuk mode baca'],
-      ['full', 'Full access', 'Akses tanpa batas ke internet dan berkas komputer Anda'],
+      ['plan', 'Plan mode', 'Baca & rencana saja — tidak ada tulisan atau perintah'],
+      ['build', 'Setujui dulu', 'Baca bebas; menulis berkas & perintah butuh persetujuan'],
+      ['edit', 'Setujui edit', 'Edit berkas bebas; perintah butuh persetujuan'],
+      ['guarded', 'Guarded', 'Semua bebas, kecuali perintah berbahaya (rm -rf, reset --hard…)'],
+      ['yolo', 'Full access', 'Tanpa persetujuan — pakai hanya di folder yang Anda percaya'],
     ];
+    const cur = normalizePermission(permission);
     $('#access-rows').innerHTML = opts.map(([v, l, d]) => `
-      <div class="pick-row ${permission === v ? 'active' : ''}" data-perm="${v}">
+      <div class="pick-row ${cur === v ? 'active' : ''}" data-perm="${v}">
         <span class="pick-main"><b>${l}</b><small>${d}</small></span>
-        ${permission === v ? `<span class="pick-check">${CHECK_SVG}</span>` : ''}
+        ${cur === v ? `<span class="pick-check">${CHECK_SVG}</span>` : ''}
       </div>`).join('');
     $$('#access-rows .pick-row').forEach((row) => row.addEventListener('click', () => {
       permission = row.dataset.perm;
@@ -2105,6 +2121,13 @@ window.__ahMachines = {
       renderHeroContext();
       setLayer(null);
     }));
+  }
+  // Alias lama → mode ZCode, dipakai untuk label & pilihan aktif.
+  function normalizePermission(v) {
+    if (v === 'ask') return 'build';
+    if (v === 'edits') return 'edit';
+    if (v === 'full') return 'yolo';
+    return ['plan', 'build', 'edit', 'guarded', 'yolo'].includes(v) ? v : 'yolo';
   }
   $('#access-chip').addEventListener('click', () => {
     if (layer === 'access') setLayer(null);
@@ -2853,6 +2876,23 @@ window.__ahMachines = {
           acc += ev.text;
           const el = $('#chat-messages .msg.assistant:last-child .msg-body');
           if (el) { el.innerHTML = md(acc); $('#chat-messages').scrollTop = $('#chat-messages').scrollHeight; }
+        } else if (ev.type === 'tool') {
+          // Chip tool: satu baris hidup yang menampilkan tool apa yang sedang
+          // dipanggil. Tanpa ini run ber-tool hanya terlihat "Working" tanpa
+          // petunjuk apa pun selama puluhan detik.
+          const chip = $('#chat-tool');
+          if (!chip) return;
+          if (ev.phase === 'start') {
+            chip.classList.remove('hidden', 'tool-err');
+            if (ev.decision !== 'allow') chip.classList.add('tool-err');
+            const hint = ev.reason ? ` — ${ev.reason}` : '';
+            chip.textContent = `${ev.name} · ${ev.decision === 'allow' ? 'jalan' : ev.decision}${hint}`;
+            chip.title = ev.reason || ev.name;
+          } else if (ev.phase === 'result') {
+            chip.textContent = `${ev.name} · ${ev.ok ? 'selesai' : 'gagal'}${ev.ms ? ` (${(ev.ms / 1000).toFixed(1)}s)` : ''}`;
+            chip.title = ev.preview || '';
+            chip.classList.toggle('tool-err', !ev.ok);
+          }
         } else if (ev.type === 'done') {
           const meta = curThread.messages[curThread.messages.length - 1];
           meta.content = acc; meta.ms = ev.ms; meta.servedBy = ev.servedBy; meta.status = 'done';
@@ -4364,6 +4404,8 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
     ['notifications', 'Notifikasi', '<path d="M6 9a6 6 0 1 1 12 0c0 5 2 6 2 6H4s2-1 2-6"/><path d="M10 20a2.2 2.2 0 0 0 4 0"/>'],
     ['privacy', 'Privasi', '<path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/><path d="M9.5 12l1.8 1.8 3.2-3.6"/>'],
     ['memory', 'Memori', '<path d="M8 4h8a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3h-2v3l-3-3H8a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3z"/><path d="M8.5 9h7M8.5 12h5"/>'],
+    ['mcp', 'Server MCP', '<path d="M4 7h6l2 3h8"/><path d="M4 17h5"/><circle cx="17.5" cy="17" r="2.5"/><circle cx="7" cy="7" r="2.5"/><circle cx="6.5" cy="17" r="2.5"/>'],
+    ['hooks', 'Hook', '<path d="M9 4v6a3 3 0 0 0 3 3h8"/><path d="M17 10l3 3-3 3"/><circle cx="6" cy="4" r="2"/><path d="M6 6v14"/>'],
     ['shortcuts', 'Pintasan', '<rect x="2.5" y="6" width="19" height="12" rx="2.5"/><path d="M6.5 10h.01M10 10h.01M13.5 10h.01M17 10h.01M7.5 14h9"/>'],
     ['phone', 'Ponsel', '<rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/>'],
     ['schedules', 'Jadwal', '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>'],
@@ -4376,7 +4418,7 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
   // Kelompok nav ala halaman settings Kybern: Pribadi / Agent / Sistem.
   const SETTINGS_GROUPS = [
     ['Pribadi', ['preferences', 'language', 'appearance', 'notifications', 'privacy', 'memory', 'shortcuts']],
-    ['Agent', ['providers', 'models', 'engines', 'connectors', 'projects', 'billing', 'schedules', 'orchestra']],
+    ['Agent', ['providers', 'models', 'engines', 'mcp', 'hooks', 'connectors', 'projects', 'billing', 'schedules', 'orchestra']],
     ['Sistem', ['phone', 'server', 'desktop', 'about']],
   ];
 
@@ -4586,6 +4628,8 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
     if (id === 'desktop') checkUpdates(true);
     if (id === 'orchestra') { renderOrchestra(); renderOrchestraEngines(); }
     if (id === 'memory') renderMemory();
+    if (id === 'mcp') { renderMcp(); syncMcpTransport(); }
+    if (id === 'hooks') renderHooks();
   }
 
   // ---------- dropdown custom untuk semua <select> ----------
@@ -4963,6 +5007,230 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
     } catch (err) { toast('Gagal: ' + err.message); }
   });
   $('#mem-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#mem-add').click(); });
+
+  // ---------- MCP & hooks (REA ZCode) ----------
+  // Dua panel ini mengelola konfigurasi yang dipakai server saat run: server MCP
+  // memasok tool eksternal, hook menyisipkan logika lokal di titik siklus hidup.
+  const HOOK_EVENT_LABELS = {
+    SessionStart: 'SessionStart — run dimulai',
+    UserPromptSubmit: 'UserPromptSubmit — pesan dikirim',
+    PreToolUse: 'PreToolUse — sebelum tool',
+    PermissionRequest: 'PermissionRequest — permintaan izin',
+    PostToolUse: 'PostToolUse — tool berhasil',
+    PostToolUseFailure: 'PostToolUseFailure — tool gagal',
+    Stop: 'Stop — run selesai',
+  };
+
+  async function renderMcp() {
+    const host = $('#mcp-list');
+    if (!host) return;
+    let data;
+    try { data = await api('/api/mcp'); } catch (err) {
+      host.innerHTML = `<p class="muted small">Gagal memuat server MCP: ${esc(err.message)}</p>`;
+      return;
+    }
+    const servers = data.servers || [];
+    const live = new Map((data.status || []).map((s) => [s.name, s]));
+    host.innerHTML = servers.length ? servers.map((s) => {
+      const st = live.get(s.name) || {};
+      const detail = s.type === 'stdio'
+        ? `${esc(s.command || '')} ${(s.args || []).join(' ')}`
+        : esc(s.url || '');
+      const state = st.connected ? `${st.toolCount ?? 0} tool` : 'belum terhubung';
+      return `
+      <div class="mcp-row">
+        <div class="mcp-main">
+          <div class="mcp-name">${esc(s.name)}<span class="chip">${esc(s.type)}</span>
+            ${s.enabled ? '' : '<span class="chip warn">nonaktif</span>'}
+            ${s.hasEnv || s.headerNames.length ? '<span class="chip">rahasia tersimpan</span>' : ''}
+          </div>
+          <div class="mcp-detail" title="${detail}">${detail}</div>
+          <div class="muted small">${esc(state)}${st.error ? ` · ${esc(st.error)}` : ''}</div>
+        </div>
+        <button class="icon-btn" data-mcp-toggle="${esc(s.name)}" data-on="${s.enabled ? '1' : '0'}" title="${s.enabled ? 'Nonaktifkan' : 'Aktifkan'}">${icon(s.enabled ? 'pause' : 'play')}</button>
+        <button class="icon-btn" data-mcp-del="${esc(s.name)}" title="Hapus server">${icon('x')}</button>
+      </div>`;
+    }).join('') : '<p class="muted small">Belum ada server MCP. Tambahkan satu di bawah — tool-nya langsung tersedia untuk agent.</p>';
+  }
+
+  function syncMcpTransport() {
+    const stdio = $('#mcp-type')?.value !== 'http';
+    $('#mcp-stdio-command')?.classList.toggle('hidden', !stdio);
+    $('#mcp-stdio-args')?.classList.toggle('hidden', !stdio);
+    $('#mcp-http-url')?.classList.toggle('hidden', stdio);
+    $('#mcp-http-headers')?.classList.toggle('hidden', stdio);
+  }
+  $('#mcp-type')?.addEventListener('change', syncMcpTransport);
+
+  $('#mcp-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const name = $('#mcp-name').value.trim();
+    const type = $('#mcp-type').value;
+    if (!name) { toast('Nama server wajib diisi'); return; }
+    let payload;
+    if (type === 'stdio') {
+      const command = $('#mcp-command').value.trim();
+      if (!command) { toast('Perintah wajib diisi untuk transport stdio'); return; }
+      const args = $('#mcp-args').value.split('\n').map((x) => x.trim()).filter(Boolean);
+      payload = { type, command, args };
+    } else {
+      const url = $('#mcp-url').value.trim();
+      if (!url) { toast('URL wajib diisi untuk transport http'); return; }
+      let headers = {};
+      const raw = $('#mcp-headers').value.trim();
+      if (raw) {
+        try { headers = JSON.parse(raw); } catch { toast('Header harus JSON yang sah'); return; }
+      }
+      payload = { type, url, headers };
+    }
+    try {
+      await api('/api/mcp', { method: 'POST', body: JSON.stringify({ name, server: payload }) });
+      $('#mcp-form').reset();
+      syncMcpTransport();
+      $('#mcp-status').textContent = 'Tersimpan — memuat katalog…';
+      await api('/api/mcp/catalog?refresh=1').catch(() => {});
+      $('#mcp-status').textContent = '';
+      await renderMcp();
+      toast(`Server MCP "${name}" tersimpan`);
+    } catch (err) { toast('Gagal: ' + err.message); }
+  });
+
+  $('#mcp-refresh')?.addEventListener('click', async () => {
+    $('#mcp-status').textContent = 'memuat…';
+    try {
+      const c = await api('/api/mcp/catalog?refresh=1');
+      $('#mcp-status').textContent = `${c.total} tool dari ${c.servers.length} server`;
+      await renderMcp();
+    } catch (err) { $('#mcp-status').textContent = `gagal: ${err.message}`; }
+  });
+
+  document.addEventListener('click', async (e) => {
+    const toggle = e.target.closest('[data-mcp-toggle]');
+    const del = e.target.closest('[data-mcp-del]');
+    if (toggle) {
+      const on = toggle.dataset.on === '1';
+      try {
+        await api(`/api/mcp/${toggle.dataset.mcpToggle}/enabled`, { method: 'POST', body: JSON.stringify({ enabled: !on }) });
+        await renderMcp();
+        toast(on ? 'Server dinonaktifkan — tool-nya tidak ditawarkan' : 'Server aktif');
+      } catch (err) { toast('Gagal: ' + err.message); }
+    }
+    if (del) {
+      try {
+        await api(`/api/mcp/${del.dataset.mcpDel}`, { method: 'DELETE' });
+        await renderMcp();
+        toast('Server MCP dihapus');
+      } catch (err) { toast('Gagal: ' + err.message); }
+    }
+  });
+
+  function hookRow(event, decl, index) {
+    return `
+      <div class="hook-row">
+        <div class="hook-main">
+          <div class="hook-name"><span class="chip">${esc(event)}</span> <code>${esc(decl.matcher)}</code></div>
+          ${(decl.hooks || []).map((h) => `<div class="muted small" title="${esc([h.command, ...(h.args || [])].join(' '))}">${esc(h.command)} ${esc((h.args || []).join(' ').slice(0, 90))}<span class="chip">${Math.round(h.timeoutMs / 1000)}s${h.async ? ' · async' : ''}</span></div>`).join('')}
+        </div>
+        <button class="icon-btn" data-hook-del="${esc(event)}|${index}" title="Hapus deklarasi ini">${icon('x')}</button>
+      </div>`;
+  }
+
+  async function renderHooks() {
+    const host = $('#hook-list');
+    if (!host) return;
+    const cwd = activeCwd();
+    let data;
+    try { data = await api(`/api/hooks${cwd ? `?cwd=${encodeURIComponent(cwd)}` : ''}`); } catch (err) {
+      host.innerHTML = `<p class="muted small">Gagal memuat hook: ${esc(err.message)}</p>`;
+      return;
+    }
+    const sel = $('#hook-event');
+    if (sel && !sel.options.length) {
+      sel.innerHTML = (data.events || []).map((ev) => `<option value="${esc(ev)}">${esc(HOOK_EVENT_LABELS[ev] || ev)}</option>`).join('');
+    }
+    const on = $('#set-hooks-on');
+    if (on) on.checked = !!data.enabled;
+
+    const rows = [];
+    for (const d of data.declarations || []) {
+      (d.declarations || []).forEach((decl, index) => rows.push(hookRow(d.event, decl, index)));
+    }
+    host.innerHTML = rows.length ? rows.join('') : '<p class="muted small">Belum ada hook. Hook berguna untuk audit, guard perintah, atau menyuntikkan konteks dari sistem lain.</p>';
+
+    const trust = $('#hook-trust');
+    if (trust) {
+      if (!cwd) trust.innerHTML = '<p class="muted small">Pilih folder kerja untuk melihat hook proyek.</p>';
+      else if (!data.project?.present) trust.innerHTML = `<p class="muted small">Tidak ada <code>.agenthub/hooks.json</code> di ${esc(cwd)}.</p>`;
+      else if (data.project.error) trust.innerHTML = `<p class="muted small danger">${esc(data.project.error)}</p>`;
+      else trust.innerHTML = `
+        <div class="hook-trust-row">
+          <div>
+            <b>Hook proyek</b> — ${data.project.hooks} hook dari <code>.agenthub/hooks.json</code>
+            <div class="muted small">Digest ${esc(String(data.project.digest || '').slice(0, 16))}… ${data.project.trusted ? '· <b>dipercaya</b>' : '· belum dipercaya, tidak dijalankan'}</div>
+          </div>
+          ${data.project.trusted
+            ? `<button class="btn tiny" id="hook-untrust">Cabut izin</button>`
+            : `<button class="btn tiny primary" id="hook-trust-btn">Percayai</button>`}
+        </div>`;
+      const grant = $('#hook-trust-btn');
+      if (grant) grant.onclick = async () => {
+        try {
+          await api('/api/hooks/trust', { method: 'POST', body: JSON.stringify({ cwd, digest: data.project.digest }) });
+          await renderHooks();
+          toast('Hook proyek dipercaya — deklarasi berubah akan gugur otomatis');
+        } catch (err) { toast('Gagal: ' + err.message); }
+      };
+      const revoke = $('#hook-untrust');
+      if (revoke) revoke.onclick = async () => {
+        try {
+          await api(`/api/hooks/trust?cwd=${encodeURIComponent(cwd)}`, { method: 'DELETE' });
+          await renderHooks();
+          toast('Izin dicabut — hook proyek tidak dijalankan');
+        } catch (err) { toast('Gagal: ' + err.message); }
+      };
+    }
+  }
+
+  $('#set-hooks-on')?.addEventListener('change', async (e) => {
+    try {
+      await api('/api/hooks/enabled', { method: 'POST', body: JSON.stringify({ enabled: e.target.checked }) });
+      toast(e.target.checked ? 'Hook aktif' : 'Hook dimatikan');
+      if (state) state.hooks = { ...(state.hooks || {}), enabled: e.target.checked };
+    } catch (err) { toast('Gagal: ' + err.message); e.target.checked = !e.target.checked; }
+  });
+
+  $('#hook-add')?.addEventListener('click', async () => {
+    const event = $('#hook-event').value;
+    const matcher = $('#hook-matcher').value.trim() || '*';
+    const command = $('#hook-command').value.trim();
+    if (!command) { toast('Perintah hook wajib diisi'); return; }
+    const args = $('#hook-args').value.split('\n').map((x) => x.trim()).filter(Boolean);
+    try {
+      const cur = await api(`/api/hooks${activeCwd() ? `?cwd=${encodeURIComponent(activeCwd())}` : ''}`);
+      const existing = (cur.declarations || []).find((d) => d.event === event)?.declarations || [];
+      const declarations = [...existing.map(({ index, ...rest }) => rest), { matcher, hooks: [{ type: 'process', command, args }] }];
+      await api('/api/hooks/events', { method: 'POST', body: JSON.stringify({ event, declarations }) });
+      $('#hook-command').value = '';
+      $('#hook-args').value = '';
+      $('#hook-matcher').value = '';
+      await renderHooks();
+      toast(`Hook ditambahkan ke ${event}`);
+    } catch (err) { toast('Gagal: ' + err.message); }
+  });
+
+  document.addEventListener('click', async (e) => {
+    const del = e.target.closest('[data-hook-del]');
+    if (!del) return;
+    const [event, idx] = del.dataset.hookDel.split('|');
+    try {
+      const cur = await api(`/api/hooks${activeCwd() ? `?cwd=${encodeURIComponent(activeCwd())}` : ''}`);
+      const existing = (cur.declarations || []).find((d) => d.event === event)?.declarations || [];
+      const declarations = existing.map(({ index, ...rest }) => rest).filter((_, i) => i !== Number(idx));
+      await api('/api/hooks/events', { method: 'POST', body: JSON.stringify({ event, declarations }) });
+      await renderHooks();
+      toast('Hook dihapus');
+    } catch (err) { toast('Gagal: ' + err.message); }
+  });
 
   function renderSettings() {
     const c = state.config;

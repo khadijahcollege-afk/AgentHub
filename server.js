@@ -45,6 +45,14 @@ import {
   fetchLatestRelease, updateInfo, fullUpdateInfo, assetFor, downloadAsset, launchInstaller,
 } from './lib/update.js';
 import * as runs from './lib/runs.js';
+import * as mcp from './lib/mcp.js';
+import * as hooks from './lib/hooks.js';
+import { toolSummary, PERMISSION_MODES } from './lib/tools.js';
+
+// Nilai `permission` yang diterima dari UI. Nama lama (ask/edits/full) tetap sah
+// karena disimpan di localStorage pengguna; pemetaannya dilakukan di lib/tools.js
+// untuk gerbang tool, dan di lib/harness.js untuk flag CLI.
+const PERMISSION_INPUTS = [...PERMISSION_MODES, 'ask', 'edits', 'full'];
 import {
   resolveWorkspace, workspaceSummary, diffReport, revertPaths, listRules, writeRule,
 } from './lib/workspace.js';
@@ -304,6 +312,18 @@ function sendJson(res, code, obj) {
   res.end(body);
 }
 
+// Argumen tool dipangkas untuk dikirim ke UI: isi berkas penuh tidak boleh
+// masuk lewat SSE hanya supaya chip tool bisa menampilkan nama berkasnya.
+function summarizeToolInput(input) {
+  if (!input || typeof input !== 'object') return {};
+  const out = {};
+  for (const [key, value] of Object.entries(input)) {
+    if (key === 'content' || key === 'old' || key === 'new') { out[key] = `(${String(value ?? '').length} karakter)`; continue; }
+    out[key] = typeof value === 'string' ? value.slice(0, 200) : value;
+  }
+  return out;
+}
+
 function readBody(req, limit = 1024 * 1024) {
   return new Promise((resolve, reject) => {
     let size = 0;
@@ -406,6 +426,10 @@ function appState() {
     promoPass: publicPass(loadPass()),
     pool: poolStatus(),
     server: serverInfo(),
+    // Tool MCP & hook: daftar konfigurasi (rahasia tetap tertutup) + ringkasan.
+    mcp: mcp.status(),
+    hooks: hooks.summary(),
+    permissionModes: PERMISSION_MODES,
     // kontrak state machine — UI memakainya untuk tombol/label yang sah,
     // agent memakainya untuk tahu transisi apa yang diizinkan tanpa menebak.
     machines: machineContracts(),
@@ -676,6 +700,102 @@ ${msgs || '<p class="meta">Percakapan kosong.</p>'}
       if (terminalMatch && method === 'GET') return sendJson(res, 200, terminalStatus(terminalMatch[1]));
       if (terminalMatch && method === 'DELETE') { stopTerminal(terminalMatch[1]); return sendJson(res, 200, { ok: true }); }
       return sendJson(res, 404, { error: 'Sesi terminal tidak ditemukan' });
+    } catch (error) { return sendJson(res, error.statusCode || 500, { error: error.message }); }
+  }
+
+  // ---- MCP: server tool eksternal (REA ZCode 07-mcp) ----
+  if (p === '/api/mcp' || p.startsWith('/api/mcp/')) {
+    try {
+      if (p === '/api/mcp' && method === 'GET') {
+        return sendJson(res, 200, { servers: mcp.listServers(), status: mcp.status() });
+      }
+      if (p === '/api/mcp' && method === 'POST') {
+        const b = await readBody(req);
+        const server = mcp.upsertServer(b.name, b.server || b);
+        broadcast('config');
+        return sendJson(res, 200, server);
+      }
+      if ((m = p.match(/^\/api\/mcp\/([A-Za-z0-9._-]+)\/enabled$/)) && method === 'POST') {
+        const b = await readBody(req);
+        const server = mcp.setServerEnabled(m[1], b.enabled);
+        broadcast('config');
+        return sendJson(res, 200, server);
+      }
+      if ((m = p.match(/^\/api\/mcp\/([A-Za-z0-9._-]+)\/tools$/)) && method === 'GET') {
+        const tools = await mcp.listTools(m[1], { force: url.searchParams.get('refresh') === '1' });
+        return sendJson(res, 200, { server: m[1], tools });
+      }
+      if ((m = p.match(/^\/api\/mcp\/([A-Za-z0-9._-]+)$/)) && method === 'DELETE') {
+        mcp.removeServer(m[1]);
+        broadcast('config');
+        return sendJson(res, 200, { ok: true });
+      }
+      if (p === '/api/mcp/catalog' && method === 'GET') {
+        return sendJson(res, 200, await mcp.catalog({ force: url.searchParams.get('refresh') === '1' }));
+      }
+      if (p === '/api/mcp/tools' && method === 'GET') {
+        // Ringkasan tool yang akan ditawarkan ke model untuk sebuah folder + mode.
+        const cwd = url.searchParams.get('cwd');
+        let resolved = null;
+        if (cwd) { try { resolved = resolveWorkspace(cwd); } catch { resolved = null; } }
+        return sendJson(res, 200, await toolSummary({
+          cwd: resolved,
+          mode: url.searchParams.get('mode') || 'yolo',
+        }));
+      }
+      return sendJson(res, 404, { error: 'Rute MCP tidak dikenal' });
+    } catch (error) { return sendJson(res, error.statusCode || 500, { error: error.message }); }
+  }
+
+  // ---- Hooks: lifecycle program lokal (REA ZCode 09-hooks) ----
+  if (p === '/api/hooks' || p.startsWith('/api/hooks/')) {
+    try {
+      if (p === '/api/hooks' && method === 'GET') {
+        const cwd = url.searchParams.get('cwd');
+        let resolved = null;
+        if (cwd) { try { resolved = resolveWorkspace(cwd); } catch { resolved = null; } }
+        return sendJson(res, 200, {
+          ...hooks.summary(resolved),
+          declarations: hooks.listHooks(),
+          trust: resolved ? hooks.trustStatus(resolved) : null,
+        });
+      }
+      if (p === '/api/hooks/enabled' && method === 'POST') {
+        const b = await readBody(req);
+        const r = hooks.setEnabled(b.enabled);
+        broadcast('config');
+        return sendJson(res, 200, r);
+      }
+      if (p === '/api/hooks/events' && method === 'POST') {
+        const b = await readBody(req);
+        const r = hooks.setEventHooks(b.event, b.declarations);
+        broadcast('config');
+        return sendJson(res, 200, r);
+      }
+      if (p === '/api/hooks/trust' && method === 'GET') {
+        const cwd = resolveWorkspace(url.searchParams.get('cwd'));
+        return sendJson(res, 200, hooks.trustStatus(cwd));
+      }
+      if (p === '/api/hooks/trust' && method === 'POST') {
+        const b = await readBody(req);
+        const cwd = resolveWorkspace(b.cwd);
+        const r = hooks.grantTrust(cwd, b.digest);
+        broadcast('config');
+        return sendJson(res, 200, r);
+      }
+      if (p === '/api/hooks/trust' && method === 'DELETE') {
+        const cwd = resolveWorkspace(url.searchParams.get('cwd'));
+        const r = hooks.revokeTrust(cwd);
+        broadcast('config');
+        return sendJson(res, 200, { ok: r });
+      }
+      if (p === '/api/hooks/test' && method === 'POST') {
+        const b = await readBody(req);
+        const cwd = b.cwd ? resolveWorkspace(b.cwd) : null;
+        const r = await hooks.runEvent(b.event || 'SessionStart', b.payload || {}, { cwd });
+        return sendJson(res, 200, r);
+      }
+      return sendJson(res, 404, { error: 'Rute hook tidak dikenal' });
     } catch (error) { return sendJson(res, error.statusCode || 500, { error: error.message }); }
   }
   if (p === '/api/openrouter/connect' && method === 'POST') {
@@ -1376,14 +1496,32 @@ ${msgs || '<p class="meta">Percakapan kosong.</p>'}
 
     try {
       let acc = '';
+      // Tool-calling hanya untuk engine pool: engine CLI mengelola tool-nya
+      // sendiri. Default aktif bila thread punya folder kerja — tanpa folder,
+      // tool berkas tidak ada gunanya dan model hanya akan membuang putaran.
+      const useTools = engineType(engineId) === 'pool'
+        && !!workspace
+        && b.tools !== false;
       const r = await runEngine(engineId, modelPrompt, {
         cwd: workspace,
         model: b.model,
         history,
         replyLang: config.replyLang,
         effort: ['low', 'medium', 'high'].includes(b.effort) ? b.effort : undefined,
-        permission: ['ask', 'edits', 'plan'].includes(b.permission) ? b.permission : undefined,
+        // Mode izin dipakai dua kali: untuk flag CLI (nama lama ask/edits/plan
+        // dipetakan ke flag resmi tiap CLI) dan sebagai gerbang tool di server
+        // (normalizeMode memetakan ask→build, edits→edit, full→yolo). Keduanya
+        // menerima nilai mentah supaya pemetaan CLI tidak ikut berubah.
+        permission: PERMISSION_INPUTS.includes(b.permission) ? b.permission : undefined,
+        useTools,
         signal: ctrl.signal,
+        // Event tool diteruskan apa adanya ke UI: pengguna harus bisa melihat
+        // tool apa yang dipanggil dan apakah ditolak, bukan hanya "Working".
+        onEvent: (evt) => {
+          if (evt?.type === 'tools') send({ type: 'tools', names: evt.names });
+          else if (evt?.type === 'tool_start') send({ type: 'tool', phase: 'start', name: evt.name, decision: evt.decision, reason: evt.reason, input: summarizeToolInput(evt.input) });
+          else if (evt?.type === 'tool_result') send({ type: 'tool', phase: 'result', name: evt.name, ok: evt.ok, ms: evt.ms, preview: String(evt.text || '').slice(0, 400) });
+        },
         onDelta: (chunk) => {
           acc += chunk;
           if (acc.length < 200000) send({ type: 'delta', text: chunk });
@@ -1400,6 +1538,7 @@ ${msgs || '<p class="meta">Percakapan kosong.</p>'}
         tokens: r.tokens || null,
         usage: r.usage || null,
         runStatus: 'done',
+        ...(r.tools?.length ? { tools: r.tools.map((t) => ({ name: t.name, ok: t.ok, decision: t.decision })) } : {}),
       });
       // Pemakaian nyata lewat gateway mengurangi saldo promo bila modelnya
       // termasuk plan (GLM-5.3 / GLM-5.3-Flash) dan tiket sedang aktif.
