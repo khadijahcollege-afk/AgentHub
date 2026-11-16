@@ -307,6 +307,8 @@ window.__ahMachines = {
 
   function daySep(ts) {
     const d = new Date(ts);
+    // pesan tanpa/ber-timestamp rusak tidak boleh merender "Invalid Date"
+    if (Number.isNaN(d.getTime())) return '';
     const today = new Date();
     const same = d.toDateString() === today.toDateString();
     const s = d.toLocaleDateString('en-GB', { weekday: 'long', day: '2-digit', month: 'short', year: 'numeric' });
@@ -2661,7 +2663,8 @@ window.__ahMachines = {
         ts: Date.now(),
         ...(sending.length ? { attachments: sending } : {}),
       }];
-      curThread.messages = [...curThread.messages, { id: 'tmp-a', role: 'assistant', engine: engineId, content: '', status: 'working' }];
+      // ts wajib: tanpa ini pemisah hari merender "Earlier · Invalid Date"
+      curThread.messages = [...curThread.messages, { id: 'tmp-a', role: 'assistant', engine: engineId, content: '', status: 'working', ts: Date.now() }];
       placeComposer();
       renderSidebar();
       renderChat();
