@@ -28,6 +28,23 @@ window.__ahMachines = {
 (() => {
   'use strict';
 
+  // ---------- guard error boot ----------
+  // Module abort (error runtime saat init) = layar hitam: #app & #gate sama-
+  // sama hidden. Tanpa ini user Android hanya melihat kosong tanpa petunjuk.
+  // Kini error boot tampil di gate dengan pesan yang bisa dilaporkan.
+  window.addEventListener('error', (ev) => {
+    const app = document.getElementById('app');
+    if (!app || app.classList.contains('hidden')) {
+      const gate = document.getElementById('gate');
+      const err = document.getElementById('gate-err');
+      if (gate) gate.classList.remove('hidden');
+      if (err) {
+        err.classList.remove('hidden');
+        err.textContent = 'Gagal memuat UI: ' + (ev.message || 'error tidak diketahui') + ' @' + (ev.filename || '') + ':' + (ev.lineno || 0);
+      }
+    }
+  });
+
   const $ = (s, el = document) => el.querySelector(s);
   const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 
@@ -831,6 +848,9 @@ window.__ahMachines = {
   // slices: undefined = semua. SSE memanggil dengan daftar slice yang berubah,
   // jadi event `tasks` tidak lagi me-render ulang chat/promo/keys.
   function renderAll(slices) {
+    // Deep-link (?view=settings dll) bisa memanggil render sebelum state dari
+    // server tiba — tanpa guard ini seluruh modul abort (layar hitam).
+    if (!state) return;
     const want = (s) => !slices || slices.includes('all') || slices.includes(s);
     if (want('threads')) renderSidebar();
     if (want('engines')) renderEngines();
@@ -4810,6 +4830,8 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
   }
   // ---------- memori agent (jangka panjang) ----------
   function renderMemory() {
+    // pane bisa diaktifkan saat boot (localStorage) sebelum state dari server
+    if (!state) return;
     const host = $('#mem-list');
     const tgl = $('#set-memory-on');
     if (tgl) tgl.checked = state.config?.memoryEnabled !== false;

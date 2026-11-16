@@ -41,7 +41,8 @@
 #terminal-command { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--text); font: 12px Consolas, monospace; padding: 8px; }
 .terminal-hint { color: var(--muted); font-size: 10px; }
 @media (max-width: 640px) { .terminal-panel { padding: 10px; } .terminal-toolbar { gap: 5px; flex-wrap: wrap; } .terminal-hint { display: none; } }
-html, body { height: 100%; }
+html, body {
+  overscroll-behavior: none; height: 100%; }
 body {
   font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
   font-size: 13px;
@@ -2341,3 +2342,16 @@ html[data-density="comfortable"] .kcol-head { padding-bottom: 16px; }
   padding: 2px;
 }
 .msg.user:hover .msg-acts { display: inline-flex; }
+
+/* ---------- android comfort ---------- */
+/* Target sentuh nyaman: kirim & ikon utama minimal 44px (Material touch). */
+@media (max-width: 640px) {
+  .send-btn { width: 44px; height: 44px; }
+  #btn-side-toggle { width: 42px; height: 42px; }
+  .rail-btn { min-height: 44px; }
+  .composer-pill .icon-btn { width: 42px; height: 42px; }
+}
+/* Layar sentuh tidak punya hover: aksi edit/cabang pesan selalu terlihat. */
+@media (hover: none) {
+  .msg.user .msg-acts { display: inline-flex; top: -16px; }
+}
