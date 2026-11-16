@@ -1,6 +1,14 @@
 # Changelog
 
 ## 1.6.14 — 2026-11-17
+- **Model gratis GLM-5.3-Flash benar-benar dipakai (REA kartu Start Plan
+  ZCode)** — kuota harian diperbarui sesuai kartu aslinya (300.000.000
+  token/hari untuk GLM-5.3-Flash, 1M context, Vision). Tiap baris model di
+  Promo Pass kini punya tombol "Pakai" yang mengaktifkan engine OpenCode
+  gratis yang TEPAT (opencode-free-glm-5.3-flash-free), bukan pilihan acak;
+  chat baru langsung terbuka siap pakai tanpa API key. Preset baru "Z.ai
+  (GLM Plan)" di API keys untuk pemilik key plan GLM internasional
+  (sumber kuota ZCode: zai-start-plan) — base URL https://api.z.ai/api/paas/v4.
 - **Auto-update penuh dari GitHub Releases** — server memeriksa rilis latest
   segera setelah boot lalu tiap 6 jam. Versi baru diumumkan lewat banner
   melayang + toast di semua perangkat (PC/HP/PWA) via SSE scope "update",

@@ -3718,6 +3718,7 @@ window.__ahMachines = {
       <span class="pp-chip">${esc(m.context)}</span>
       ${m.vision ? '<span class="pp-chip vision">Vision</span>' : ''}
       <span class="grow"></span>
+      <button class="pp-model-ico pp-use" data-pp-act="use-free-engine" data-model="${esc(m.id)}" title="Pakai ${esc(m.label)} gratis lewat OpenCode (tanpa key)">${icon('bolt')}</button>
       ${renaming
         ? `<button class="pp-model-ico" data-pp-act="save-rename" data-model="${esc(m.id)}" title="Simpan nama">${icon('check')}</button>
            <button class="pp-model-ico" data-pp-act="cancel-rename" title="Batal">${icon('x')}</button>`
@@ -3948,6 +3949,19 @@ window.__ahMachines = {
       }
       if (act === 'open-plan') { setPromoPane('pass', { silent: true }); go('promo'); setLayer(null); return; }
       if (act === 'open-free') { setPromoPane('free'); return; }
+      if (act === 'use-free-engine') {
+        // REA ZCode: model list Start Plan (GLM-5.3-Flash dsb.) — setiap model
+        // punya engine OpenCode gratis yang cocok (opencode-free-<model>-free),
+        // jadi "Pakai" benar-benar memakai model ITU, bukan pilihan acak.
+        await renderEngines(true);
+        const exact = engines.find((e) => e.id === `opencode-free-${model}-free` && e.available);
+        const generic = engines.find((e) => e.id === 'opencode-free' && e.available);
+        const pick = exact || generic;
+        if (!pick) { toast('CLI OpenCode belum terdeteksi. Pasang OpenCode lalu perbarui daftar engine.'); return; }
+        await startFreeChat(pick);
+        if (!exact) toast(`Varian ${model} tidak tersedia — memakai pilihan gratis OpenCode`);
+        return;
+      }
       if (act === 'use-opencode-free') {
         await renderEngines(true);
         const free = engines.find(e => e.id === 'opencode-free' && e.available);
