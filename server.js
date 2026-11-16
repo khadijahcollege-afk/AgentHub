@@ -36,6 +36,8 @@ import {
   isInlineImage, MAX_ATTACHMENTS,
 } from './lib/uploads.js';
 import * as environments from './lib/environments.js';
+import * as memory from './lib/memory.js';
+import { searchWeb, researchContext, ResearchError } from './lib/research.js';
 import { listModelChoices, activateModel, isMaskedKey } from './lib/models.js';
 import { tunnelStatus, startTunnel, stopTunnel } from './lib/tunnel.js';
 import { fetchLatestRelease, updateInfo } from './lib/update.js';
@@ -308,7 +310,9 @@ function appState() {
       baselined: config.baselined,
       cloudflaredPath: config.cloudflaredPath || '',
       replyLang: config.replyLang || 'auto',
+      memoryEnabled: config.memoryEnabled !== false,
     },
+    memory: memory.listMemory(),
     token: config.token,
     keys: listKeys(),
     notes: notes.listNotes(),
@@ -959,21 +963,39 @@ async function route(req, res) {
   }
 
   // ekspor percakapan sebagai markdown
+  // ekspor percakapan: markdown siap-baca (?format=md) atau JSON lengkap
+  // (?format=json) untuk arsip/migrasi.
   if ((m = p.match(/^\/api\/threads\/([a-f0-9]+)\/export$/)) && method === 'GET') {
-    const t = threads.getThread(m[1]);
-    if (!t) return sendJson(res, 404, { error: 'Thread tidak ditemukan' });
-    const lines = [`# ${t.title}`, '', `- Engine: ${t.engine || 'pool'}`, `- Proyek: ${t.projectId || 'default'}`, `- Di ekspor: ${new Date().toLocaleString('id-ID')}`, ''];
-    for (const msg of t.messages || []) {
-      if (msg.subrun) continue;
-      const who = msg.role === 'user' ? 'Anda' : `Agent (${msg.engine || '?'})`;
-      lines.push(`## ${who} — ${new Date(msg.ts).toLocaleString('id-ID')}`, '', String(msg.content || ''), '');
+    const fmt = url.searchParams.get('format') === 'json' ? 'json' : 'md';
+    try {
+      const body = threads.exportThread(m[1], fmt);
+      const t = threads.getThread(m[1]);
+      const base = `agenthub-${(t?.title || m[1]).replace(/[^\w-]+/g, '_').slice(0, 40) || m[1]}`;
+      res.writeHead(200, {
+        'content-type': fmt === 'json'
+          ? 'application/json; charset=utf-8'
+          : 'text/markdown; charset=utf-8',
+        'content-disposition': `attachment; filename="${base}.${fmt}"`,
+      });
+      return res.end(body);
+    } catch (error) {
+      return sendJson(res, error.statusCode || 404, { error: error.message });
     }
-    const md = lines.join('\n');
-    res.writeHead(200, {
-      'content-type': 'text/markdown; charset=utf-8',
-      'content-disposition': `attachment; filename="agenthub-${t.title.replace(/[^\w-]+/g, '_').slice(0, 40) || t.id}.md"`,
-    });
-    return res.end(md);
+  }
+
+  // fork/cabang percakapan: salin isi thread sampai pesan acuan, thread asli
+  // utuh. Mode include=false untuk alur "edit pesan" di UI.
+  if ((m = p.match(/^\/api\/threads\/([a-f0-9]+)\/fork$/)) && method === 'POST') {
+    try {
+      const b = await readBody(req);
+      const t = threads.forkThread(m[1], {
+        until: typeof b.until === 'string' ? b.until : null,
+        include: b.include !== false,
+        title: typeof b.title === 'string' && b.title.trim() ? b.title.trim().slice(0, 80) : null,
+      });
+      broadcast('threads');
+      return sendJson(res, 200, { id: t.id, title: t.title, messages: t.messages?.length || 0 });
+    } catch (error) { return sendJson(res, error.statusCode || 400, { error: error.message }); }
   }
 
   // Validasi folder kerja bebas tanpa membuat thread atau menyentuh disk.
@@ -1156,21 +1178,29 @@ async function route(req, res) {
     const kind = engineType(engineId);
     recordFeature('chat', { engine: engineId });
     // CLI punya akses disk → beri path. Pool tidak → inline isi teksnya.
-    const modelPrompt = attachments.length
+    let modelPrompt = attachments.length
       ? await augmentPrompt(rawPrompt, attachments, {
         includePaths: kind !== 'pool',
         inlineText: kind === 'pool',
       })
       : rawPrompt;
+    // Memori jangka panjang disuntikkan di server (bukan UI) supaya SEMUA
+    // jalur kirim — UI, API langsung, maupun agent eksternal — mendapat konteks
+    // yang sama. Prompt yang terlihat user di chat tetap tanpa blok memori.
+    if (config.memoryEnabled !== false) {
+      const mem = memory.memoryContext();
+      if (mem) modelPrompt = mem + '\n\n---\n\n' + modelPrompt;
+    }
 
     const userMsg = threads.appendMessage(m[1], {
       role: 'user',
       content: rawPrompt,
       engine: engineId,
-      ...(attachments.length ? {
-        attachments: attachments.map(publicUpload),
-        ...(modelPrompt !== rawPrompt ? { modelContent: modelPrompt } : {}),
-      } : {}),
+      ...(attachments.length ? { attachments: attachments.map(publicUpload) } : {}),
+      // modelContent = prompt persis yang dikirim ke engine (lampiran inline
+      // + blok memori). Penting untuk audit: user melihat teks bersih,
+      // thread merekam apa yang sebenarnya diterima model.
+      ...(modelPrompt !== rawPrompt ? { modelContent: modelPrompt } : {}),
     });
     threads.patchThread(m[1], { engine: engineId, ...(workspace ? { cwd: workspace } : {}) });
     // Riwayat sebelum pesan ini; builder di harness yang memilih & membatasi.
@@ -1630,12 +1660,49 @@ async function route(req, res) {
     }
   }
 
+  // ---- riset web tanpa API key (DuckDuckGo html, zero-dependency) ----
+  if (p === '/api/research' && (method === 'GET' || method === 'POST')) {
+    try {
+      const b = method === 'POST' ? await readBody(req) : {};
+      const q = (b.query || url.searchParams.get('q') || '').trim();
+      const limit = Number(url.searchParams.get('limit')) || b.limit || 8;
+      const r = await searchWeb(q, { limit });
+      recordFeature('research');
+      // context siap-suntik: UI cukup menempelkan string ini ke composer
+      return sendJson(res, 200, { ...r, context: researchContext(r.query, r.results) });
+    } catch (error) {
+      return sendJson(res, error.statusCode || 502, { error: error.message, code: error.code });
+    }
+  }
+
+  // ---- memory (memori jangka panjang) ----
+  if (p === '/api/memory' && method === 'GET') return sendJson(res, 200, memory.listMemory());
+  if (p === '/api/memory' && method === 'POST') {
+    try {
+      const b = await readBody(req);
+      const fact = memory.addMemory(b.text, { source: b.source === 'chat' ? 'chat' : 'manual', threadId: typeof b.threadId === 'string' ? b.threadId : null });
+      broadcast('memory');
+      return sendJson(res, 200, fact);
+    } catch (error) { return sendJson(res, error.statusCode || 500, { error: error.message }); }
+  }
+  if (p === '/api/memory/clear' && method === 'POST') {
+    memory.clearMemory();
+    broadcast('memory');
+    return sendJson(res, 200, { ok: true });
+  }
+  if ((m = p.match(/^\/api\/memory\/([a-f0-9]+)$/)) && method === 'DELETE') {
+    if (!memory.deleteMemory(m[1])) return sendJson(res, 404, { error: 'Fakta tidak ditemukan' });
+    broadcast('memory');
+    return sendJson(res, 200, { ok: true });
+  }
+
   // ---- settings ----
   if (p === '/api/settings' && method === 'POST') {
     const b = await readBody(req);
     const num = (v, min, max) => (typeof v === 'number' && v >= min && v <= max ? v : undefined);
     if (typeof b.notify === 'boolean') config.notify = b.notify;
     if (typeof b.autoPool === 'boolean') config.autoPool = b.autoPool;
+    if (typeof b.memoryEnabled === 'boolean') config.memoryEnabled = b.memoryEnabled;
     if (typeof b.replyLang === 'string') config.replyLang = normalizeReplyLang(b.replyLang);
     config.refreshHours = num(b.refreshHours, 1, 168) ?? config.refreshHours;
     config.agentCheckMinutes = num(b.agentCheckMinutes, 1, 1440) ?? config.agentCheckMinutes;

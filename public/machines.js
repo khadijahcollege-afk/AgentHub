@@ -341,6 +341,7 @@ const SSE_SCOPES = {
   config: ['config', 'server'],
   schedules: ['schedules'],
   workspace: ['workspace', 'threads'],
+  memory: ['memory', 'threads'],
 };
 
 function scopeSlices(scope) {

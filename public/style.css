@@ -2314,3 +2314,30 @@ html[data-density="comfortable"] .kcol-head { padding-bottom: 16px; }
   .model-chip { min-height: 32px; }
   .kcard-acts .icon-btn, .kcard-foot .icon-btn, .cd-actions .icon-btn, .attach-chip .icon-btn { min-width: 30px; min-height: 30px; }
 }
+
+/* ---------- memori agent ---------- */
+.mem-toggle { display: flex; align-items: center; gap: 8px; margin: 10px 0; font-size: 13px; color: #d6d6dc; cursor: pointer; }
+.mem-toggle input { accent-color: var(--accent); width: auto; flex: 0 0 auto; }
+.mem-add { display: flex; gap: 8px; margin: 12px 0; }
+.mem-add input {
+  flex: 1; background: #131316; border: 1px solid #2c2c31; border-radius: 8px;
+  padding: 8px 10px; color: #e6e6ec; font: inherit; font-size: 13px;
+}
+.mem-add input:focus { outline: none; border-color: var(--accent); }
+.mem-list { display: flex; flex-direction: column; gap: 6px; }
+.mem-row {
+  display: flex; align-items: center; gap: 10px;
+  background: #1b1b1e; border: 1px solid #2c2c31; border-radius: 10px;
+  padding: 8px 12px;
+}
+.mem-row .mem-text { flex: 1; font-size: 13px; color: #e6e6ec; }
+.mem-row .mem-src { white-space: nowrap; }
+/* aksi pesan user (edit ulang / cabang) — muncul saat hover ala ChatGPT */
+.msg.user { position: relative; }
+.msg.user .msg-acts {
+  position: absolute; top: -14px; right: 6px;
+  display: none; gap: 2px;
+  background: #1b1b1e; border: 1px solid #2c2c31; border-radius: 8px;
+  padding: 2px;
+}
+.msg.user:hover .msg-acts { display: inline-flex; }

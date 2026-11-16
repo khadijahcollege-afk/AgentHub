@@ -21,8 +21,8 @@ Dua bagian yang sengaja dipisah supaya jujur:
 | Installer Windows (Electron bundling) | 78 MB | artefak build |
 | Portable ZIP (tanpa shell desktop) | 33 MB | artefak build |
 | Dependensi npm (server) | **0** | `package.json` |
-| Tes otomatis | **130 lulus** (`npm run check`) | `node --test test/*.test.js` |
-| Kode | ~3.800 baris `lib/` (server) + ~6.900 baris UI (vanilla JS/CSS/HTML) | `wc -l` |
+| Tes otomatis | **212 lulus** (`npm run check`) | `node --test test/*.test.js` |
+| Kode | ~7.600 baris server (`server.js` + `lib/`) + ~9.700 baris UI (vanilla JS/CSS/HTML) | `wc -l` |
 
 Cara baca: angka ini menyatakan **biaya berjalan** (mulai, memori, latensi),
 bukan kualitas model. Kualitas jawaban agent ditentukan model upstream yang
@@ -68,9 +68,13 @@ saris publik Nov 2026; kolom AgentHub = terverifikasi tes/UI di repo ini.
 | Thread tags/koleksi | ✓ | ✅ | ❌ | ❌ | parsial | parsial | ✅ |
 | Pulse konektor (sparkline + check-all) | ✓ | ❌ | ❌ | ❌ | parsial | ❌ | ❌ |
 | Tema terang/gelap/sistem | ✓ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ |
+| Memory jangka panjang (auto-inject prompt) | ✓ | ✓ | ✓ (CLAUDE.md) | parsial (AGENTS.md) | parsial | parsial (AGENTS.md) | ✕ |
+| Fork/cabang & edit ulang pesan | ✓ | ✓ | ✓ (rewind) | ✕ | ✕ | parsial | ✕ |
+| Bacakan (TTS) balasan | ✓ | ✓ | ✕ | ✕ | ✕ | ✕ | ✓ |
+| Ekspor percakapan (md/json) | ✓ | ✓ | ✓ | ✕ | ✕ | ✕ | ✓ |
 | MCP | ✕ (CLI native) | ✓ | ✓ | ✓ | parsial | ✓ | parsial |
 | Buat gambar/video/musik | ✕ | ✓ | parsial | ✕ | ✕ | ✕ | ✓ |
-| Web search bawaan | ✕ | ✓ | ✓ | ✕ | parsial | ✓ | ✓ |
+| Riset web bawaan (tanpa API key) | ✓ | ✓ | ✓ | ✕ | parsial | ✓ | ✓ |
 
 ## Cara membaca
 

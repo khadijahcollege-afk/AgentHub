@@ -1,5 +1,36 @@
 # Changelog
 
+## 1.6.14 — 2026-11-17
+- **Memori agent jangka panjang** — fakta tetap ("Nama panggilan user: X",
+  "Bahasa favorit: Indonesia") disimpan lokal dan DISUNTIKKAN otomatis ke
+  setiap prompt di server, semua jalur (UI, API, agent eksternal). Toggle
+  per aplikasi di Pengaturan > Memori; blok konteks tercatat di modelContent
+  sehingga bisa diaudit. Pesan yang dilihat user tetap bersih.
+- **Riset web tanpa API key** — menu Alat > "Riset web" mencari via
+  DuckDuckGo (endpoint html, zero-dependency), memasukkan hasil terformat
+  (judul + URL + cuplikan) ke composer sebagai konteks agent. Parser offline
+  diuji dengan fixture; gagal jaringan menghasilkan pesan jelas, bukan hasil
+  kosong palsu.
+- **Fork/cabang & edit ulang pesan** — hover pesan user memunculkan dua aksi:
+  Edit ulang (fork tanpa pesan itu, teks lama kembali ke composer) dan
+  Cabangkan (fork termasuk pesan itu). Thread asli tidak pernah tersentuh.
+- **Bacakan (TTS)** — tombol speaker di tiap balasan memakai
+  speechSynthesis (id-ID); klik lagi untuk berhenti.
+- **Ekspor JSON** — /export sekarang menerima ?format=json (arsip lengkap:
+  thread + metadata + pesan), di samping markdown yang lebih kaya (tag,
+  folder, sub-run delegated agent).
+- **Katalog promo diperluas 29 → 34 entri** dengan data terverifikasi
+  (Nov 2026): Scaleway (1 juta token akun baru), Vercel AI Gateway ($5
+  kredit/bulan), Synthetic.new (berbayar, privasi), plus peringatan pensiun:
+  Chutes.ai (free tier dihapus), iFlow CLI (ditutup 17 Apr 2026). Entri lama
+  diperkaya angka resmi (OpenRouter 17 model :free / 50→1.000 req/hari,
+  Z AI GLM-4.5-Flash pensiun, LLM7 250 req/jam).
+- **CI modern** — actions/checkout@v5 + setup-node@v5 di semua workflow
+  (menghapus peringatan deprecation Node 20 pada runner).
+- Statistik fitur bertambah: Riset web & Memori agent tampil di panel
+  Pemakaian; SSE scope "memory" membuat semua tab ikut segar saat fakta
+  berubah. Versi 1.6.14; 212 tes lulus.
+
 ## 1.6.13 — 2026-11-16
 - Screenshot README diperbarui dari UI terbaru, termasuk statistik dan HP.
   Jalur artefak rilis Windows/macOS/Linux diperbaiki, paket portable menyertakan

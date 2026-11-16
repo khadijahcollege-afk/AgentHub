@@ -248,6 +248,7 @@ window.__ahMachines = {
     shield: '<path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/><path d="M9.5 12l1.8 1.8 3.2-3.6"/>',
     tag: '<path d="M3.5 12.5 11 5h6.5V11.5L10 19z"/><circle cx="14.5" cy="8.5" r="1"/>',
     plus: '<path d="M12 5v14M5 12h14"/>',
+    sound: '<path d="M4 9.5v5h3.5L12 18V6L7.5 9.5z"/><path d="M15.5 9a4.5 4.5 0 0 1 0 6"/><path d="M18 6.8a8 8 0 0 1 0 10.4"/>',
   };
   const icon = (id) => `<svg class="ico" viewBox="0 0 24 24">${ICON_PATHS[id] || ICON_PATHS.robot}</svg>`;
   // Tanda centang & silang sebagai SVG, bukan karakter ✓/✕: bentuknya sama di
@@ -291,6 +292,50 @@ window.__ahMachines = {
     return out;
   }
   const copyIco = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>';
+  // ---------- aksi pesan via delegasi: lupa memori, edit/cabang, bacakan ----------
+  document.addEventListener('click', async (e) => {
+    const del = e.target.closest('[data-mem-del]');
+    if (!del) return;
+    try {
+      await api(`/api/memory/${del.dataset.memDel}`, { method: 'DELETE' });
+      state.memory = await api('/api/memory');
+      renderMemory();
+      toast('Fakta dilupakan');
+    } catch (err) { toast('Gagal: ' + err.message); }
+  });
+  document.addEventListener('click', async (e) => {
+    const editBtn = e.target.closest('[data-edit-msg]');
+    const branchBtn = e.target.closest('[data-branch-msg]');
+    if (!editBtn && !branchBtn) return;
+    if (!curThread) return;
+    const mid = editBtn ? editBtn.dataset.editMsg : branchBtn.dataset.branchMsg;
+    const src = (curThread.messages || []).find((x) => x.id === mid);
+    try {
+      const r = await api(`/api/threads/${curThread.id}/fork`, { method: 'POST', body: JSON.stringify({ until: mid, include: !!branchBtn }) });
+      await openThread(r.id);
+      if (editBtn && src) {
+        const ta = $('#composer-input');
+        ta.value = src.content || '';
+        ta.dispatchEvent(new Event('input', { bubbles: true }));
+        ta.focus();
+      }
+      toast(branchBtn ? 'Cabang dibuat — thread asli utuh' : 'Edit ulang: teks lama dikembalikan ke composer');
+    } catch (err) { toast('Gagal: ' + err.message); }
+  });
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-tts]');
+    if (!b) return;
+    if (!('speechSynthesis' in window)) { toast('Browser ini tidak mendukung bacakan'); return; }
+    if (speechSynthesis.speaking) { speechSynthesis.cancel(); return; }
+    const msg = (curThread?.messages || []).find((x) => x.id === b.dataset.tts);
+    const text = (msg?.content || '').replace(/```[\s\S]*?```/g, ' blok kode dilewati ').replace(/[#*_>`]/g, '').trim();
+    if (!text) return;
+    const u = new SpeechSynthesisUtterance(text.slice(0, 4000));
+    u.lang = 'id-ID';
+    speechSynthesis.speak(u);
+    toast('Membacakan balasan — klik lagi untuk berhenti');
+  });
+
   // tombol salin pada blok kode — delegasi global supaya bekerja untuk pesan
   // yang dirender ulang maupun sedang streaming
   document.addEventListener('click', (e) => {
@@ -411,6 +456,7 @@ window.__ahMachines = {
         // render selektif: papan tugas & tampilan aktif tetap ikut segar
         if (slices.includes('tasks') && view === 'tasks') renderTasks();
         if (slices.includes('notes') && view === 'notes') renderNotes();
+        if (slices.includes('memory') && view === 'settings' && settingsPane === 'memory') renderMemory();
         return;
       }
       if (!deepLinkDone) {
@@ -1521,6 +1567,7 @@ window.__ahMachines = {
       { label: 'Cari semua…', hint: 'thread · tugas · catatan · proyek', run: () => { setLayer('search'); $('#search-input').value = ''; renderSearch(); positionPop('#search-pop', '#sb-search-btn'); } },
       { label: 'Pilih model gateway', hint: 'katalog model', run: () => openModelPop() },
       { label: 'Export thread ini (.md)', hint: curThread ? curThread.title : 'belum ada thread', run: () => { if (curThread) window.open(`/api/threads/${curThread.id}/export`, '_blank'); } },
+      { label: 'Export thread ini (JSON)', hint: 'arsip lengkap + metadata', run: () => { if (curThread) window.open(`/api/threads/${curThread.id}/export?format=json`, '_blank'); } },
       { label: 'Hentikan run', hint: 'stop agent', run: () => stopRun() },
     ];
   }
@@ -2490,7 +2537,7 @@ window.__ahMachines = {
     for (const m of msgs) {
       const day = new Date(m.ts).toDateString();
       if (day !== lastDay) { html += daySep(m.ts); lastDay = day; }
-      if (m.role === 'user') { flushSubruns(); html += `<div class="msg user" data-mid="${m.id}"><div class="bubble">${esc(m.content)}${attachmentsHtml(m.attachments)}</div></div>`; continue; }
+      if (m.role === 'user') { flushSubruns(); html += `<div class="msg user" data-mid="${m.id}"><div class="bubble">${esc(m.content)}${attachmentsHtml(m.attachments)}</div><span class="msg-acts"><button class="icon-btn" data-edit-msg="${m.id}" title="Edit ulang dari sini">${icon('pencil')}</button><button class="icon-btn" data-branch-msg="${m.id}" title="Cabangkan dari sini">${icon('delegate')}</button></span></div>`; continue; }
       if (m.subrun) { (subruns = subruns || []).push(m); continue; }
       flushSubruns();
       const canRegen = m === lastAssistant && !runActive() && msgs.some((x) => x.role === 'user');
@@ -2502,6 +2549,7 @@ window.__ahMachines = {
           ${m.tokens ? `<span class="mf-sep">·</span><span>${m.tokens >= 1000 ? Math.round(m.tokens / 100) / 10 + 'K' : m.tokens} tok</span>` : ''}
           ${m.ms ? `<span class="mf-sep">·</span><span>${Math.round(m.ms / 100) / 10}s</span>` : ''}
           <span class="mf-sep">·</span><span>${fmtClock(m.ts)}</span>
+          <button class="icon-btn mf-act" data-tts="${m.id}" title="Bacakan (klik lagi untuk berhenti)">${icon('sound')}</button>
           <button class="icon-btn mf-act" data-copy-msg="${m.id}" title="Salin pesan">${icon('copy')}</button>
           ${canRegen ? `<button class="icon-btn mf-act" data-regen="${m.id}" title="Ulangi prompt terakhir">${icon('refresh')}</button>` : ''}
         </div>
@@ -2601,12 +2649,17 @@ window.__ahMachines = {
   });
 
   // ---------- perintah slash nyata ----------
-  const SLASH_COMMANDS = '/new chat baru · /export unduh .md · /engine ganti engine · /model katalog model · /prompt prompt tersimpan · /save simpan prompt composer · /stats info sesi · /tasks /notes /promo /gateway /settings navigasi · /help daftar perintah';
+  const SLASH_COMMANDS = '/new chat baru · /export unduh .md atau json · /engine ganti engine · /model katalog model · /prompt prompt tersimpan · /save simpan prompt composer · /stats info sesi · /tasks /notes /promo /gateway /settings navigasi · /help daftar perintah';
 
   function handleSlash(cmd, arg) {
     switch (cmd) {
       case 'new': $('#btn-new-chat').click(); return true;
-      case 'export': if (curThread) window.open(`/api/threads/${curThread.id}/export`, '_blank'); else toast('Belum ada thread untuk diekspor'); return true;
+      case 'export': {
+        if (!curThread) { toast('Belum ada thread untuk diekspor'); return true; }
+        const fmt = (arg || '').trim().toLowerCase();
+        window.open(`/api/threads/${curThread.id}/export${fmt === 'json' ? '?format=json' : ''}`, '_blank');
+        return true;
+      }
       case 'engine': setLayer('engines'); renderEngineMenu(); positionPop('#engine-pop', '#engine-chip'); return true;
       case 'model': if (currentEngine === 'pool') openModelPop(); else toast('Pilih engine Gateway dulu (/engine)'); return true;
       case 'prompt': setLayer('prompts'); renderPrompts(); positionPop('#prompts-pop', '#composer'); return true;
@@ -4195,6 +4248,7 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
     ['appearance', 'Tampilan', '<path d="M12 21a9 9 0 1 1 9-9c0 2.5-2 3-3.5 3H16a2 2 0 0 0-2 2c0 1.5-.5 4-2 4z"/><circle cx="8.5" cy="10.5" r="1"/><circle cx="12" cy="7.5" r="1"/>'],
     ['notifications', 'Notifikasi', '<path d="M6 9a6 6 0 1 1 12 0c0 5 2 6 2 6H4s2-1 2-6"/><path d="M10 20a2.2 2.2 0 0 0 4 0"/>'],
     ['privacy', 'Privasi', '<path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/><path d="M9.5 12l1.8 1.8 3.2-3.6"/>'],
+    ['memory', 'Memori', '<path d="M8 4h8a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3h-2v3l-3-3H8a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3z"/><path d="M8.5 9h7M8.5 12h5"/>'],
     ['shortcuts', 'Pintasan', '<rect x="2.5" y="6" width="19" height="12" rx="2.5"/><path d="M6.5 10h.01M10 10h.01M13.5 10h.01M17 10h.01M7.5 14h9"/>'],
     ['phone', 'Ponsel', '<rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/>'],
     ['schedules', 'Jadwal', '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>'],
@@ -4206,7 +4260,7 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
   let settingsPane = localStorage.getItem('ah_settings_pane') || 'preferences';
   // Kelompok nav ala halaman settings Kybern: Pribadi / Agent / Sistem.
   const SETTINGS_GROUPS = [
-    ['Pribadi', ['preferences', 'language', 'appearance', 'notifications', 'privacy', 'shortcuts']],
+    ['Pribadi', ['preferences', 'language', 'appearance', 'notifications', 'privacy', 'memory', 'shortcuts']],
     ['Agent', ['providers', 'models', 'engines', 'connectors', 'projects', 'billing', 'schedules', 'orchestra']],
     ['Sistem', ['phone', 'server', 'desktop', 'about']],
   ];
@@ -4416,6 +4470,7 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
     if (id === 'engines') renderEngineSettings();
     if (id === 'desktop') checkUpdates(true);
     if (id === 'orchestra') { renderOrchestra(); renderOrchestraEngines(); }
+    if (id === 'memory') renderMemory();
   }
 
   // ---------- dropdown custom untuk semua <select> ----------
@@ -4602,6 +4657,7 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
       kvRow('Menutup jendela', 'tidak menghentikan pemantauan'),
       kvRow('Jalankan saat PC menyala', 'dari menu tray'),
     ].join('');
+    renderMemory();
     renderConnectorPulse();
   }
 
@@ -4752,6 +4808,45 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
       '<label class="orch-eng-label"><input type="checkbox" class="orch-eng" data-eng="' + esc(e.id) + '"' + (e.optIn ? '' : ' checked') + '> ' + esc(e.label) + '</label>'
     ).join('') + '</fieldset>').join('') || '<p class="muted small">Tidak ada engine CLI terdeteksi. Pasang Claude Code/Codex/OpenCode/Gemini CLI.</p>';
   }
+  // ---------- memori agent (jangka panjang) ----------
+  function renderMemory() {
+    const host = $('#mem-list');
+    const tgl = $('#set-memory-on');
+    if (tgl) tgl.checked = state.config?.memoryEnabled !== false;
+    if (!host) return;
+    const facts = state.memory || [];
+    if (!facts.length) {
+      host.innerHTML = '<p class="muted small">Belum ada fakta. Tambahkan preferensi atau konteks tetap — agent otomatis "tahu" saat chat dimulai, di thread mana pun.</p>';
+      return;
+    }
+    host.innerHTML = facts.map((f) => `
+      <div class="mem-row">
+        <span class="mem-text">${esc(f.text)}</span>
+        <span class="muted small mem-src">${f.source === 'chat' ? 'dari chat' : 'manual'}</span>
+        <button class="icon-btn" data-mem-del="${esc(f.id)}" title="Lupakan fakta ini">${icon('x')}</button>
+      </div>`).join('');
+  }
+  $('#set-memory-on').addEventListener('change', async (e) => {
+    try {
+      await api('/api/settings', { method: 'POST', body: JSON.stringify({ memoryEnabled: e.target.checked }) });
+      state.config.memoryEnabled = e.target.checked;
+      toast(e.target.checked ? 'Memori aktif — disuntikkan ke semua percakapan' : 'Memori dimatikan');
+    } catch (err) { toast('Gagal: ' + err.message); e.target.checked = !e.target.checked; }
+  });
+  $('#mem-add').addEventListener('click', async () => {
+    const input = $('#mem-input');
+    const v = input.value.trim();
+    if (!v) return;
+    try {
+      await api('/api/memory', { method: 'POST', body: JSON.stringify({ text: v }) });
+      input.value = '';
+      state.memory = await api('/api/memory');
+      renderMemory();
+      toast('Diingat — aktif di semua percakapan');
+    } catch (err) { toast('Gagal: ' + err.message); }
+  });
+  $('#mem-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#mem-add').click(); });
+
   function renderSettings() {
     const c = state.config;
     $('#set-refresh').value = c.refreshHours;
@@ -5632,7 +5727,26 @@ Jangan mengarang — bila data tidak ada di folder, katakan tidak ada.`;
   });
   $('#tool-attach').addEventListener('click', () => { setLayer(null); $('#attach-input').click(); });
   $('#tool-prompts').addEventListener('click', () => { setLayer('prompts'); renderPrompts(); positionPop('#prompts-pop', '#composer'); });
-  $('#tool-research').addEventListener('click', () => {
+  $('#tool-research').addEventListener('click', async () => {
+    setLayer(null);
+    const q = await askPrompt('Riset web — cari apa? Hasilnya disisipkan ke composer sebagai konteks untuk agent.', '', {
+      title: 'Riset web (DuckDuckGo, tanpa API key)',
+      placeholder: 'mis. perbandingan harga API LLM 2026',
+      okLabel: 'Cari',
+    });
+    if (!q || !q.trim()) return;
+    toast('Mencari di web...');
+    try {
+      const r = await api('/api/research', { method: 'POST', body: JSON.stringify({ query: q.trim() }) });
+      if (!r.results?.length) { toast('Tidak ada hasil — coba kata kunci lain'); return; }
+      const ta = $('#composer-input');
+      ta.value = (ta.value ? ta.value + '\n\n' : '') + r.context;
+      ta.dispatchEvent(new Event('input', { bubbles: true }));
+      ta.focus();
+      toast(r.count + ' hasil web masuk composer — kirim ke agent saat siap');
+    } catch (err) { toast('Riset gagal: ' + err.message); }
+  });
+  $('#tool-research-tpl').addEventListener('click', () => {
     const ta = $('#composer-input');
     ta.value = RESEARCH_TEMPLATE;
     ta.dispatchEvent(new Event('input', { bubbles: true }));

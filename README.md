@@ -152,6 +152,10 @@ Agents driving the app do not have to guess. The contract is served over HTTP:
 | `GET /api/threads/:id/diff` | changed files with `+/-` and a bounded patch |
 | `POST /api/threads/:id/revert` | restore tracked files; untracked only with an explicit flag |
 | `POST /api/threads/:id/rules` | write one allow-listed rule file (`AGENTS.md`, `CLAUDE.md`, …) |
+| `GET /api/threads/:id/export(?format=json)` | ekspor percakapan: markdown siap-baca atau arsip JSON lengkap |
+| `POST /api/threads/:id/fork` | cabang percakapan: salin sampai pesan acuan (include/exclude untuk alur edit) |
+| `GET/POST /api/memory` · `DELETE /api/memory/:id` · `POST /api/memory/clear` | memori jangka panjang: fakta yang disuntikkan otomatis ke setiap prompt |
+| `GET/POST /api/research` | riset web tanpa API key (DuckDuckGo) — balasan membawa `context` siap-suntik |
 
 Task movement is strictly linear: `inbox → todo → running → review → done`. A skip is
 rejected with `409` and a body containing `allowed`, so a client can correct itself
