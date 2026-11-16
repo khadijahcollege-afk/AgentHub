@@ -1,6 +1,15 @@
 # Changelog
 
 ## 1.6.14 — 2026-11-17
+- **Auto-update penuh dari GitHub Releases** — server memeriksa rilis latest
+  segera setelah boot lalu tiap 6 jam. Versi baru diumumkan lewat banner
+  melayang + toast di semua perangkat (PC/HP/PWA) via SSE scope "update",
+  dan aset untuk platform ini (Setup.exe/dmg/AppImage) DIUNDUH OTOMATIS ke
+  dist/ dengan progres %. Tombol "Pasang sekarang" menjalankan installer
+  senyap (NSIS /S) yang memasang ulang & memulai ulang aplikasi. Unduhan
+  atomik (.part → rename), sekali per versi, bisa dimatikan lewat
+  Pengaturan (autoUpdate), dan seluruh alur diuji dengan fixture lokal
+  (tanpa jaringan nyata).
 - **Memori agent jangka panjang** — fakta tetap ("Nama panggilan user: X",
   "Bahasa favorit: Indonesia") disimpan lokal dan DISUNTIKKAN otomatis ke
   setiap prompt di server, semua jalur (UI, API, agent eksternal). Toggle

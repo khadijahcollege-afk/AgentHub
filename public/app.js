@@ -469,6 +469,7 @@ window.__ahMachines = {
       $('#gate').classList.add('hidden');
       $('#app').classList.remove('hidden');
       renderAll(slices);
+      if (state?.update?.ok) renderUpdateBanner();
       if (slices) {
         // render selektif: papan tugas & tampilan aktif tetap ikut segar
         if (slices.includes('tasks') && view === 'tasks') renderTasks();
@@ -882,6 +883,7 @@ window.__ahMachines = {
     if (want('agents')) renderAgents();
     if (want('alerts')) renderAlerts();
     if (want('config') || want('server')) renderSettings();
+    if (want('update')) renderUpdateBanner();
     if (want('alerts')) renderBadges();
     if (want('threads') && curThread) renderChat({ preserveStream: runActive() });
     if (want('threads') || want('engines')) placeComposer();
@@ -5629,11 +5631,51 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
   });
 
   // ---------- cek pembaruan (GitHub Releases) ----------
+  // ---------- pembaruan: banner otomatis + unduh + pasang ----------
+  // Server memeriksa GitHub berkala & mengunduh otomatis (bila autoUpdate
+  // aktif). UI cukup menampilkan status dan satu tombol "Pasang sekarang".
+  let updateReadyToasted = null;
+  const dismissedUpdate = () => sessionStorage.getItem('ah_update_dismissed') || '';
+
+  function renderUpdateBanner() {
+    const u = state?.update;
+    const el = $('#update-banner');
+    if (!el || !u?.ok) return;
+    const txt = $('#update-banner-text');
+    const btn = $('#update-install');
+    if (!u.hasUpdate) { el.classList.add('hidden'); return; }
+    if (dismissedUpdate() === u.latest && u.download?.status !== 'ready') { el.classList.add('hidden'); return; }
+    el.classList.remove('hidden');
+    if (u.download?.status === 'downloading') {
+      txt.textContent = `Versi baru ${u.latest} — mengunduh otomatis ${u.download.pct || 0}%`;
+      btn.classList.add('hidden');
+    } else if (u.download?.status === 'ready') {
+      txt.textContent = `Versi baru ${u.latest} siap dipasang — installer sudah diunduh otomatis`;
+      btn.classList.remove('hidden');
+      if (updateReadyToasted !== u.latest) {
+        updateReadyToasted = u.latest;
+        toast(`Versi baru ${u.latest} siap — tombol Pasang sekarang tersedia`, 6000);
+      }
+    } else if (u.download?.status === 'error') {
+      txt.textContent = `Versi baru ${u.latest} — unduhan otomatis gagal: ${u.download.error}`;
+      btn.classList.add('hidden');
+    } else {
+      txt.textContent = `Versi baru tersedia: ${u.latest} (Anda di ${u.current})`;
+      btn.classList.add('hidden');
+    }
+  }
+
   function renderUpdateStatus(u) {
     const host = $('#update-status');
     const open = $('#btn-update-open');
+    const dl = $('#btn-update-dl');
+    const inst = $('#btn-update-install');
+    const bar = $('#update-dl-bar');
     if (!host) return;
     $('#update-current').textContent = u.current || '…';
+    dl?.classList.add('hidden');
+    inst?.classList.add('hidden');
+    bar?.classList.add('hidden');
     if (!u.ok) {
       host.innerHTML = `Gagal memeriksa: ${esc(u.error)} — coba lagi nanti (GitHub API berbagi batas 60 permintaan/jam per IP).`;
       open?.classList.add('hidden');
@@ -5642,22 +5684,42 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
     if (u.hasUpdate) {
       const when = u.publishedAt ? new Date(u.publishedAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
       host.innerHTML = `<b style="color:var(--accent)">Versi baru tersedia: ${esc(u.latest)}</b> — Anda di ${esc(u.current)}${when ? ` · rilis ${esc(when)}` : ''}.`
+        + `<div class="muted small">Aset untuk platform ini: ${esc(u.asset?.name || '?')} — diunduh otomatis ke dist/ bila "pasang otomatis" aktif.</div>`
         + (u.notes ? `<div class="muted small" style="margin-top:4px;white-space:pre-wrap">${esc(u.notes.slice(0, 300))}${u.notes.length > 300 ? '…' : ''}</div>` : '');
       open?.classList.remove('hidden');
       if (open) open.href = u.url || 'https://github.com/khadijahcollege-afk/AgentHub/releases/latest';
+      const d = u.download;
+      if (d?.status === 'downloading') {
+        bar?.classList.remove('hidden');
+        if (bar) {
+          bar.querySelector('i').style.width = (d.pct || 0) + '%';
+          bar.querySelector('span').textContent = `mengunduh ${d.pct || 0}% · ${Math.round((d.bytes || 0) / 1024)} KB`;
+        }
+      } else if (d?.status === 'ready') {
+        inst?.classList.remove('hidden');
+        host.innerHTML += `<div class="muted small">Installer sudah terunduh otomatis — klik Pasang sekarang untuk memasang senyap & memulai ulang.</div>`;
+      } else if (d?.status === 'error') {
+        dl?.classList.remove('hidden');
+        host.innerHTML += `<div class="muted small">Unduhan otomatis gagal: ${esc(d.error || '?')} — coba unduh manual.</div>`;
+      } else if (d?.status !== 'downloading' && u.autoUpdate === false) {
+        dl?.classList.remove('hidden');
+      }
     } else {
       host.innerHTML = `Sudah versi terbaru (${esc(u.current)}).`;
       open?.classList.add('hidden');
     }
   }
+
   async function checkUpdates(silent = false) {
     const btn = $('#btn-update-check');
     if (btn) { btn.disabled = true; btn.textContent = 'Memeriksa…'; }
     const host = $('#update-status');
     if (!silent && host) host.textContent = 'Memeriksa GitHub Releases…';
     try {
-      const u = await api('/api/update-check');
+      const u = await api('/api/update');
+      state.update = u;
       renderUpdateStatus(u);
+      renderUpdateBanner();
     } catch (e) {
       renderUpdateStatus({ ok: false, current: state?.server?.version, error: e.message });
     } finally {
@@ -5665,6 +5727,27 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
     }
   }
   $('#btn-update-check').addEventListener('click', () => checkUpdates(false));
+  $('#btn-update-dl')?.addEventListener('click', async () => {
+    try {
+      await api('/api/update/download', { method: 'POST' });
+      toast('Mengunduh versi baru di latar belakang…');
+      await checkUpdates(true);
+    } catch (e) { toast('Gagal: ' + e.message); }
+  });
+  const installUpdate = async () => {
+    try {
+      const r = await api('/api/update/install', { method: 'POST' });
+      toast(r.mode === 'silent' ? 'Installer berjalan senyap — aplikasi akan dipasang ulang & dimulai ulang otomatis' : 'Membuka berkas pembaruan — selesaikan langkah pemasangan', 6000);
+      $('#update-banner')?.classList.add('hidden');
+    } catch (e) { toast('Gagal memasang: ' + e.message); }
+  };
+  $('#btn-update-install')?.addEventListener('click', installUpdate);
+  $('#update-install')?.addEventListener('click', installUpdate);
+  $('#update-dismiss')?.addEventListener('click', () => {
+    const latest = state?.update?.latest;
+    if (latest) sessionStorage.setItem('ah_update_dismissed', latest);
+    $('#update-banner')?.classList.add('hidden');
+  });
 
   // ---------- integrasi: satu tempat melihat & menghubungkan layanan ----------
   // "Terhubung" dihitung dari state nyata: key tersimpan (badge = mask key),

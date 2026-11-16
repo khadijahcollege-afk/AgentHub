@@ -156,6 +156,7 @@ Agents driving the app do not have to guess. The contract is served over HTTP:
 | `POST /api/threads/:id/fork` | cabang percakapan: salin sampai pesan acuan (include/exclude untuk alur edit) |
 | `GET/POST /api/memory` · `DELETE /api/memory/:id` · `POST /api/memory/clear` | memori jangka panjang: fakta yang disuntikkan otomatis ke setiap prompt |
 | `GET/POST /api/research` | riset web tanpa API key (DuckDuckGo) — balasan membawa `context` siap-suntik |
+| `GET /api/update` · `POST /api/update/download` · `POST /api/update/install` | auto-update: status versi+unduhan, unduh manual, pasang senyap dari GitHub Releases latest |
 
 Task movement is strictly linear: `inbox → todo → running → review → done`. A skip is
 rejected with `409` and a body containing `allowed`, so a client can correct itself

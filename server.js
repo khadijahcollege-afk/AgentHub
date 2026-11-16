@@ -40,7 +40,9 @@ import * as memory from './lib/memory.js';
 import { searchWeb, researchContext, ResearchError } from './lib/research.js';
 import { listModelChoices, activateModel, isMaskedKey } from './lib/models.js';
 import { tunnelStatus, startTunnel, stopTunnel } from './lib/tunnel.js';
-import { fetchLatestRelease, updateInfo } from './lib/update.js';
+import {
+  fetchLatestRelease, updateInfo, fullUpdateInfo, assetFor, downloadAsset, launchInstaller,
+} from './lib/update.js';
 import * as runs from './lib/runs.js';
 import {
   resolveWorkspace, workspaceSummary, diffReport, revertPaths, listRules, writeRule,
@@ -56,7 +58,7 @@ import {
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(ROOT, 'public');
-const DIST_DIR = path.join(ROOT, 'dist');
+const DIST_DIR = process.env.AGENTHUB_DIST ? path.resolve(process.env.AGENTHUB_DIST) : path.join(ROOT, 'dist');
 const startedAt = Date.now();
 const APP_VERSION = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
 
@@ -70,6 +72,72 @@ if (!config.instanceId) {
 }
 let alerts = readJson('alerts.json', []);
 let updateCache = { at: 0, data: null };
+
+// ---------- auto-update (cek berkala + unduh otomatis + pasang) ----------
+// Sumber kebenaran: GitHub Releases latest. Server memeriksa sendiri secara
+// berkala; bila ada versi baru, aset untuk platform ini diunduh otomatis ke
+// dist/ (progres disiarkan lewat SSE), dan UI menawarkan tombol "Pasang
+// sekarang". Gagal jaringan dilaporkan apa adanya di /api/update.
+let updateDl = { status: 'idle', pct: 0, bytes: 0, total: 0, error: null, path: null, version: null, at: 0 };
+let updateBusy = false;
+
+function updatePublic() {
+  const info = updateCache.data;
+  const { path, ...rest } = updateDl;
+  return {
+    ...info,
+    autoUpdate: config.autoUpdate !== false,
+    download: rest,
+    installable: updateDl.status === 'ready' && fs.existsSync(updateDl.path || ''),
+    installerPath: updateDl.status === 'ready' ? updateDl.path : null,
+    asset: info?.ok && info.hasUpdate ? assetFor() : null,
+  };
+}
+
+async function updateTick(force = false) {
+  const now = Date.now();
+  if (!force && updateCache.at && now - updateCache.at < 30 * 60 * 1000) return;
+  try {
+    // AGENTHUB_UPDATE_API memungkinkan pengujian tanpa menyentuh GitHub.
+    const release = await fetchLatestRelease(fetch, process.env.AGENTHUB_UPDATE_API || undefined);
+    updateCache = { at: now, data: fullUpdateInfo(APP_VERSION, release) };
+  } catch (e) {
+    updateCache = { at: now, data: fullUpdateInfo(APP_VERSION, null, { error: String(e.message || e) }) };
+  }
+  broadcast('update');
+  // ada versi baru + autoUpdate aktif → unduh otomatis (sekali per versi)
+  if (updateCache.data?.hasUpdate && config.autoUpdate !== false
+    && updateDl.version !== updateCache.data.latest && updateDl.status !== 'downloading') {
+    startDownload();
+  }
+}
+
+function startDownload(force = false) {
+  const info = updateCache.data;
+  if (!info?.ok || !info.hasUpdate || !info.asset) return;
+  if (updateBusy || updateDl.status === 'downloading') return;
+  // sudah ada untuk versi ini → jangan unduh ulang (kecuali diminta paksa
+  // setelah gagal)
+  if (updateDl.version === info.latest && updateDl.status === 'ready' && !force) return;
+  updateBusy = true;
+  updateDl = { status: 'downloading', pct: 0, bytes: 0, total: 0, error: null, path: null, version: info.latest, at: Date.now() };
+  broadcast('update');
+  const dest = path.join(DIST_DIR, info.asset.name);
+  downloadAsset(info.asset.url, dest, {
+    onProgress: (p) => {
+      updateDl = { ...updateDl, pct: p.pct, bytes: p.bytes, total: p.total };
+      broadcast('update'); // throttle: onProgress sendiri sudah di-throttle 512KB
+    },
+  }).then((r) => {
+    updateDl = { ...updateDl, status: 'ready', bytes: r.bytes, path: r.path, pct: 100, at: Date.now() };
+    broadcast('update');
+  }).catch((e) => {
+    updateDl = { ...updateDl, status: 'error', error: String(e.message || e), at: Date.now() };
+    broadcast('update');
+  }).finally(() => {
+    updateBusy = false;
+  });
+}
 // ip → { count, firstAt }: percobaan token salah dalam 60 detik terakhir
 const authFailures = new Map();
 // folder kerja yang dipantau: perubahan berkas → SSE scope workspace
@@ -311,8 +379,10 @@ function appState() {
       cloudflaredPath: config.cloudflaredPath || '',
       replyLang: config.replyLang || 'auto',
       memoryEnabled: config.memoryEnabled !== false,
+      autoUpdate: config.autoUpdate !== false,
     },
     memory: memory.listMemory(),
+    update: updatePublic(),
     token: config.token,
     keys: listKeys(),
     notes: notes.listNotes(),
@@ -1398,17 +1468,35 @@ async function route(req, res) {
   }
 
   if (p === '/api/update-check' && method === 'GET') {
-    const now = Date.now();
-    if (!updateCache.at || now - updateCache.at > 30 * 60 * 1000) {
-      try {
-        // AGENTHUB_UPDATE_API memungkinkan pengujian tanpa menyentuh GitHub.
-        const release = await fetchLatestRelease(fetch, process.env.AGENTHUB_UPDATE_API || undefined);
-        updateCache = { at: now, data: updateInfo(APP_VERSION, release) };
-      } catch (e) {
-        updateCache = { at: now, data: updateInfo(APP_VERSION, null, { error: String(e.message || e) }) };
-      }
+    await updateTick().catch(() => {});
+    return sendJson(res, 200, updateCache.data || updateInfo(APP_VERSION, null, { error: 'belum diperiksa' }));
+  }
+
+  // ---- auto-update: status, unduh manual, pasang ----
+  if (p === '/api/update' && method === 'GET') return sendJson(res, 200, updatePublic());
+  if (p === '/api/update/download' && method === 'POST') {
+    const info = updateCache.data;
+    if (!info?.ok || !info.hasUpdate) return sendJson(res, 409, { error: 'Tidak ada versi baru untuk diunduh' });
+    if (updateDl.status === 'downloading') return sendJson(res, 409, { error: 'Unduhan sedang berjalan' });
+    if (updateDl.version === info.latest && updateDl.status === 'ready') {
+      return sendJson(res, 409, { error: 'Sudah terunduh untuk versi ini — tinggal dipasang' });
     }
-    return sendJson(res, 200, updateCache.data);
+    startDownload(updateDl.status === 'error');
+    return sendJson(res, 200, { ok: true, status: 'downloading' });
+  }
+  if (p === '/api/update/install' && method === 'POST') {
+    const info = updateCache.data;
+    if (!info?.ok) return sendJson(res, 409, { error: 'Info versi belum tersedia' });
+    if (updateDl.status !== 'ready') return sendJson(res, 409, { error: 'Berkas installer belum siap — tunggu unduhan selesai atau panggil /api/update/download' });
+    const exists = fs.existsSync(updateDl.path);
+    if (!exists) return sendJson(res, 409, { error: 'Berkas installer hilang dari dist/ — unduh ulang' });
+    try {
+      const r = launchInstaller(updateDl.path);
+      broadcast('update');
+      return sendJson(res, 200, { ok: true, ...r, path: updateDl.path });
+    } catch (e) {
+      return sendJson(res, 500, { error: String(e.message || e) });
+    }
   }
 
   // notes
@@ -1703,6 +1791,7 @@ async function route(req, res) {
     if (typeof b.notify === 'boolean') config.notify = b.notify;
     if (typeof b.autoPool === 'boolean') config.autoPool = b.autoPool;
     if (typeof b.memoryEnabled === 'boolean') config.memoryEnabled = b.memoryEnabled;
+    if (typeof b.autoUpdate === 'boolean') config.autoUpdate = b.autoUpdate;
     if (typeof b.replyLang === 'string') config.replyLang = normalizeReplyLang(b.replyLang);
     config.refreshHours = num(b.refreshHours, 1, 168) ?? config.refreshHours;
     config.agentCheckMinutes = num(b.agentCheckMinutes, 1, 1440) ?? config.agentCheckMinutes;
@@ -1737,6 +1826,11 @@ function scheduleJobs() {
   setInterval(() => {
     if (listKeys().length) checkAllKeys().then(() => broadcast('keys')).catch(() => {});
   }, Math.max(1, config.keyCheckHours) * HOUR);
+
+  // Pembaruan: cek segera setelah boot lalu tiap 6 jam. Versi baru otomatis
+  // diunduh ke dist/ (bila autoUpdate aktif) — UI memberi tahu & memasang.
+  setTimeout(() => updateTick().catch(() => {}), 8_000);
+  setInterval(() => updateTick().catch(() => {}), 6 * HOUR);
 }
 
 // ---------- start ----------

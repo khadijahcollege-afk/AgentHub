@@ -21,7 +21,7 @@ Dua bagian yang sengaja dipisah supaya jujur:
 | Installer Windows (Electron bundling) | 78 MB | artefak build |
 | Portable ZIP (tanpa shell desktop) | 33 MB | artefak build |
 | Dependensi npm (server) | **0** | `package.json` |
-| Tes otomatis | **212 lulus** (`npm run check`) | `node --test test/*.test.js` |
+| Tes otomatis | **218 lulus** (`npm run check`) | `node --test test/*.test.js` |
 | Kode | ~7.600 baris server (`server.js` + `lib/`) + ~9.700 baris UI (vanilla JS/CSS/HTML) | `wc -l` |
 
 Cara baca: angka ini menyatakan **biaya berjalan** (mulai, memori, latensi),
