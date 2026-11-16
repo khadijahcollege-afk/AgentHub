@@ -593,6 +593,15 @@ window.__ahMachines = {
     });
   }
 
+  // askPick: pilihan bernomor lewat dialog kustom (window.prompt mati di Electron).
+  async function askPick(message, options, { title = 'Pilih' } = {}) {
+    const labels = options.map((o, i) => `${i + 1}. ${o.label}`).join('\n');
+    const v = await askPrompt(`${message}\n\n${labels}`, '1', { title, okLabel: 'Pilih', requireValue: true });
+    if (v == null) return null;
+    const idx = parseInt(v, 10) - 1;
+    return options[idx]?.v ?? null;
+  }
+
   function askPrompt(message, value = '', opts = {}) {
     return askDialog({
       title: opts.title || 'Masukkan nilai',
@@ -2369,6 +2378,7 @@ window.__ahMachines = {
     hide('#btn-chat-del', !curThread);
     hide('#btn-session-info', !curThread);
     hide('#btn-sys-prompt', !curThread);
+    hide('#btn-share', !curThread);
     if (curThread?.systemPrompt) $('#sys-prompt-badge').classList.remove('hidden');
     else $('#sys-prompt-badge')?.classList.add('hidden');
     const top = $('#chat-top');
@@ -2626,6 +2636,52 @@ window.__ahMachines = {
   }
 
   // ---------- info sesi: statistik thread aktif ----------
+  // ---------- bagikan thread (REA ZCode: conversationShare) ----------
+  async function shareThread() {
+    if (!curThread) return;
+    const days = await askPick('Bagikan thread ini sebagai tautan baca-saja. Masa berlaku:', [
+      { v: 7, label: '7 hari' },
+      { v: 30, label: '30 hari' },
+    ], { title: 'Bagikan percakapan' });
+    if (days == null) return;
+    try {
+      const r = await api(`/api/threads/${curThread.id}/share`, { method: 'POST', body: JSON.stringify({ days }) });
+      await navigator.clipboard?.writeText(r.url).catch(() => {});
+      toast('Tautan baca-saja disalin — berlaku ' + days + ' hari', 6000);
+      openSessionInfo();
+    } catch (e) { toast('Gagal: ' + e.message); }
+  }
+  async function renderShareList() {
+    const host = $('#share-list');
+    if (!host) return;
+    try {
+      const all = await api('/api/shares');
+      const mine = (all || []).filter((x) => curThread && x.threadId === curThread.id);
+      host.innerHTML = mine.length ? mine.map((x) => `
+        <div class="share-row">
+          <span class="share-url">/share/${esc(x.id.slice(0, 10))}…</span>
+          <span class="muted small">${x.days} hari · sisa ${Math.max(1, Math.ceil(x.remainingMs / 86400000))} h</span>
+          <button class="icon-btn" data-share-copy="${esc(x.id)}" title="Salin tautan">${icon('copy')}</button>
+          <button class="icon-btn" data-share-revoke="${esc(x.id)}" title="Cabut tautan">${icon('x')}</button>
+        </div>`).join('') : '<p class="muted small">Belum ada tautan aktif untuk thread ini.</p>';
+    } catch (e) { host.innerHTML = '<p class="muted small">Gagal memuat tautan.</p>'; }
+  }
+  document.addEventListener('click', async (e) => {
+    const cp = e.target.closest('[data-share-copy]');
+    const rv = e.target.closest('[data-share-revoke]');
+    if (cp) {
+      const url = `${location.origin}/share/${cp.dataset.shareCopy}`;
+      await navigator.clipboard?.writeText(url).catch(() => {});
+      toast('Tautan disalin');
+    }
+    if (rv) {
+      try {
+        await api(`/api/shares/${rv.dataset.shareRevoke}/revoke`, { method: 'POST' });
+        toast('Tautan dicabut — halamannya langsung mati');
+        renderShareList();
+      } catch (err) { toast('Gagal: ' + err.message); }
+    }
+  });
   async function openSessionInfo() {
     if (!curThread) return;
     let s;
@@ -2664,9 +2720,12 @@ window.__ahMachines = {
       row('Dibuat', date(s.createdAt)),
       row('Aktivitas terakhir', date(s.updatedAt)),
     ].join('');
+    renderShareList();
     setLayer('session');
     positionPop('#session-pop', '#btn-session-info');
   }
+  $('#btn-share')?.addEventListener('click', () => shareThread());
+  $('#share-open')?.addEventListener('click', () => shareThread());
   $('#btn-sys-prompt')?.addEventListener('click', async () => {
     if (!curThread) return;
     const cur = curThread.systemPrompt || '';

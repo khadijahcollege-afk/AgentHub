@@ -37,6 +37,7 @@ import {
 } from './lib/uploads.js';
 import * as environments from './lib/environments.js';
 import * as memory from './lib/memory.js';
+import * as share from './lib/share.js';
 import { searchWeb, researchContext, ResearchError } from './lib/research.js';
 import { listModelChoices, activateModel, isMaskedKey } from './lib/models.js';
 import { tunnelStatus, startTunnel, stopTunnel } from './lib/tunnel.js';
@@ -545,6 +546,9 @@ async function route(req, res) {
   const url = new URL(req.url, 'http://x');
   const p = url.pathname;
   const method = req.method;
+  // `m` dipakai banyak rute di bawah (termasuk rute publik sebelum blok auth),
+  // jadi deklarasinya harus di awal fungsi — bukan di tengah — agar tidak kena TDZ.
+  let m;
   if (p.startsWith('/api/') || p.startsWith('/v1/')) {
     res.setHeader('Cache-Control', 'no-store');
     if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
@@ -577,6 +581,60 @@ async function route(req, res) {
   }
   if (method === 'GET' && p === '/download/portable.zip') {
     return serveDownload(res, path.join(DIST_DIR, 'AgentHub-Portable.zip'), `AgentHub-Portable-${APP_VERSION}.zip`);
+  }
+
+  // ---- tautan baca-saja (REA ZCode: conversationShare) ----
+  // Publik tanpa token: isi thread saja, tidak pernah menyentuh token/key.
+  // Punya masa berlaku & bisa dicabut (lihat lib/share.js).
+  if ((m = p.match(/^\/share\/([a-f0-9]+)$/)) && method === 'GET') {
+    const s = share.getShare(m[1]);
+    if (!s) {
+      res.writeHead(404, { 'content-type': 'text/html; charset=utf-8', 'x-robots-tag': 'noindex' });
+      return res.end(`<!doctype html><html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Tautan tidak tersedia</title><style>body{background:#0b0b0c;color:#9a9aa2;font:14px/1.6 system-ui;display:grid;place-items:center;height:100dvh;margin:0}main{text-align:center}b{color:#e6e6ec}</style></head><body><main><b>Tautan tidak tersedia</b><p>Tautan sudah kedaluwarsa atau dicabut pemiliknya.</p></main></body></html>`);
+    }
+    const t = threads.getThread(s.threadId);
+    if (!t) return sendJson(res, 404, { error: 'Thread tidak ditemukan' });
+    const escHtml = (x) => String(x ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const mdHtml = (raw) => {
+      let out = escHtml(String(raw || ''));
+      out = out.replace(/```(\w*)\n([\s\S]*?)```/g, (_, _l, code) => `<pre class="code">${code}</pre>`);
+      out = out.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+      out = out.replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>');
+      out = out.replace(/\n/g, '<br>');
+      return out;
+    };
+    const msgs = (t.messages || []).filter((x) => !x.subrun).map((x) => {
+      const who = x.role === 'user' ? 'Pengguna' : 'Assistant';
+      const eng = x.role !== 'user' && x.engine ? ` · ${escHtml(String(x.engine))}` : '';
+      return `<div class="msg ${x.role === 'user' ? 'user' : 'asst'}"><div class="who">${who}${eng}</div><div class="body">${mdHtml(x.content)}</div></div>`;
+    }).join('\n');
+    const expires = new Date(s.expiresAt).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' });
+    const html = `<!doctype html><html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>${escHtml(t.title || 'Percakapan')} — AgentHub</title>
+<style>
+  body{background:#0b0b0c;color:#d6d6dc;font:14px/1.65 system-ui,Segoe UI,sans-serif;margin:0}
+  main{max-width:760px;margin:0 auto;padding:32px 16px 64px}
+  header{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+  .mark{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,#f2905c,#e46a30);display:grid;place-items:center;color:#fff;font-weight:700;font-size:13px}
+  h1{font-size:18px;margin:0;color:#f2f2f5}
+  .meta{color:#8d8d94;font-size:12px;margin:0 0 26px}
+  .msg{margin:0 0 18px;padding:12px 14px;border-radius:12px;background:#161618;border:1px solid #24242a}
+  .msg.user{background:#1d1a17;border-color:#3a2d22}
+  .who{font-size:11px;color:#8d8d94;margin-bottom:6px;letter-spacing:.04em;text-transform:uppercase}
+  .body{overflow-wrap:anywhere}
+  .code{background:#0d0d0f;border:1px solid #26262b;border-radius:8px;padding:10px 12px;overflow-x:auto;font:12px/1.5 ui-monospace,Consolas,monospace;white-space:pre}
+  code{background:#0d0d0f;border-radius:4px;padding:1px 5px;font-family:ui-monospace,Consolas,monospace}
+  footer{margin-top:34px;color:#6d6d76;font-size:12px;text-align:center}
+  footer a{color:#e46a30;text-decoration:none}
+</style></head><body><main>
+<header><span class="mark">A</span><h1>${escHtml(t.title || 'Percakapan')}</h1></header>
+<p class="meta">Dibagikan dari AgentHub · kedaluwarsa ${escHtml(expires)}</p>
+${msgs || '<p class="meta">Percakapan kosong.</p>'}
+<footer>Halaman baca-saja — dibuat dengan <a href="https://github.com/khadijahcollege-afk/AgentHub">AgentHub</a></footer>
+</main></body></html>`;
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'x-robots-tag': 'noindex', 'cache-control': 'no-store' });
+    return res.end(html);
   }
 
   if (!authorized(req, url)) {
@@ -848,7 +906,6 @@ async function route(req, res) {
     broadcast('keys');
     return sendJson(res, 200, { ok: true, entry: listKeys().find((k) => k.id === entry.id) });
   }
-  let m;
   if ((m = p.match(/^\/api\/keys\/([a-f0-9]+)\/check$/)) && method === 'POST') {
     markKeyChecking(m[1]);
     broadcast('keys');
@@ -1033,6 +1090,31 @@ async function route(req, res) {
   }
 
   // ekspor percakapan sebagai markdown
+  // ---- bagikan thread (REA ZCode: conversationShare) ----
+  if ((m = p.match(/^\/api\/threads\/([a-f0-9]+)\/share$/)) && method === 'POST') {
+    try {
+      const b = await readBody(req);
+      const t = threads.getThread(m[1]);
+      if (!t) return sendJson(res, 404, { error: 'Thread tidak ditemukan' });
+      const s = share.createShare(m[1], { days: Number(b.days) || 7, title: t.title });
+      const proto = String(req.headers['x-forwarded-proto'] || 'http').split(',')[0].trim();
+      const host = String(req.headers.host || `localhost:${config.port}`);
+      broadcast('threads');
+      return sendJson(res, 200, { ...s, url: `${proto}://${host}/share/${s.id}` });
+    } catch (error) { return sendJson(res, error.statusCode || 400, { error: error.message }); }
+  }
+  if (p === '/api/shares' && method === 'GET') return sendJson(res, 200, share.listShares());
+  if ((m = p.match(/^\/api\/shares\/([a-f0-9]+)\/revoke$/)) && method === 'POST') {
+    if (!share.revokeShare(m[1])) return sendJson(res, 404, { error: 'Tautan tidak ditemukan' });
+    broadcast('threads');
+    return sendJson(res, 200, { ok: true });
+  }
+  if ((m = p.match(/^\/api\/shares\/([a-f0-9]+)$/)) && method === 'DELETE') {
+    if (!share.deleteShare(m[1])) return sendJson(res, 404, { error: 'Tautan tidak ditemukan' });
+    broadcast('threads');
+    return sendJson(res, 200, { ok: true });
+  }
+
   // ekspor percakapan: markdown siap-baca (?format=md) atau JSON lengkap
   // (?format=json) untuk arsip/migrasi.
   if ((m = p.match(/^\/api\/threads\/([a-f0-9]+)\/export$/)) && method === 'GET') {
