@@ -9,10 +9,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { nextRunAt } from '../lib/schedules.js';
+import { pickFreePort } from './helpers/port.js';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 // Band port unik per berkas tes: schedules 8490–8509 (prompts berhenti di 8489).
-const PORT = 8490 + Math.floor(Math.random() * 20);
+const PORT = await pickFreePort(8490, 20);
 const TOKEN = 'schedtoken0123456789';
 let child;
 let dataDir;

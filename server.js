@@ -47,7 +47,8 @@ import {
 import * as runs from './lib/runs.js';
 import * as mcp from './lib/mcp.js';
 import * as hooks from './lib/hooks.js';
-import { toolSummary, PERMISSION_MODES } from './lib/tools.js';
+import * as checkpoints from './lib/checkpoints.js';
+import { toolSummary, PERMISSION_MODES, normalizeMode } from './lib/tools.js';
 
 // Nilai `permission` yang diterima dari UI. Nama lama (ask/edits/full) tetap sah
 // karena disimpan di localStorage pengguna; pemetaannya dilakukan di lib/tools.js
@@ -1175,6 +1176,9 @@ ${msgs || '<p class="meta">Percakapan kosong.</p>'}
     }
     if (method === 'DELETE') {
       threads.deleteThread(m[1]);
+      // Checkpoint milik thread ikut dibersihkan: ref git yatim membuat objek
+      // snapshot tidak pernah bisa dijangkau lagi oleh pemulihan mana pun.
+      await checkpoints.pruneCheckpoints(threads.listThreads().map((t) => t.id)).catch(() => {});
       broadcast('threads');
       return sendJson(res, 200, { ok: true });
     }
@@ -1402,6 +1406,58 @@ ${msgs || '<p class="meta">Percakapan kosong.</p>'}
     }
   }
 
+  // ---- checkpoint berkas (REA ZCode git checkpoint) ----
+  // Snapshot diambil sebelum agent menulis; rute ini yang memulihkannya.
+  if (p.startsWith('/api/threads/') && p.includes('/checkpoints')) {
+    try {
+      if ((m = p.match(/^\/api\/threads\/([a-f0-9]+)\/checkpoints$/)) && method === 'GET') {
+        const t = threads.getThread(m[1]);
+        if (!t) return sendJson(res, 404, { error: 'Thread tidak ditemukan' });
+        return sendJson(res, 200, { checkpoints: checkpoints.listCheckpoints(m[1]) });
+      }
+      if ((m = p.match(/^\/api\/threads\/([a-f0-9]+)\/checkpoints$/)) && method === 'POST') {
+        const t = threads.getThread(m[1]);
+        if (!t) return sendJson(res, 404, { error: 'Thread tidak ditemukan' });
+        if (!t.cwd) return sendJson(res, 400, { error: 'Thread belum punya folder kerja', code: 'WORKSPACE_MISSING' });
+        const b = await readBody(req);
+        const dir = resolveWorkspace(t.cwd);
+        const cp = await checkpoints.createCheckpoint(m[1], dir, { label: b.label || 'manual' });
+        return sendJson(res, 200, cp);
+      }
+      if ((m = p.match(/^\/api\/threads\/([a-f0-9]+)\/checkpoints\/([a-f0-9]+)\/diff$/)) && method === 'GET') {
+        // `:id` adalah checkpoint tujuan; `?from=` checkpoint pembandingnya.
+        const from = url.searchParams.get('from');
+        if (!from) return sendJson(res, 400, { error: 'Parameter `from` wajib diisi' });
+        return sendJson(res, 200, await checkpoints.diffCheckpoints(from, m[2]));
+      }
+      if ((m = p.match(/^\/api\/threads\/([a-f0-9]+)\/checkpoints\/([a-f0-9]+)\/restore$/)) && method === 'POST') {
+        const t = threads.getThread(m[1]);
+        if (!t) return sendJson(res, 404, { error: 'Thread tidak ditemukan' });
+        const b = await readBody(req);
+        const r = await checkpoints.restoreCheckpoint(m[1], {
+          fromId: b.fromId || null,
+          toId: m[2],
+          paths: Array.isArray(b.paths) ? b.paths : null,
+          force: b.force === true,
+        });
+        if (!r.ok) {
+          return sendJson(res, 409, {
+            error: 'Berkas berubah sejak checkpoint dibuat — tinjau konflik sebelum memulihkan',
+            code: 'CHECKPOINT_CONFLICT', conflicts: r.conflicts,
+          });
+        }
+        // Perubahan berkas menarik watcher workspace agar UI memuat ulang diff.
+        if (t.cwd) { try { watchWorkspace(resolveWorkspace(t.cwd)); } catch { /* folder hilang */ } }
+        broadcast('workspace');
+        return sendJson(res, 200, r);
+      }
+      if ((m = p.match(/^\/api\/threads\/([a-f0-9]+)\/checkpoints\/([a-f0-9]+)$/)) && method === 'DELETE') {
+        return sendJson(res, 200, { ok: await checkpoints.deleteCheckpoint(m[2]) });
+      }
+      return sendJson(res, 404, { error: 'Rute checkpoint tidak dikenal' });
+    } catch (error) { return sendJson(res, error.statusCode || 500, { error: error.message }); }
+  }
+
   // kirim prompt: respons SSE (delta / done / error)
   if ((m = p.match(/^\/api\/threads\/([a-f0-9]+)\/send$/)) && method === 'POST') {
     const b = await readBody(req);
@@ -1502,6 +1558,22 @@ ${msgs || '<p class="meta">Percakapan kosong.</p>'}
       const useTools = engineType(engineId) === 'pool'
         && !!workspace
         && b.tools !== false;
+
+      // Snapshot sebelum agent menyentuh berkas. Ini satu-satunya cara memulihkan
+      // hasil yang buruk tanpa ikut membuang pekerjaan pengguna yang belum
+      // di-commit. Gagal membuat snapshot tidak boleh menggagalkan run — agent
+      // hanya kehilangan kemampuan undo, bukan kemampuannya bekerja.
+      let checkpointId = null;
+      if (useTools && workspace && ['edit', 'guarded', 'yolo'].includes(normalizeMode(b.permission))) {
+        try {
+          const cp = await checkpoints.createCheckpoint(m[1], workspace, {
+            label: rawPrompt.slice(0, 80) || 'sebelum run',
+          });
+          checkpointId = cp.id;
+          send({ type: 'checkpoint', id: cp.id, files: cp.files });
+        } catch { /* bukan repo git / git tidak ada: lanjut tanpa snapshot */ }
+      }
+
       const r = await runEngine(engineId, modelPrompt, {
         cwd: workspace,
         model: b.model,
@@ -1539,6 +1611,9 @@ ${msgs || '<p class="meta">Percakapan kosong.</p>'}
         usage: r.usage || null,
         runStatus: 'done',
         ...(r.tools?.length ? { tools: r.tools.map((t) => ({ name: t.name, ok: t.ok, decision: t.decision })) } : {}),
+        // Id snapshot dikirim ke UI supaya tombol "Pulihkan" pada pesan ini tahu
+        // keadaan mana yang harus dikembalikan.
+        ...(checkpointId ? { checkpointId } : {}),
       });
       // Pemakaian nyata lewat gateway mengurangi saldo promo bila modelnya
       // termasuk plan (GLM-5.3 / GLM-5.3-Flash) dan tiket sedang aktif.

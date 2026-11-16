@@ -8,9 +8,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { pickFreePort } from './helpers/port.js';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-const PORT = 8460 + Math.floor(Math.random() * 30);
+const PORT = await pickFreePort(8460, 30);
 const TOKEN = 'testtoken0123456789';
 let child;
 let dataDir;

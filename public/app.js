@@ -269,6 +269,7 @@ window.__ahMachines = {
     shield: '<path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/><path d="M9.5 12l1.8 1.8 3.2-3.6"/>',
     tag: '<path d="M3.5 12.5 11 5h6.5V11.5L10 19z"/><circle cx="14.5" cy="8.5" r="1"/>',
     plus: '<path d="M12 5v14M5 12h14"/>',
+    undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h9a6 6 0 0 1 0 12h-3"/>',
     sound: '<path d="M4 9.5v5h3.5L12 18V6L7.5 9.5z"/><path d="M15.5 9a4.5 4.5 0 0 1 0 6"/><path d="M18 6.8a8 8 0 0 1 0 10.4"/>',
     play: '<path d="M8 5.5v13l10-6.5z"/>',
     pause: '<rect x="8" y="5.5" width="3" height="13" rx="1"/><rect x="13.5" y="5.5" width="3" height="13" rx="1"/>',
@@ -2229,7 +2230,60 @@ window.__ahMachines = {
     try { diffInfo = await api(`/api/threads/${curThread.id}/diff`); }
     catch (e) { diffInfo = { error: e.message }; }
     renderDiff();
+    loadCheckpoints();
   }
+
+  // ---------- snapshot berkas ----------
+  // Daftar snapshot ditampilkan di drawer Perubahan: tempat yang sama dengan
+  // revert per file, karena keduanya menjawab pertanyaan yang sama — "bagaimana
+  // membatalkan perubahan yang tidak saya inginkan".
+  let checkpointList = [];
+  async function loadCheckpoints() {
+    if (!curThread) { checkpointList = []; renderCheckpoints(); return; }
+    try {
+      const r = await api(`/api/threads/${curThread.id}/checkpoints`);
+      checkpointList = r.checkpoints || [];
+    } catch { checkpointList = []; }
+    renderCheckpoints();
+  }
+
+  function renderCheckpoints() {
+    const host = $('#cd-cp-list');
+    if (!host) return;
+    if (!curThread) { host.innerHTML = '<p class="muted small">Buka thread dulu.</p>'; return; }
+    if (!checkpointList.length) {
+      host.innerHTML = '<p class="muted small">Belum ada snapshot. Snapshot dibuat otomatis sebelum agent mengubah berkas (mode edit/guarded/yolo) di folder yang merupakan repo git.</p>';
+      return;
+    }
+    host.innerHTML = checkpointList.map((c) => `
+      <div class="cd-cp-row">
+        <div class="cd-cp-main">
+          <div class="cd-cp-label" title="${esc(c.label || 'snapshot')}">${esc(c.label || 'snapshot')}</div>
+          <div class="muted small">${fmtTime(c.createdAt)} · ${c.files} berkas</div>
+        </div>
+        <button class="btn ghost tiny" data-cp-restore="${esc(c.id)}" data-cp-label="${esc(c.label || '')}">${icon('undo')} Pulihkan</button>
+        <button class="icon-btn" data-cp-del="${esc(c.id)}" title="Hapus snapshot">${icon('x')}</button>
+      </div>`).join('');
+  }
+
+  document.addEventListener('click', async (e) => {
+    const restore = e.target.closest('[data-cp-restore]');
+    const del = e.target.closest('[data-cp-del]');
+    if (restore) {
+      // Pulihkan dari tombol snapshot: checkpoint tujuan = snapshot itu, base
+      // dibiarkan implisit (modul memakai snapshot terbaru thread yang lain
+      // sebagai pembanding konflik).
+      await restoreFilesTo(restore.dataset.cpRestore);
+      return;
+    }
+    if (del) {
+      try {
+        await api(`/api/threads/${curThread.id}/checkpoints/${del.dataset.cpDel}`, { method: 'DELETE' });
+        await loadCheckpoints();
+        toast('Snapshot dihapus');
+      } catch (err) { toast('Gagal: ' + err.message); }
+    }
+  });
 
   function renderDiff() {
     const host = $('#cd-files');
@@ -2627,6 +2681,7 @@ window.__ahMachines = {
           <button class="icon-btn mf-act" data-tts="${m.id}" title="Bacakan (klik lagi untuk berhenti)">${icon('sound')}</button>
           <button class="icon-btn mf-act" data-copy-msg="${m.id}" title="Salin pesan">${icon('copy')}</button>
           ${canRegen ? `<button class="icon-btn mf-act" data-regen="${m.id}" title="Ulangi prompt terakhir">${icon('refresh')}</button>` : ''}
+    ${m.checkpointId && !runActive() ? `<button class="icon-btn mf-act" data-restore-cp="${m.checkpointId}" data-mid="${m.id}" title="Pulihkan berkas ke keadaan sebelum pesan ini">${icon('undo')}</button>` : ''}
         </div>
       </div>`;
     }
@@ -2964,8 +3019,59 @@ window.__ahMachines = {
       const lastUser = [...(curThread.messages || [])].reverse().find((x) => x.role === 'user');
       if (!lastUser) return;
       sendPrompt(String(lastUser.content));
+      return;
+    }
+    const restoreBtn = e.target.closest('[data-restore-cp]');
+    if (restoreBtn) {
+      if (!curThread || runActive()) return;
+      restoreFilesTo(restoreBtn.dataset.restoreCp);
     }
   });
+
+  // Pulihkan berkas thread ke snapshot yang diambil sebelum sebuah pesan.
+  // Konflik berarti berkas sudah berubah setelah snapshot — pengguna diberi tahu
+  // path-nya dan harus menyetujui sebelum apa pun ditimpa.
+  async function restoreFilesTo(checkpointId) {
+    const tid = curThread?.id;
+    if (!tid) return;
+    const ok = await askConfirm(
+      'Kembalikan semua berkas di folder kerja ke keadaan saat snapshot ini dibuat? Perubahan setelahnya akan hilang.',
+      { title: 'Pulihkan berkas', okLabel: 'Pulihkan', danger: true },
+    );
+    if (!ok) return;
+    let res;
+    try {
+      res = await api(`/api/threads/${tid}/checkpoints/${checkpointId}/restore`, { method: 'POST', body: JSON.stringify({}) });
+      toast(`Berkas dipulihkan (${(res.restored || []).length} berkas)`);
+    } catch (err) {
+      // 409 = berkas sudah berubah setelah snapshot. Restore sengaja tidak
+      // menimpa apa pun; pengguna harus melihat berkas mana yang bentrok dan
+      // memutuskan sendiri. Daftar path ditampilkan, bukan hanya "gagal".
+      if (err.status === 409 && err.body?.code === 'CHECKPOINT_CONFLICT') {
+        const list = (err.body.conflicts || []).slice(0, 8).map((c) => `• ${c.path} (${c.reason})`).join('\n');
+        const more = (err.body.conflicts || []).length > 8 ? `\n… dan ${err.body.conflicts.length - 8} berkas lain` : '';
+        const force = await askConfirm(
+          `Berkas ini sudah berubah setelah snapshot dibuat:\n\n${list}${more}\n\nMenimpa berarti perubahan tersebut hilang. Lanjutkan?`,
+          { title: 'Berkas bentrok', okLabel: 'Timpa saja', danger: true },
+        );
+        if (!force) return;
+        try {
+          res = await api(`/api/threads/${tid}/checkpoints/${checkpointId}/restore`, {
+            method: 'POST', body: JSON.stringify({ force: true }),
+          });
+          toast(`Berkas dipulihkan (${(res.restored || []).length} berkas)`);
+        } catch (err2) {
+          toast('Gagal memulihkan: ' + err2.message);
+          return;
+        }
+      } else {
+        toast('Gagal memulihkan: ' + err.message);
+        return;
+      }
+    }
+    await loadState();
+    renderChat();
+  }
 
   // ---------- delegation ----------
   function renderDelegationEngines() {

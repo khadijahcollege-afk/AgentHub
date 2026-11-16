@@ -8,9 +8,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { addMemory, clearMemory, memoryContext, sanitizeFact } from '../lib/memory.js';
+import { pickFreePort } from './helpers/port.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const PORT = 8700 + Math.floor(Math.random() * 30);
+const PORT = await pickFreePort(8700, 30);
 const TOKEN = 'memorytok012345678';
 let child;
 let dataDir;

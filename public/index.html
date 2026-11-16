@@ -227,6 +227,13 @@
         </header>
         <div id="cd-workspace" class="cd-workspace"></div>
         <div id="cd-files" class="cd-files"></div>
+        <details class="cd-rules" id="cd-checkpoints">
+          <summary>Snapshot berkas <span class="muted small">(undo per putaran agent)</span></summary>
+          <div class="cd-cp-body">
+            <p class="muted small">Snapshot dibuat otomatis sebelum agent boleh mengubah berkas. Memulihkan satu snapshot mengembalikan berkas ke keadaan saat itu.</p>
+            <div id="cd-cp-list" class="cd-cp-list"></div>
+          </div>
+        </details>
         <details class="cd-rules" id="cd-rules">
           <summary>Aturan proyek <span class="muted small">(AGENTS.md &amp; sejenis)</span></summary>
           <div class="cd-rules-body">

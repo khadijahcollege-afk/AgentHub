@@ -8,9 +8,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createShare, getShare, revokeShare } from '../lib/share.js';
+import { pickFreePort } from './helpers/port.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const PORT = 8890 + Math.floor(Math.random() * 20);
+const PORT = await pickFreePort(8890, 20);
 const TOKEN = 'sharetok01234567890';
 let child;
 let dataDir;
@@ -59,10 +60,19 @@ test.before(async () => {
   child = spawn(process.execPath, ['server.js'], {
     cwd: ROOT,
     env: { ...process.env, AGENTHUB_DATA: dataDir, AGENTHUB_NO_TOAST: '1' },
-    stdio: 'ignore',
+    stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
   });
-  assert.equal(await waitUp(), true, 'server harus hidup');
+  // Simpan keluaran server: kalau boot gagal, pesan aslinya (port terpakai,
+  // config rusak, import gagal) jauh lebih berguna daripada "server harus hidup".
+  let bootLog = '';
+  child.stdout.on('data', (d) => { bootLog += d; });
+  child.stderr.on('data', (d) => { bootLog += d; });
+  let exited = null;
+  child.on('exit', (code, sig) => { exited = { code, sig }; });
+
+  const up = await waitUp();
+  assert.equal(up, true, `server harus hidup (port ${PORT}, keluar: ${exited ? JSON.stringify(exited) : 'tidak'})\n${bootLog.slice(-800)}`);
 });
 
 test.after(() => {

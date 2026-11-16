@@ -8,9 +8,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseResults, parseBing, researchContext, searchWeb } from '../lib/research.js';
+import { pickFreePort } from './helpers/port.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const PORT = 8830 + Math.floor(Math.random() * 20);
+const PORT = await pickFreePort(8830, 20);
 const TOKEN = 'researchtok01234567';
 let child;
 let dataDir;

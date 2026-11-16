@@ -1799,6 +1799,22 @@ html[data-theme="light"] video {
 .cd-rules-body textarea:focus { outline: none; border-color: rgba(239, 125, 69, .55); }
 .cd-rules-actions { display: flex; align-items: center; gap: 8px; }
 
+/* ---------- snapshot berkas (drawer Perubahan) ---------- */
+.cd-cp-body { margin-top: 10px; }
+.cd-cp-list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.cd-cp-row {
+  display: flex; align-items: center; gap: 8px;
+  background: rgba(255, 255, 255, .028); border: 1px solid var(--line2);
+  border-radius: 9px; padding: 8px 10px; min-width: 0;
+}
+.cd-cp-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.cd-cp-label {
+  font-size: 12.5px; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cd-cp-row .btn.tiny { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 5px; }
+.cd-cp-row .btn.tiny .ico { width: 12px; height: 12px; }
+
 @media (max-width: 900px) {
   .changes-drawer {
     position: absolute; inset: 0 0 0 auto; z-index: 30;
@@ -2387,4 +2403,16 @@ html[data-density="comfortable"] .kcol-head { padding-bottom: 16px; }
 /* Layar sentuh tidak punya hover: aksi edit/cabang pesan selalu terlihat. */
 @media (hover: none) {
   .msg.user .msg-acts { display: inline-flex; top: -16px; }
+  /* Tanpa hover, tombol pulihkan tidak akan pernah bisa ditekan — dan 20px
+     terlalu kecil untuk jari. */
+  .mf-act { opacity: 1; width: 30px; height: 30px; }
+  .mf-act .ico { width: 14px; height: 14px; }
+}
+
+/* Layar sempit juga sering berupa perangkat sentuh (atau emulasi tanpa
+   `hover: none`), jadi tombol aksi pesan dibuat selalu terlihat di sana. */
+@media (max-width: 640px) {
+  .mf-act { opacity: .75; width: 28px; height: 28px; }
+  .mf-act .ico { width: 13px; height: 13px; }
+  .msg .mf-act:active { opacity: 1; }
 }

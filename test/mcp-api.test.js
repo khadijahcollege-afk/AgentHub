@@ -7,9 +7,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { pickFreePort } from './helpers/port.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const PORT = 8760 + Math.floor(Math.random() * 40);
+const PORT = await pickFreePort(8760, 40);
 const TOKEN = 'mcptok0123456789';
 const API = `http://127.0.0.1:${PORT}`;
 

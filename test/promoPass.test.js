@@ -8,13 +8,14 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { pickFreePort } from './helpers/port.js';
 import {
   PASS_PLAN, campaignWindow, billingDay, nextResetAt, passPhase,
   quotaFor, matchPassModel, publicPass, isPassModel,
 } from '../lib/promoPass.js';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-const PORT = 8240 + Math.floor(Math.random() * 60);
+const PORT = await pickFreePort(8240, 60);
 const TOKEN = 'promopass0123456789abcdef';
 const API = `http://127.0.0.1:${PORT}`;
 

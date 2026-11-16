@@ -727,4 +727,17 @@ export const EN = {
   'Edit berkas bebas; perintah butuh persetujuan': 'Edit files freely; commands need approval',
   'Semua bebas, kecuali perintah berbahaya (rm -rf, reset --hard…)': 'Everything allowed except dangerous commands (rm -rf, reset --hard…)',
   'Tanpa persetujuan — pakai hanya di folder yang Anda percaya': 'No approval — use only in folders you trust',
+  // --- snapshot berkas (checkpoint) ---
+  'Pulihkan': 'Restore',
+  'Pulihkan berkas': 'Restore files',
+  'Hapus snapshot': 'Delete snapshot',
+  'Snapshot berkas': 'File snapshots',
+  'Pulihkan berkas ke keadaan sebelum pesan ini': 'Restore files to the state before this message',
+  'Kembalikan semua berkas di folder kerja ke keadaan saat snapshot ini dibuat? Perubahan setelahnya akan hilang.': 'Restore every file in the working folder to how it was when this snapshot was taken? Later changes will be lost.',
+  'Belum ada snapshot. Snapshot dibuat otomatis sebelum agent mengubah berkas (mode edit/guarded/yolo) di folder yang merupakan repo git.': 'No snapshots yet. One is taken automatically before the agent changes files (edit/guarded/yolo mode) in a folder that is a git repo.',
+  'Snapshot dibuat otomatis sebelum agent boleh mengubah berkas. Memulihkan satu snapshot mengembalikan berkas ke keadaan saat itu.': 'Snapshots are taken automatically before the agent may change files. Restoring one returns the files to how they were at that moment.',
+  'Berkas dipulihkan': 'Files restored',
+  'Snapshot dihapus': 'Snapshot deleted',
+  'Berkas bentrok': 'Conflicting files',
+  'Timpa saja': 'Overwrite anyway',
 };

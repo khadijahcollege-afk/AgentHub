@@ -10,13 +10,14 @@ import os from 'node:os';
 import path from 'node:path';
 import { Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
+import { pickFreePort } from './helpers/port.js';
 import {
   parseSemver, isNewer, updateInfo, fetchLatestRelease,
   assetFor, downloadUrl, fullUpdateInfo, downloadAsset,
 } from '../lib/update.js';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-const PORT = 8520 + Math.floor(Math.random() * 20);
+const PORT = await pickFreePort(8520, 20);
 const TOKEN = 'updatetok0123456789';
 let child;
 let dataDir;

@@ -8,10 +8,11 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { pickFreePort } from './helpers/port.js';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 // Band port unik per file tes: promo 8240–8299, uploads 8300–8359.
-const PORT = 8360 + Math.floor(Math.random() * 60);
+const PORT = await pickFreePort(8360, 60);
 const TOKEN = 'searchtoken0123456789';
 const API = `http://127.0.0.1:${PORT}`;
 

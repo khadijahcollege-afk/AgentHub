@@ -9,12 +9,13 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { pickFreePort } from './helpers/port.js';
 import {
   safeName, safeType, saveUpload, augmentPrompt, MAX_ATTACHMENT_BYTES,
 } from '../lib/uploads.js';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-const PORT = 8300 + Math.floor(Math.random() * 60);
+const PORT = await pickFreePort(8300, 60);
 const TOKEN = 'uploadtoken0123456789abc';
 const API = `http://127.0.0.1:${PORT}`;
 
