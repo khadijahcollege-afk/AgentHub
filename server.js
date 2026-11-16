@@ -406,6 +406,15 @@ function authorized(req, url) {
   return false;
 }
 
+function isLocalDashboard(req) {
+  const loopbacks = ['127.0.0.1', '::1', '::ffff:127.0.0.1'];
+  if (!loopbacks.includes(req.socket.remoteAddress)) return false;
+  // Tunnel/proxy juga tersambung lewat loopback, tetapi bukan browser lokal.
+  if (Object.keys(req.headers).some((key) => key === 'forwarded' || key.startsWith('x-forwarded-') || key.startsWith('cf-'))) return false;
+  const port = req.socket.localPort;
+  return [`localhost:${port}`, `127.0.0.1:${port}`, `[::1]:${port}`].includes(req.headers.host?.toLowerCase());
+}
+
 // ---------- static ----------
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -480,6 +489,12 @@ async function route(req, res) {
   if (method === 'GET' && p === '/sw.js') return serveStatic(res, 'sw.js');
   if (method === 'GET' && p.startsWith('/public/')) return serveStatic(res, p.slice('/public/'.length));
   if (method === 'GET' && p === '/healthz') return sendJson(res, 200, { ok: true, name: 'AgentHub', version: APP_VERSION });
+  // UI komputer sendiri masuk otomatis; API lain tetap memerlukan token.
+  // POST memakai pemeriksaan origin di atas dan respons tidak pernah di-cache.
+  if (method === 'POST' && p === '/api/local-session') {
+    if (!isLocalDashboard(req)) return sendJson(res, 403, { error: 'Sesi otomatis hanya tersedia di komputer ini' });
+    return sendJson(res, 200, { token: config.token });
+  }
 
   // halaman & berkas unduhan (terbuka agar HP/komputer lain mudah mengambil)
   if (method === 'GET' && p === '/download') return serveStatic(res, 'download.html');

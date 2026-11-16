@@ -5922,7 +5922,19 @@ Jangan mengarang — bila data tidak ada di folder, katakan tidak ada.`;
   });
 
   // ---------- init ----------
-  loadState().then(async () => {
+  async function localSession() {
+    if (!['localhost', '127.0.0.1', '[::1]'].includes(location.hostname)) return;
+    try {
+      const res = await fetch('/api/local-session', { method: 'POST' });
+      if (!res.ok) return;
+      const session = await res.json();
+      if (session.token) {
+        token = session.token;
+        localStorage.setItem('ah_token', token);
+      }
+    } catch { /* server offline: loadState menampilkan status koneksi */ }
+  }
+  localSession().then(() => loadState()).then(async () => {
     fillPresets();
     await renderEngines();
     syncActiveProject();

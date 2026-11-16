@@ -3,7 +3,7 @@
 // supaya tidak menyentuh data/dev milik user.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createServer } from 'node:http';
+import { createServer, request } from 'node:http';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -73,6 +73,31 @@ test('/healthz dan serverinfo melaporkan versi aplikasi sebenarnya', async () =>
 test('tanpa token → 401', async () => {
   const r = await fetch(`http://127.0.0.1:${PORT}/api/state`);
   assert.equal(r.status, 401);
+});
+
+test('dashboard lokal mendapat sesi otomatis, proxy dan origin lain ditolak', async () => {
+  const endpoint = `http://127.0.0.1:${PORT}/api/local-session`;
+  const response = await fetch(endpoint, { method: 'POST', headers: { origin: `http://127.0.0.1:${PORT}` } });
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('cache-control'), 'no-store');
+  assert.equal((await response.json()).token, TOKEN);
+  for (const headers of [
+    { host: `external.example:${PORT}` },
+    { 'x-forwarded-for': '192.168.1.25' },
+    { forwarded: 'for=192.168.1.25' },
+    { 'cf-connecting-ip': '192.168.1.25' },
+    { origin: 'https://other.example' },
+    { 'sec-fetch-site': 'cross-site' },
+  ]) {
+    // Node fetch menimpa Host; http.request diperlukan untuk menguji Host palsu.
+    const status = await new Promise((resolve, reject) => {
+      const req = request(endpoint, { method: 'POST', headers }, (res) => { res.resume(); resolve(res.statusCode); });
+      req.on('error', reject);
+      req.end();
+    });
+    assert.equal(status, 403, JSON.stringify(headers));
+  }
+  assert.equal((await fetch(endpoint)).status, 401, 'GET tidak membocorkan sesi');
 });
 
 test('security: browser protections and cross-site mutations rejected before execution', async () => {

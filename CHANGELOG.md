@@ -1,6 +1,8 @@
 # Changelog
 
 ## 1.6.13 — 2026-11-16
+- Dashboard di localhost masuk otomatis tanpa mengetik token. Sesi otomatis
+  dibatasi ke koneksi loopback langsung; akses jaringan/tunnel memakai token QR.
 - Panduan Android/iPhone/web kini tersedia langsung di situs dan tab halaman
   unduh: akses QR bertoken, pemasangan PWA, kebutuhan server aktif dan HTTPS.
 - Tes pengiriman prompt memakai fixture skill proyek agar tidak bergantung

@@ -4,7 +4,7 @@
 // Bila ganti file statis, naikkan CACHE agar cache lama dibuang.
 // Query versi di index.html (?v=1.6.13) yang membuat aset baru langsung dipakai
 // pada pemuatan pertama; CACHE yang dinaikkan mencegah entri lama menumpuk.
-const CACHE = 'agenthub-shell-v14';
+const CACHE = 'agenthub-shell-v15';
 
 const SHELL = [
   '/public/style.css',
