@@ -1,6 +1,9 @@
 # Changelog
 
 ## 1.6.13 — 2026-11-16
+- Screenshot README diperbarui dari UI terbaru, termasuk statistik dan HP.
+  Jalur artefak rilis Windows/macOS/Linux diperbaiki, paket portable menyertakan
+  metadata modul Node.js, dan ikon tray PNG tersedia di macOS/Linux.
 - Dashboard di localhost masuk otomatis tanpa mengetik token. Sesi otomatis
   dibatasi ke koneksi loopback langsung; akses jaringan/tunnel memakai token QR.
 - Panduan Android/iPhone/web kini tersedia langsung di situs dan tab halaman

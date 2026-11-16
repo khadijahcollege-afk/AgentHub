@@ -21,12 +21,13 @@ jobs:
           cd desktop
           npm install --no-audit --no-fund
           npx electron-builder --win nsis --publish never
-          Copy-Item dist\AgentHub-Setup-*.exe ..\AgentHub-Setup.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Copy-Item ..\dist\AgentHub-desktop\AgentHub-Setup-*.exe ..\AgentHub-Setup.exe
       - name: Build portable ZIP (classic, light)
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force stage\runtime, stage\data | Out-Null
-          Copy-Item server.js, README.md, get-info.js, install-autostart.js, agenthub-launch.vbs, agenthub-autostart.vbs, 'Start AgentHub.bat', 'Stop AgentHub.bat' stage\
+          Copy-Item server.js, package.json, README.md, get-info.js, install-autostart.js, agenthub-launch.vbs, agenthub-autostart.vbs, 'Start AgentHub.bat', 'Stop AgentHub.bat' stage\
           Copy-Item lib, public stage -Recurse
           Copy-Item data\seed-openrouter.json, data\seed-freelist.md stage\data\
           Copy-Item (Get-Command node.exe).Source stage\runtime\node.exe
@@ -54,8 +55,8 @@ jobs:
           cd desktop
           npm install --no-audit --no-fund
           npx electron-builder --mac dmg zip --publish never
-          cp dist/AgentHub-macOS-*.dmg ../AgentHub-macOS.dmg
-          cp dist/AgentHub-macOS-*.zip ../AgentHub-macOS-portable.zip
+          cp ../dist/AgentHub-desktop/AgentHub-macOS-*.dmg ../AgentHub-macOS.dmg
+          cp ../dist/AgentHub-desktop/AgentHub-macOS-*.zip ../AgentHub-macOS-portable.zip
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -78,8 +79,8 @@ jobs:
           cd desktop
           npm install --no-audit --no-fund
           npx electron-builder --linux AppImage deb --publish never
-          cp dist/AgentHub-linux-*.AppImage ../AgentHub-linux.AppImage
-          cp dist/AgentHub-linux-*.deb ../AgentHub-linux.deb
+          cp ../dist/AgentHub-desktop/AgentHub-linux-*.AppImage ../AgentHub-linux.AppImage
+          cp ../dist/AgentHub-desktop/AgentHub-linux-*.deb ../AgentHub-linux.deb
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -95,12 +96,25 @@ jobs:
     needs: [build-windows, build-macos, build-linux]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
+      - name: Generate download checksums
+        run: |
+          find artifacts -type f -exec mv {} . \;
+          sha256sum AgentHub-Setup.exe AgentHub-Portable.zip AgentHub-macOS.dmg AgentHub-macOS-portable.zip AgentHub-linux.AppImage AgentHub-linux.deb > SHA256SUMS.txt
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           name: AgentHub ${{ github.ref_name }}
+          body_path: docs/releases/v1.6.13.md
           generate_release_notes: true
-          files: artifacts/**/*
+          files: |
+            AgentHub-Setup.exe
+            AgentHub-Portable.zip
+            AgentHub-macOS.dmg
+            AgentHub-macOS-portable.zip
+            AgentHub-linux.AppImage
+            AgentHub-linux.deb
+            SHA256SUMS.txt

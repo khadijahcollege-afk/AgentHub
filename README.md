@@ -5,15 +5,28 @@
 [![Release](https://img.shields.io/github/v/release/khadijahcollege-afk/AgentHub?include_prereleases&label=release&color=blue)](https://github.com/khadijahcollege-afk/AgentHub/releases/latest)
 [![CI](https://github.com/khadijahcollege-afk/AgentHub/actions/workflows/ci.yml/badge.svg)](https://github.com/khadijahcollege-afk/AgentHub/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11%20x64-blueviolet)
+![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Web-blueviolet)
 
 AgentHub watches **free AI model promos** from multiple internet sources, connects to your **agent apps**, and keeps them alive: when one free provider's quota runs out, traffic **fails over automatically** to the next one — all monitored from your phone.
 
 > Dokumentasi berbahasa Indonesia: [README.id.md](README.id.md)
 
-| Studio (chat) | Tasks board | Notes | Free promo tracking |
-|---|---|---|---|
-| ![](assets/readme/studio.png) | ![](assets/readme/tasks.png) | ![](assets/readme/notes.png) | ![](assets/readme/promo.png) |
+![AgentHub Studio — updated desktop workspace](assets/readme/studio.png)
+
+| Tasks board | Usage statistics |
+|---|---|
+| ![Tasks with five workflow stages](assets/readme/tasks.png) | ![Activity heatmap, charts, and feature breakdown](assets/readme/stats.png) |
+| Project notes | Free promo tracking |
+| ![Pinned and recent project notes](assets/readme/notes.png) | ![Free model catalog](assets/readme/promo.png) |
+
+<details>
+<summary>Phone view</summary>
+
+<img src="assets/readme/mobile.png" width="390" alt="AgentHub statistics on a phone">
+
+</details>
+
+Screenshots show v1.6.13 with sample workspace data. Usage figures illustrate the dashboard; your statistics are calculated from your own activity.
 
 ## Why AgentHub?
 
@@ -35,12 +48,13 @@ Free AI API tiers (Groq, Google AI Studio, OpenRouter `:free`, …) are great �
 - **⌘ Composer power-ups** — `Ctrl+K` command palette, `@` file autocomplete from the working folder, real slash commands (`/new`, `/export`, `/engine`, `/model`, `/prompt`, `/save`, `/tasks`, …), a **prompt library** (save & reuse prompts, pin favorites), and **voice dictation** (Web Speech API, id-ID) when the browser supports it.
 - <img src="assets/icons/spark.svg" width="14" align="absmiddle"> **One-tap model adoption** — the model catalog lists pool members plus cached free models; if a provider key is already saved, **Pakai langsung** activates the model and switches the engine to the Gateway in one tap — no key hunting.
 - <img src="assets/icons/refresh.svg" width="14" align="absmiddle"> **Usage & change review** — per-message token counts, an aggregate usage popover, and a *Perubahan* drawer that shows the git status/diff a run actually produced (with per-file restore).
-- <img src="assets/icons/shield.svg" width="14" align="absmiddle"> **Local-first** — everything runs on your machine. No cloud, no telemetry. API keys stay on disk.
+- <img src="assets/icons/shield.svg" width="14" align="absmiddle"> **Local-first** — the server and data live on your machine. No AgentHub telemetry. Provider requests send your API key and prompt to the provider you select.
+- <img src="assets/icons/refresh.svg" width="14" align="absmiddle"> **Usage statistics & languages** — activity heatmap, 7/30/90-day charts, feature and engine breakdowns, plus separate Indonesian/English interface and agent reply-language settings.
 - <img src="assets/icons/snow.svg" width="14" align="absmiddle"> **Featherweight server** — pure Node.js, **zero npm dependencies** for the server itself; the desktop shell is a thin Electron wrapper (native window + tray, no browser).
 
 ## Install
 
-AgentHub runs everywhere you do — one local server, five ways to install:
+AgentHub runs on desktop and mobile through one local server:
 
 | Platform | Installer | How |
 |---|---|---|
@@ -50,9 +64,9 @@ AgentHub runs everywhere you do — one local server, five ways to install:
 | **Linux** | `AgentHub-linux.AppImage` / `.deb` | [Releases](https://github.com/khadijahcollege-afk/AgentHub/releases/latest) — built by CI. `chmod +x` the AppImage |
 | **Android** | Web / PWA | Scan the dashboard QR → open in Chrome. For full PWA support, use HTTPS → **Install app** / **Add to Home screen** |
 | **iOS / iPhone** | Web / PWA | Scan the dashboard QR → open in Safari → **Share** → **Add to Home Screen**. Use HTTPS for full PWA support |
+| **Any OS (web)** | none | `node server.js` (Node 18+) — works in any browser, UI fully responsive |
 
 The web dashboard is served by your running AgentHub server; GitHub Pages hosts the download website. Keep the host computer running. Local Wi-Fi browser access works over HTTP; full PWA support requires HTTPS (available through the optional Cloudflare tunnel). There is no separate APK or App Store package. Offline caching covers the interface; agent operations require the server.
-| **Any OS (web)** | none | `node server.js` (Node 18+) — works in any browser, UI fully responsive |
 
 macOS/Linux installers are built automatically by [.github/workflows/release.yml](.github/workflows/release.yml) when a `v*` tag is pushed — three runners build their native targets and one job publishes them all to the same GitHub Release. The macOS build is unsigned (no Apple certificate); the app itself is identical everywhere because the server and UI are the same on every platform. To reach AgentHub over mobile data, start the optional tunnel in Settings → *Phone*.
 
@@ -84,14 +98,15 @@ Quota hit → AgentHub cools that provider down for 5 minutes and your request i
 
 ## Building from source
 
-The installer is built with [NSIS](https://nsis.sourceforge.io):
+The desktop installer is built with Electron Builder (NSIS on Windows):
 
 ```bash
-# stage the app + a node.exe copy, then:
-makensis /DXVER=1.2.3 /DSTAGE="<stage-dir>" packaging/agenthub.nsis
+cd desktop
+npm install
+npm run dist
 ```
 
-CI does this for you: pushing a tag `v*` runs [.github/workflows/release.yml](.github/workflows/release.yml), builds the installer & portable ZIP on a Windows runner, and publishes them to GitHub Releases.
+Pushing a `v*` tag runs [.github/workflows/release.yml](.github/workflows/release.yml), builds Windows, macOS, and Linux packages on their native runners, and publishes all six downloads to one GitHub Release.
 
 ## State machines & agent API
 
@@ -105,7 +120,7 @@ states left local on purpose — is in [`STATE-MACHINES.md`](STATE-MACHINES.md).
 ```bash
 npm run machines   # regenerate public/machines.js
 npm run check      # fail if the generated file drifted, then run the tests
-npm test           # 130 tests: machines, HTTP contract, run + stop, recovery, workspace, search, history, promo pass, uploads, prompts, schedules, backup, orchestra, context, theme, dropdown, pulse, update
+npm test           # regression suite: API, desktop, statistics, languages, harnesses, workspace, and more
 ```
 
 Agents driving the app do not have to guess. The contract is served over HTTP:
@@ -191,7 +206,7 @@ driving the UI through CDP could not answer them. The active dialog is visible i
 
 ## Privacy & security
 
-- Runs on `0.0.0.0:7788` so phones can connect; every `/api/*` route requires an access token (shown in Settings, regenerable). The UI shell itself is public but contains no secrets — the gate appears before any data loads.
+- Runs on `0.0.0.0:7788` so phones can connect. Direct localhost browsers obtain a session automatically through `POST /api/local-session`, with loopback, Host, proxy-header, and origin checks. Other API requests require an access token; phone QR links include it for automatic login.
 - API keys live in `data/keys.json` (source mode) or `%APPDATA%\AgentHub` (installed) — local only, never sent anywhere except the provider you chose. Keys are always masked in the UI and masked values are rejected on submit.
 - The optional tunnel publishes your AgentHub to a public `trycloudflare.com` URL. The UI states it plainly: **anyone with the link + token can control your agents** — the tunnel is off by default and one click to stop.
 - `data/` is git-ignored, so a `git push` can never leak your keys, tokens, or conversation history.

@@ -5,15 +5,28 @@
 [![Release](https://img.shields.io/github/v/release/khadijahcollege-afk/AgentHub?include_prereleases&label=release&color=blue)](https://github.com/khadijahcollege-afk/AgentHub/releases/latest)
 [![CI](https://github.com/khadijahcollege-afk/AgentHub/actions/workflows/ci.yml/badge.svg)](https://github.com/khadijahcollege-afk/AgentHub/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11%20x64-blueviolet)
+![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Web-blueviolet)
 
 >  English version: [README.md](README.md)
 
 AgentHub memantau **promo model & API AI gratis** dari berbagai sumber internet, menyambung ke **aplikasi agent** Anda, dan menjaga mereka tetap hidup: saat kuota satu provider gratis habis, traffic **otomatis pindah** ke provider berikutnya — semuanya bisa dipantau dari HP.
 
-| Studio (chat) | Papan tugas | Catatan | Pelacak promo |
-|---|---|---|---|
-| ![](assets/readme/studio.png) | ![](assets/readme/tasks.png) | ![](assets/readme/notes.png) | ![](assets/readme/promo.png) |
+![AgentHub Studio — tampilan desktop terbaru](assets/readme/studio.png)
+
+| Papan tugas | Statistik pemakaian |
+|---|---|
+| ![Tugas dengan lima tahap kerja](assets/readme/tasks.png) | ![Heatmap aktivitas, grafik, dan rincian fitur](assets/readme/stats.png) |
+| Catatan proyek | Pelacak promo |
+| ![Catatan yang disematkan dan catatan terbaru](assets/readme/notes.png) | ![Katalog model gratis](assets/readme/promo.png) |
+
+<details>
+<summary>Tampilan HP</summary>
+
+<img src="assets/readme/mobile.png" width="390" alt="Statistik AgentHub di HP">
+
+</details>
+
+Screenshot menampilkan v1.6.13 dengan data contoh. Angka statistik hanya ilustrasi tampilan; statistik Anda dihitung dari aktivitas Anda sendiri.
 
 ## Fitur
 
@@ -32,12 +45,13 @@ AgentHub memantau **promo model & API AI gratis** dari berbagai sumber internet,
 - **⌘ Composer serba bisa** — palet perintah `Ctrl+K`, autocomplete `@` untuk file di folder kerja, slash command sungguhan (`/new`, `/export`, `/engine`, `/model`, `/prompt`, `/save`, `/tasks`, …), **pustaka prompt** (simpan & pakai ulang, pin favorit), dan **dikte suara** (Web Speech API, id-ID) bila browser mendukung.
 - <img src="assets/icons/spark.svg" width="14" align="absmiddle"> **Adopsi model satu-tap** — katalog model memuat anggota pool + model gratis ter-cache; kalau key provider sudah tersimpan, **Pakai langsung** mengaktifkan model dan memindah engine ke Gateway sekali tap — tanpa cari key lagi.
 - <img src="assets/icons/refresh.svg" width="14" align="absmiddle"> **Pemakaian & review perubahan** — hitungan token per pesan, popover rekap pemakaian, dan laci *Perubahan* yang menampilkan status/diff git hasil run (beserta pemulihan per file).
-- <img src="assets/icons/shield.svg" width="14" align="absmiddle"> **Lokal dulu** — semua berjalan di komputer Anda. Tanpa cloud, tanpa telemetri. API key tidak keluar dari disk.
+- <img src="assets/icons/shield.svg" width="14" align="absmiddle"> **Lokal dulu** — server dan data berada di komputer Anda. Tanpa telemetri AgentHub. Permintaan ke provider mengirim API key dan prompt ke provider pilihan Anda.
+- <img src="assets/icons/refresh.svg" width="14" align="absmiddle"> **Statistik & bahasa** — heatmap aktivitas, grafik 7/30/90 hari, rincian fitur dan engine, serta pengaturan bahasa antarmuka Indonesia/Inggris yang terpisah dari bahasa balasan agent.
 - <img src="assets/icons/snow.svg" width="14" align="absmiddle"> **Server ringan** — Node.js murni, **nol dependency npm**; shell desktop-nya Electron tipis (jendela native + tray, tanpa browser).
 
 ## Install
 
-AgentHub jalan di semua perangkat Anda — satu server lokal, lima cara pasang:
+AgentHub berjalan di desktop dan HP melalui satu server lokal:
 
 | Platform | Installer | Cara |
 |---|---|---|
@@ -47,9 +61,9 @@ AgentHub jalan di semua perangkat Anda — satu server lokal, lima cara pasang:
 | **Linux** | `AgentHub-linux.AppImage` / `.deb` | [Releases](https://github.com/khadijahcollege-afk/AgentHub/releases/latest) — dibangun CI. `chmod +x` AppImage |
 | **Android** | Web / PWA | Pindai QR dashboard → buka di Chrome. Untuk dukungan PWA penuh, gunakan HTTPS → **Instal aplikasi** / **Tambahkan ke layar utama** |
 | **iOS / iPhone** | Web / PWA | Pindai QR dashboard → buka di Safari → **Bagikan** → **Tambahkan ke Layar Utama**. Gunakan HTTPS untuk dukungan PWA penuh |
+| **OS apa pun (web)** | tidak perlu | `node server.js` (Node 18+) — jalan di browser mana pun, UI responsif |
 
 Dashboard web disajikan oleh server AgentHub Anda yang sedang berjalan; GitHub Pages menampilkan situs unduhan. Komputer server harus tetap menyala. Akses browser lewat WiFi lokal bisa memakai HTTP; dukungan PWA penuh memerlukan HTTPS (tersedia melalui tunnel Cloudflare opsional). Belum ada paket APK atau App Store terpisah. Cache offline menyimpan antarmuka; operasi agent memerlukan server.
-| **OS apa pun (web)** | tidak perlu | `node server.js` (Node 18+) — jalan di browser mana pun, UI responsif |
 
 Installer macOS/Linux dibangun otomatis oleh [.github/workflows/release.yml](.github/workflows/release.yml) saat tag `v*` dipush — tiga runner membangun target native masing-masing dan satu job memuat semuanya ke GitHub Release yang sama. Build macOS belum ditandatangani (tanpa sertifikat Apple); aplikasinya identik di semua platform karena server dan UI-nya sama. Untuk akses lewat data seluler, nyalakan tunnel opsional di Pengaturan → *Telepon*.
 
@@ -91,7 +105,7 @@ state yang sengaja dibiarkan lokal — ada di [`STATE-MACHINES.md`](STATE-MACHIN
 ```bash
 npm run machines   # regenerasi public/machines.js
 npm run check      # gagal bila file hasil generate drift, lalu jalankan tes
-npm test           # 130 tes: mesin, kontrak HTTP, run + stop, pemulihan, workspace, pencarian, riwayat, promo pass, lampiran, prompt, PWA, jadwal, cadangan, orchestrator, konteks, tema, dropdown, pulse, update
+npm test           # tes regresi: API, desktop, statistik, bahasa, harness, workspace, dan lainnya
 ```
 
 Agent yang mengemudikan aplikasi tidak perlu menebak; kontraknya disajikan lewat HTTP:
@@ -157,7 +171,7 @@ lewat CDP tidak bisa menjawabnya. Dialog aktif terlihat di
 
 ## Privacy & keamanan
 
-- Server berjalan di `0.0.0.0:7788` agar HP bisa akses; semua `/api/*` wajib token akses (tampil di Pengaturan, bisa di-regenerate). Kerangka UI sendiri terbuka tapi tanpa rahasia — gerbang token muncul sebelum data apa pun dimuat.
+- Server berjalan di `0.0.0.0:7788` agar HP bisa akses. Browser localhost mendapat sesi otomatis lewat `POST /api/local-session`, dengan pemeriksaan loopback, Host, header proxy, dan origin. Permintaan API lainnya wajib token; tautan QR HP menyertakannya untuk masuk otomatis.
 - API key tersimpan di `data/keys.json` (mode sumber) atau `%APPDATA%\AgentHub` (terinstall) — lokal saja, tidak dikirim ke mana pun kecuali provider pilihan Anda. Key selalu di-mask di UI dan nilai ber-mask ditolak saat dikirim.
 - Tunnel opsional menerbitkan AgentHub ke URL publik `trycloudflare.com`. UI menyatakannya apa adanya: **siapa pun yang punya link + token bisa mengendalikan agent Anda** — tunnel bawaan mati dan sekali klik untuk berhenti.
 - `data/` di-git-ignored, jadi `git push` tidak mungkin membocorkan key, token, atau riwayat percakapan Anda.

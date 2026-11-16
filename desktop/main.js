@@ -30,8 +30,9 @@ function serverEntry() {
   return fs.existsSync(packed) ? packed : path.join(__dirname, '..', 'server.js');
 }
 function trayIconPath() {
-  const packed = path.join(process.resourcesPath, 'icon.ico');
-  return fs.existsSync(packed) ? packed : path.join(__dirname, 'build', 'icon.ico');
+  const filename = process.platform === 'win32' ? 'icon.ico' : 'icon.png';
+  const packed = path.join(process.resourcesPath, filename);
+  return fs.existsSync(packed) ? packed : path.join(__dirname, 'build', filename);
 }
 function dataDir() {
   return app.isPackaged ? app.getPath('userData') : path.join(__dirname, '..', 'data');
