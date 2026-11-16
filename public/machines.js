@@ -314,7 +314,7 @@ const UI_MACHINE = {
 };
 
 // ---------- VIEW / ROUTE ----------
-const VIEWS = ['studio', 'tasks', 'notes', 'promo', 'keys', 'gateway', 'agents', 'skills', 'alerts', 'settings'];
+const VIEWS = ['studio', 'tasks', 'notes', 'promo', 'keys', 'gateway', 'agents', 'skills', 'stats', 'alerts', 'settings'];
 const VIEW_MACHINE = {
   id: 'view',
   initial: 'studio',

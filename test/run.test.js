@@ -63,6 +63,22 @@ test.before(async () => {
   // Harness uji harus aman terhadap pembungkusan cmdline Windows (cmd.exe /c),
   // jadi pakai perintah shell sederhana, bukan `node -e` dengan tanda kutip.
   const isWin = process.platform === 'win32';
+  // Harness "sink" melaporkan argv persis seperti yang diterima CLI, dalam
+  // bentuk JSON. Dipakai untuk memeriksa isi prompt tanpa terpotong newline
+  // (perintah `echo` hanya mencetak baris pertama).
+  const sinkScript = path.join(dataDir, 'sink.cjs');
+  fs.writeFileSync(sinkScript, 'process.stdout.write("SINK:" + JSON.stringify(process.argv[2] || ""));\n');
+  // Shim .cmd gaya npm: harness.json boleh menunjuk path shim lengkap, bukan
+  // nama polos. Ini kasus yang dulu gagal karena `where` tidak bisa mencari
+  // path absolut, sehingga prompt panjang jatuh ke jalur cmd.exe dan terpotong.
+  const shimPath = path.join(dataDir, 'fakecli.cmd');
+  if (isWin) {
+    fs.writeFileSync(shimPath, `@ECHO off\r\nnode "${sinkScript}" %*\r\n`);
+  }
+  // Harness yang menulis lewat redirection shell. Tidak memakai {prompt}:
+  // tujuannya memastikan token shell yang ditulis apa adanya di konfigurasi
+  // tidak ikut dikutip oleh pembungkus cmd.exe.
+  const redirectTarget = path.join(dataDir, 'redirect-ok.txt');
   const harnesses = isWin
     ? [
         { id: 'echo', label: 'Echo', cmd: 'cmd', args: ['/c', 'echo', 'ECHO:{prompt}'] },
@@ -71,12 +87,20 @@ test.before(async () => {
         // yang disisipkan lib/harness.js (lihat pemetaan permission).
         { id: 'claude', label: 'Claude (uji)', cmd: 'cmd', args: ['/c', 'echo', 'FLAGS:{prompt}'] },
         { id: 'codex', label: 'Codex (uji)', cmd: 'cmd', args: ['/c', 'echo', 'CODEX:{prompt}'] },
+        { id: 'sink', label: 'Sink (uji)', cmd: 'node', args: [sinkScript, '{prompt}'] },
+        // jalur shim absolut + prompt panjang: harus lewat spawn langsung
+        { id: 'shim', label: 'Shim (uji)', cmd: shimPath, args: ['{prompt}'] },
+        { id: 'writer', label: 'Writer (uji)', cmd: 'cmd', args: ['/c', 'echo', `dari-agent>${redirectTarget}`] },
       ]
     : [
         { id: 'echo', label: 'Echo', cmd: 'sh', args: ['-c', 'echo "ECHO:{prompt}"'] },
         { id: 'slow', label: 'Slow', cmd: 'sleep', args: ['30'] },
         { id: 'claude', label: 'Claude (uji)', cmd: 'sh', args: ['-c', 'echo "FLAGS:{prompt}"'] },
         { id: 'codex', label: 'Codex (uji)', cmd: 'sh', args: ['-c', 'echo "CODEX:{prompt}"'] },
+        { id: 'sink', label: 'Sink (uji)', cmd: 'node', args: [sinkScript, '{prompt}'] },
+        { id: 'shim', label: 'Shim (uji)', cmd: 'node', args: [sinkScript, '{prompt}'] },
+        // Bahasa Indonesia: "dari-agent" ditulis ke berkas oleh shell.
+        { id: 'writer', label: 'Writer (uji)', cmd: 'sh', args: ['-c', `echo dari-agent > ${redirectTarget}`] },
       ];
   fs.writeFileSync(path.join(dataDir, 'harnesses.json'), JSON.stringify(harnesses));
   child = spawn(process.execPath, ['server.js'], {
@@ -222,4 +246,112 @@ test('permission: flag CLI disisipkan sesuai tingkat izin', async () => {
   const ev3 = await readEvents(r3);
   const out3 = ev3.filter((e) => e.type === 'delta').map((e) => e.text).join('');
   assert.doesNotMatch(out3, /--permission-mode/, 'full tidak menyuntik flag');
+});
+
+test('bahasa balasan: pengaturan server benar-benar sampai ke prompt engine', async () => {
+  // Harness "sink" mengembalikan argv persis, jadi isi prompt bisa diperiksa
+  // utuh (termasuk newline) — `echo` hanya mencetak baris pertama.
+  const promptOf = (out) => {
+    const m = out.match(/SINK:(.*)$/s);
+    assert.ok(m, `keluaran sink tidak dikenali: ${out.slice(0, 120)}`);
+    return JSON.parse(m[1]);
+  };
+  const sendSink = async (prompt) => {
+    const th = await (await api('/api/threads', {
+      method: 'POST', body: JSON.stringify({ engine: 'sink' }),
+    })).json();
+    const res = await api(`/api/threads/${th.id}/send`, {
+      method: 'POST', body: JSON.stringify({ prompt, engine: 'sink' }),
+    });
+    const events = await readEvents(res);
+    return promptOf(events.filter((e) => e.type === 'delta').map((e) => e.text).join(''));
+  };
+
+  // Default = auto: prompt tidak diberi blok instruksi apa pun.
+  assert.doesNotMatch(await sendSink('halo'), /<reply_language>/, 'auto tidak menambah blok');
+
+  // Set English → instruksi harus ikut terkirim, prompt asli tetap ada.
+  const saved = await (await api('/api/settings', {
+    method: 'POST', body: JSON.stringify({ replyLang: 'en' }),
+  })).json();
+  assert.equal(saved.config.replyLang, 'en', 'tersimpan di config');
+
+  const en = await sendSink('halo English');
+  assert.match(en, /<reply_language>/, 'instruksi bahasa ikut ke engine');
+  assert.match(en, /Answer in English\./, 'menyebut bahasa tujuannya');
+  assert.ok(en.startsWith('halo English'), `prompt asli tetap di depan: ${en.slice(0, 60)}`);
+  assert.match(en, /<reply_language>[\s\S]*<\/reply_language>/, 'blok tertutup rapi');
+
+  // Nilai liar ditolak dengan jatuh ke auto, bukan disimpan apa adanya.
+  const bad = await (await api('/api/settings', {
+    method: 'POST', body: JSON.stringify({ replyLang: 'klingon' }),
+  })).json();
+  assert.equal(bad.config.replyLang, 'auto', 'nilai tak dikenal menjadi auto');
+  assert.doesNotMatch(await sendSink('halo lagi'), /<reply_language>/, 'auto kembali bersih');
+});
+
+test('prompt CLI: spasi & metakarakter sampai utuh, redirection harness tetap jalan', async () => {
+  // Regresi: dulu prompt "halo mesin" sampai ke CLI sebagai dua token berisi
+  // tanda kutip harfiah, dan newline memotong prompt di baris pertama.
+  const promptOf = (out) => JSON.parse(out.match(/SINK:(.*)$/s)[1]);
+  const sendSink = async (prompt) => {
+    const th = await (await api('/api/threads', {
+      method: 'POST', body: JSON.stringify({ engine: 'sink' }),
+    })).json();
+    const res = await api(`/api/threads/${th.id}/send`, {
+      method: 'POST', body: JSON.stringify({ prompt, engine: 'sink' }),
+    });
+    const events = await readEvents(res);
+    return promptOf(events.filter((e) => e.type === 'delta').map((e) => e.text).join(''));
+  };
+
+  // Spasi: satu argumen, bukan dua berisi kutip harfiah.
+  const spaced = await sendSink('halo mesin');
+  assert.ok(spaced.startsWith('halo mesin'), `prompt utuh di depan: ${spaced.slice(0, 40)}`);
+  assert.doesNotMatch(spaced, /^"|"halo|mesin"/, 'tidak ada kutip harfiah yang bocor ke CLI');
+  // Kutip harfiah di dalam prompt dipertahankan, tidak dipakai memecah argumen.
+  assert.ok((await sendSink('katakan "halo"')).startsWith('katakan "halo"'));
+  // Metakarakter cmd tidak boleh menjalankan perintah lain.
+  assert.ok((await sendSink('a & b | c > d')).startsWith('a & b | c > d'));
+  // Newline: dengan executable langsung, prompt multi-baris sampai UTUH
+  // (bukan diratakan jadi satu baris seperti jalur cmd.exe).
+  const multi = await sendSink('baris satu\nbaris dua');
+  assert.ok(multi.startsWith('baris satu'), `baris pertama utuh: ${multi.slice(0, 40)}`);
+  assert.match(multi, /baris satu\s+baris dua/, 'kedua baris tetap ada');
+
+  // Bukti terkuat: blok skill yang ditambahkan sesudah prompt (multi-baris)
+  // harus ikut sampai utuh. Dulu hanya baris pertama yang diterima CLI.
+  const withSkills = await sendSink('periksa kode');
+  assert.match(withSkills, /^periksa kode/, 'prompt user tetap di depan');
+  assert.match(withSkills, /<available_local_skills>[\s\S]*<\/available_local_skills>/, 'blok skill tidak terpotong');
+
+  // Jalur shim: harness.json boleh menunjuk path shim .cmd lengkap. Prompt
+  // sepanjang 15.000 karakter (jauh di atas batas cmd.exe 8191) harus utuh,
+  // artinya resolver memakai executable di balik shim, bukan cmd.exe.
+  const longPrompt = 'lorem ipsum '.repeat(1250).trim(); // ~15.000 karakter
+  assert.ok(longPrompt.length > 14000, 'prompt uji memang panjang');
+  const thShim = await (await api('/api/threads', {
+    method: 'POST', body: JSON.stringify({ engine: 'shim' }),
+  })).json();
+  const shimEvents = await readEvents(await api(`/api/threads/${thShim.id}/send`, {
+    method: 'POST', body: JSON.stringify({ prompt: longPrompt, engine: 'shim' }),
+  }));
+  const shimOut = shimEvents.filter((e) => e.type === 'delta').map((e) => e.text).join('');
+  const shimPrompt = promptOf(shimOut);
+  assert.ok(shimPrompt.startsWith(longPrompt), 'prompt panjang utuh lewat shim, tidak terpotong 8191');
+  assert.ok(!/command line is too long/i.test(shimOut + shimPrompt), 'tidak ada penolakan cmd.exe');
+
+  // Tapi token shell yang ditulis apa adanya di harness.json harus tetap
+  // ditafsirkan shell — bukan dikutip jadi teks biasa.
+  const outFile = path.join(dataDir, 'redirect-ok.txt');
+  fs.rmSync(outFile, { force: true });
+  const th = await (await api('/api/threads', {
+    method: 'POST', body: JSON.stringify({ engine: 'writer' }),
+  })).json();
+  await readEvents(await api(`/api/threads/${th.id}/send`, {
+    method: 'POST',
+    body: JSON.stringify({ prompt: 'isi berkas', engine: 'writer' }),
+  }));
+  assert.ok(fs.existsSync(outFile), 'redirection `>` milik harness tidak ikut dikutip');
+  assert.match(fs.readFileSync(outFile, 'utf8'), /dari-agent/);
 });

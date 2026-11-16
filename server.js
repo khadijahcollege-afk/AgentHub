@@ -1,7 +1,7 @@
 // AgentHub — server lokal Windows: pantau promo API gratis, API key, dan agent.
 // Nol dependency npm — hanya modul bawaan Node.js.
 import http from 'node:http';
-import { discoverSkills } from './lib/skills.js';
+import { discoverSkills, activeSkillIds } from './lib/skills.js';
 import { startTerminal, terminalStatus, stopTerminal } from './lib/terminal.js';
 import { connectOpenRouter, connectionStatus } from './lib/openrouter-connect.js';
 import fs from 'node:fs';
@@ -19,6 +19,8 @@ import { listKeys, addKey, removeKey, checkKey, checkAllKeys, setPool, checkingK
 import { listAgents, addAgent, removeAgent, checkAgent, checkAllAgents, checkingAgentIds } from './lib/agents.js';
 import { routeChat, testPool, poolStatus, poolModels } from './lib/pool.js';
 import { listEngines, runEngine, usageStats, engineType } from './lib/harness.js';
+import { usageSummary, rangeDelta, record as recordFeature } from './lib/stats.js';
+import { normalizeReplyLang } from './lib/lang.js';
 import * as threads from './lib/threads.js';
 import * as tasks from './lib/tasks.js';
 import * as notes from './lib/notes.js';
@@ -127,7 +129,7 @@ async function executeSchedule(s) {
     threads.appendMessage(t.id, { role: 'user', content: s.prompt, engine: engineId, scheduledBy: s.name });
     threads.patchThread(t.id, { engine: engineId, ...(workspace ? { cwd: workspace } : {}) });
     broadcast('threads');
-    const r = await runEngine(engineId, s.prompt, { cwd: workspace });
+    const r = await runEngine(engineId, s.prompt, { cwd: workspace, replyLang: config.replyLang });
     threads.appendMessage(t.id, {
       role: 'assistant',
       engine: engineId,
@@ -278,10 +280,18 @@ function serverInfo() {
     localUrl: `http://127.0.0.1:${port}`,
     lanUrl: `http://${ip}:${port}`,
     phoneUrl: `http://${ip}:${port}/`,
+    // URL yang benar-benar dipindai dari QR. Menyertakan token sekali-pakai
+    // supaya HP tidak perlu mengetik token manual — dulu QR hanya berisi
+    // alamat polos dan HP selalu mendarat di halaman "butuh token".
+    pairUrl: `http://${ip}:${port}/?token=${encodeURIComponent(config.token)}`,
     uptimeMs: Date.now() - startedAt,
     platform: `${os.type()} ${os.release()}`,
     hostname: os.hostname(),
     startedAt,
+    // Folder default untuk terminal & sesi tanpa proyek. UI memakainya sebagai
+    // titik awal ("C:\Users\nama") alih-alih memaksa user memilih folder dulu.
+    homeDir: os.homedir(),
+    cwdDefault: process.cwd(),
   };
 }
 
@@ -297,6 +307,7 @@ function appState() {
       autoPool: config.autoPool !== false,
       baselined: config.baselined,
       cloudflaredPath: config.cloudflaredPath || '',
+      replyLang: config.replyLang || 'auto',
     },
     token: config.token,
     keys: listKeys(),
@@ -498,10 +509,22 @@ async function route(req, res) {
   authFailures.delete(req.socket.remoteAddress || '?');
 
   // ---- SSE ----
-  if (p === '/api/skills' && method === 'GET') return sendJson(res, 200, { skills: discoverSkills(url.searchParams.get('cwd')), automatic: true });
+  if (p === '/api/skills' && method === 'GET') {
+    const cwd = url.searchParams.get('cwd');
+    const prompt = url.searchParams.get('prompt');
+    // `prompt` opsional: bila ada, server menyebut skill mana yang akan aktif
+    // OTOMATIS untuk permintaan itu — UI menampilkannya sebelum pesan dikirim,
+    // jadi user tidak perlu memilih skill satu per satu.
+    const active = prompt ? activeSkillIds(prompt, cwd) : [];
+    return sendJson(res, 200, { skills: discoverSkills(cwd), automatic: true, active });
+  }
   if (p === '/api/terminal' || p.startsWith('/api/terminal/')) {
     try {
-      if (p === '/api/terminal' && method === 'POST') return sendJson(res, 200, startTerminal(await readBody(req)));
+      if (p === '/api/terminal' && method === 'POST') {
+        const r = startTerminal(await readBody(req));
+        recordFeature('terminal');
+        return sendJson(res, 200, r);
+      }
       const terminalMatch = p.match(/^\/api\/terminal\/([a-f0-9]{32})$/);
       if (terminalMatch && method === 'GET') return sendJson(res, 200, terminalStatus(terminalMatch[1]));
       if (terminalMatch && method === 'DELETE') { stopTerminal(terminalMatch[1]); return sendJson(res, 200, { ok: true }); }
@@ -680,7 +703,7 @@ async function route(req, res) {
       const pass = loadPass();
       let body = {};
       if (action !== 'claim' && action !== 'upgrade' && action !== 'share') body = await readBody(req);
-      if (action === 'claim') claimPass(pass);
+      if (action === 'claim') { claimPass(pass); recordFeature('promo'); }
       else if (action === 'dismiss') dismissPass(pass, body.dismissed !== false);
       else if (action === 'toggle') togglePassModel(pass, body.model, body.enabled !== false);
       else if (action === 'add-model') addPassModel(pass, body.model);
@@ -732,6 +755,7 @@ async function route(req, res) {
       return sendJson(res, error.statusCode || 400, { error: error.message });
     }
     await checkKey(entry.id).catch(() => {});
+    recordFeature('keys');
     broadcast('keys');
     return sendJson(res, 200, { ok: true, entry: listKeys().find((k) => k.id === entry.id) });
   }
@@ -801,6 +825,7 @@ async function route(req, res) {
   // ---- gateway pool (kompatibel OpenAI untuk agent) ----
   if (p === '/v1/chat/completions' && method === 'POST') {
     const b = await readBody(req);
+    recordFeature('gateway');
     const r = await routeChat(b);
     if (r.type === 'stream') {
       res.writeHead(r.status, { 'content-type': 'text/event-stream', 'cache-control': 'no-store' });
@@ -1114,6 +1139,7 @@ async function route(req, res) {
 
     const rawPrompt = String(b.prompt || '').slice(0, 16000);
     const kind = engineType(engineId);
+    recordFeature('chat', { engine: engineId });
     // CLI punya akses disk → beri path. Pool tidak → inline isi teksnya.
     const modelPrompt = attachments.length
       ? await augmentPrompt(rawPrompt, attachments, {
@@ -1157,6 +1183,7 @@ async function route(req, res) {
         cwd: workspace,
         model: b.model,
         history,
+        replyLang: config.replyLang,
         effort: ['low', 'medium', 'high'].includes(b.effort) ? b.effort : undefined,
         permission: ['ask', 'edits', 'plan'].includes(b.permission) ? b.permission : undefined,
         signal: ctrl.signal,
@@ -1247,6 +1274,7 @@ async function route(req, res) {
     res.on('close', () => { if (!res.writableEnded) ctrl.abort(); });
 
     const task = tasks.createTask({ title: String(b.prompt).slice(0, 120), status: 'running', threadId: t.id, projectId: b.projectId });
+    recordFeature('delegate');
     send({ type: 'start', threadId: t.id, engines, taskId: task.id });
 
     const outcomes = new Map();
@@ -1260,6 +1288,7 @@ async function route(req, res) {
             let acc = '';
             const r = await runEngine(engineId, b.prompt, {
               cwd: workspace,
+              replyLang: config.replyLang,
               effort: ['low', 'medium', 'high'].includes(b.effort) ? b.effort : undefined,
               permission: ['ask', 'edits', 'plan'].includes(b.permission) ? b.permission : undefined,
               signal: ctrl.signal,
@@ -1300,6 +1329,13 @@ async function route(req, res) {
   }
   if (p === '/api/usage' && method === 'GET') return sendJson(res, 200, usageStats());
 
+  // Statistik fitur: heatmap harian, streak, dan rincian per fitur.
+  if (p === '/api/stats' && method === 'GET') {
+    const days = url.searchParams.get('days');
+    if (days) return sendJson(res, 200, rangeDelta(Number(days)));
+    return sendJson(res, 200, usageSummary());
+  }
+
   // cek pembaruan: bandingkan versi berjalan dengan GitHub Releases.
   // Cache 30 menit agar tidak menagih API GitHub setiap kali pane dibuka.
   // ekspor pemakaian engine sebagai CSV (dibuka dengan parameter token)
@@ -1336,6 +1372,7 @@ async function route(req, res) {
     const b = await readBody(req);
     if (!b.title && !b.body) return sendJson(res, 400, { error: 'judul atau isi catatan wajib' });
     const n = notes.createNote(b);
+    recordFeature('notes');
     broadcast('notes');
     return sendJson(res, 200, n);
   }
@@ -1392,6 +1429,7 @@ async function route(req, res) {
     }
     try {
       const s = schedules.createSchedule(b);
+      recordFeature('schedules');
       broadcast('schedules');
       return sendJson(res, 200, s);
     } catch (e) {
@@ -1475,7 +1513,7 @@ async function route(req, res) {
       orchestra.updateAgent(m[1], i, { status: 'running', error: null, diff: '', ci: null });
       const wt = orchestra.agentWorktree(m[1], i);
       const agentPrompt = a.task ? `${o.prompt}\n\nTugas khusus agent ${i + 1}:\n${a.task}` : o.prompt;
-      runEngine(a.engineId, agentPrompt, { cwd: wt }).then((r) => {
+      runEngine(a.engineId, agentPrompt, { cwd: wt, replyLang: config.replyLang }).then((r) => {
         if (r.exitCode != null && r.exitCode !== 0) throw new Error(`CLI keluar dengan kode ${r.exitCode}: ${r.text.slice(-1000)}`);
         orchestra.commitAgent(m[1], i, `orchestra: ${o.name} — ${a.engineId}`);
         const ci = orchestra.runAgentCi(m[1], i);
@@ -1548,6 +1586,7 @@ async function route(req, res) {
     const b = await readBody(req);
     if (!b.title) return sendJson(res, 400, { error: 'judul task wajib' });
     const t = tasks.createTask(b);
+    recordFeature('tasks');
     broadcast('tasks');
     return sendJson(res, 200, t);
   }
@@ -1582,6 +1621,7 @@ async function route(req, res) {
     const num = (v, min, max) => (typeof v === 'number' && v >= min && v <= max ? v : undefined);
     if (typeof b.notify === 'boolean') config.notify = b.notify;
     if (typeof b.autoPool === 'boolean') config.autoPool = b.autoPool;
+    if (typeof b.replyLang === 'string') config.replyLang = normalizeReplyLang(b.replyLang);
     config.refreshHours = num(b.refreshHours, 1, 168) ?? config.refreshHours;
     config.agentCheckMinutes = num(b.agentCheckMinutes, 1, 1440) ?? config.agentCheckMinutes;
     config.keyCheckHours = num(b.keyCheckHours, 1, 168) ?? config.keyCheckHours;

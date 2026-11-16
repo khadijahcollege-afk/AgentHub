@@ -12,6 +12,8 @@ import {
   RULE_FILES, CHANGE_STATUSES,
 } from './machines.js';
 import { findFreeEngine } from './model-access.js';
+import { LANGS, REPLY_LANGS, currentLang, applyLanguage, loadDict, t as tr } from './i18n.js';
+import { EN as EN_DICT } from './i18n-dict.js';
 
 // Kontrak mesin juga tersedia di runtime browser: agent yang mengemudikan UI
 // lewat CDP bisa membaca aturan yang sama tanpa menebak tombol mana yang ada.
@@ -177,7 +179,7 @@ window.__ahMachines = {
     const next = thread.runState || (thread.running ? 'running' : 'idle');
     if (next === 'running') { setRun('running'); return; }
     if (next === 'error' && thread.runError && notify) {
-      toast('Run terakhir terputus — ' + thread.runError, 4500);
+      toast('Run terakhir terputus — ' + thread.runError, 4500, 'err', 'run-error');
     }
     setRun('idle');
   }
@@ -245,8 +247,14 @@ window.__ahMachines = {
     paperclip: '<path d="M8.5 12.5l6.2-6.2a3 3 0 0 1 4.2 4.2l-7.6 7.6a5 5 0 0 1-7.1-7.1l7-7"/>',
     shield: '<path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/><path d="M9.5 12l1.8 1.8 3.2-3.6"/>',
     tag: '<path d="M3.5 12.5 11 5h6.5V11.5L10 19z"/><circle cx="14.5" cy="8.5" r="1"/>',
+    plus: '<path d="M12 5v14M5 12h14"/>',
   };
   const icon = (id) => `<svg class="ico" viewBox="0 0 24 24">${ICON_PATHS[id] || ICON_PATHS.robot}</svg>`;
+  // Tanda centang & silang sebagai SVG, bukan karakter ✓/✕: bentuknya sama di
+  // semua platform dan bisa diwarnai bersama ikon lain (glyph teks berubah
+  // bentuk dan lebar antar font sistem sehingga sering tidak sejajar).
+  const CHECK_SVG = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.3 4.3L19 7"/></svg>';
+  const X_SVG = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>';
   const fmtCtx = (n) => (n >= 1000000 ? (n / 1000000).toFixed(n % 1000000 ? 1 : 0) + 'M' : n >= 1000 ? Math.round(n / 1000) + 'K' : n);
   const fmtTime = (ts) => (ts ? new Date(ts).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—');
   const fmtClock = (ts) => (ts ? new Date(ts).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '');
@@ -307,18 +315,88 @@ window.__ahMachines = {
 
   // Toast: satu pesan = satu elemen. Dulu event SSE beruntun menumpuk toast
   // kembar dan menutupi UI.
+  // Sekarang tiap toast punya jenis (info/ok/warn/err), ikon, tombol tutup, dan
+  // bar progres yang menunjukkan sisa waktunya — supaya user tahu persis kapan
+  // popup itu hilang, bukan menghilang tanpa penjelasan.
   const toastSeen = new Map();
-  function toast(msg, ms = 3500) {
+  const TOAST_ICONS = {
+    ok: '<path d="M20 6 9 17l-5-5"/>',
+    err: '<circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><path d="M12 16h.01"/>',
+    warn: '<path d="M10.3 3.9 2.5 17.4A2 2 0 0 0 4.2 20.4h15.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4"/><path d="M12 16.5h.01"/>',
+    info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/>',
+  };
+  function toastKind(msg, kind) {
+    if (kind) return kind;
+    const t = String(msg).toLowerCase();
+    if (/gagal|tidak bisa|error|ditolak|salah|terputus|invalid/.test(t)) return 'err';
+    if (/berhasil|tersimpan|disalin|tersalin|selesai|aktif|dibuat|dihapus/.test(t)) return 'ok';
+    if (/hati-hati|peringatan|belum|kosong|habis/.test(t)) return 'warn';
+    return 'info';
+  }
+  // ---------- preferensi notifikasi ----------
+  // Enam jenis peristiwa bisa dinyalakan/dimatikan, dan durasi tampil bisa
+  // dipilih. Semua disimpan di perangkat ini. Peristiwa yang dimatikan tidak
+  // memunculkan toast sama sekali — dulu semua event selalu muncul sehingga
+  // popup terasa berisik dan menutupi UI.
+  const NOTIFY_EVENTS = {
+    'run-done': 'Run selesai',
+    'run-error': 'Run gagal',
+    'task-move': 'Kartu tugas pindah kolom',
+    schedule: 'Jadwal berjalan',
+    promo: 'Promo & model baru',
+    connector: 'Konektor berubah status',
+  };
+  const NOTIFY_DURATIONS = [2500, 4200, 7000];
+  function notifyPrefs() {
+    let ev = {};
+    try { ev = JSON.parse(localStorage.getItem('ah_notify_events') || '{}') || {}; } catch { ev = {}; }
+    return ev;
+  }
+  function notifyEnabled(evKey) {
+    if (!evKey) return true;
+    const v = notifyPrefs()[evKey];
+    return v === undefined ? true : !!v;
+  }
+  function notifyMs() {
+    const v = Number(localStorage.getItem('ah_notify_ms'));
+    return NOTIFY_DURATIONS.includes(v) ? v : 4200;
+  }
+  // Info penting tidak boleh hilang hanya karena satu jenis peristiwa dimatikan;
+  // pemanggil tanpa evKey (mis. aksi langsung user) selalu tampil.
+  function toast(msg, ms, kind, evKey) {
+    if (!notifyEnabled(evKey)) return;
     const key = String(msg);
     const now = Date.now();
     const prev = toastSeen.get(key);
     if (prev && now - prev < 1500) return;   // debounce pesan yang sama
     toastSeen.set(key, now);
+    const dur = Number.isFinite(ms) && ms > 0 ? ms : notifyMs();
+    const wrap = $('#toast-wrap');
+    // Batasi tumpukan: 4 toast sekaligus, yang tertua dibuang lebih dulu.
+    while (wrap.children.length >= 4) wrap.firstElementChild.remove();
+    const tier = toastKind(msg, kind);
     const el = document.createElement('div');
-    el.className = 'toast';
-    el.textContent = msg;
-    $('#toast-wrap').appendChild(el);
-    setTimeout(() => { el.remove(); if (toastSeen.get(key) === now) toastSeen.delete(key); }, ms);
+    el.className = `toast toast-${tier}`;
+    el.setAttribute('role', tier === 'err' ? 'alert' : 'status');
+    el.innerHTML = `
+      <span class="toast-ico" aria-hidden="true"><svg viewBox="0 0 24 24">${TOAST_ICONS[tier]}</svg></span>
+      <span class="toast-text">${esc(msg)}</span>
+      <button class="toast-x" type="button" aria-label="Tutup notifikasi"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+      <span class="toast-bar" style="animation-duration:${Math.max(1200, dur)}ms"></span>`;
+    const dismiss = () => { el.classList.add('toast-out'); setTimeout(() => el.remove(), 180); };
+    el.querySelector('.toast-x').addEventListener('click', dismiss);
+    wrap.appendChild(el);
+    const timer = setTimeout(() => { el.remove(); if (toastSeen.get(key) === now) toastSeen.delete(key); }, dur);
+    el.addEventListener('mouseenter', () => { clearTimeout(timer); el.classList.add('toast-hover'); });
+    el.addEventListener('mouseleave', () => { setTimeout(dismiss, 1400); });
+  }
+
+  // Toast "latar belakang": peristiwa yang datang sendiri dari server. Hanya
+  // muncul bila jendela tidak sedang aktif — saat user menatap layar, perubahan
+  // yang bisa dilihat langsung tidak perlu menutupi UI dengan popup.
+  function toastBg(msg, evKey, kind = 'info') {
+    if (document.visibilityState === 'visible' && document.hasFocus()) return;
+    toast(msg, undefined, kind, evKey);
   }
 
   async function loadState({ slices, silent = false } = {}) {
@@ -389,9 +467,17 @@ window.__ahMachines = {
     if (v === 'tasks') renderTasks();
     if (v === 'notes') renderNotes();
     if (v === 'skills') loadSkills();
+    if (v === 'stats') loadStats();
     if (v === 'alerts') markReadSoon();
   }
   $('#btn-side-toggle').addEventListener('click', () => { sidebarOpen = !sidebarOpen; applySidebar(); });
+  // Logo = tombol sidebar. Satu klik dari ikon brand membuka sidebar studio,
+  // jadi rail tidak lagi jadi satu-satunya jalan.
+  $('#brand-home').addEventListener('click', () => {
+    if (view !== 'studio') go('studio');
+    sidebarOpen = !sidebarOpen;
+    applySidebar();
+  });
   $('#sb-backdrop').addEventListener('click', () => { sidebarOpen = false; applySidebar(); });
   window.addEventListener('resize', () => { if (window.innerWidth > 900) sidebarOpen = true; applySidebar(); });
   $$('.rail-btn[data-view]').forEach((b) => b.addEventListener('click', () => go(b.dataset.view)));
@@ -678,7 +764,11 @@ window.__ahMachines = {
   // Klik di luar popover menutupnya — tapi klik pada pemicu bukan "di luar".
   // Tanpa daftar ini, klik #rail-usage membuka lalu langsung menutup popover
   // dalam event yang sama (bug halus yang tidak terlihat di kode).
-  const LAYER_TRIGGERS = ['#rail-usage', '#rail-env', '#env-open', '#env-pair', '[data-open-delegate]', '#btn-note-new', '.note-cell', '.adopt-btn', '#engine-chip', '#effort-chip', '#access-chip', '#composer-branch', '#sb-menu-btn', '#btn-cwd', '#composer-cwd', '#sb-search-btn', '#btn-filter-projects', '#btn-prompts', '#btn-session-info', '#sb-account', '#btn-tools'];
+  // Klik pada pemicu bukan "di luar" popover. Daftar ini harus memuat SETIAP
+  // elemen yang membuka popover dari dalam konten (kartu status, chip konteks,
+  // tombol panah) — kalau tidak, popover terbuka lalu langsung tertutup pada
+  // event klik yang sama sehingga terlihat seperti tombol yang tidak bekerja.
+  const LAYER_TRIGGERS = ['#rail-usage', '#rail-env', '#env-open', '#env-pair', '[data-open-delegate]', '#btn-note-new', '.note-cell', '.adopt-btn', '#engine-chip', '#effort-chip', '#access-chip', '#composer-branch', '#sb-menu-btn', '#btn-cwd', '#composer-cwd', '#sb-search-btn', '#btn-filter-projects', '#btn-prompts', '#btn-session-info', '#sb-account', '#btn-tools', '.sbs-row', '.hero-chip'];
   const LAYER_TRIGGER_SEL = LAYER_TRIGGERS.join(',');
 
   document.addEventListener('click', (e) => {
@@ -699,6 +789,9 @@ window.__ahMachines = {
     if (want('notes')) renderNotes();
     if (want('promo') || want('snapshot')) renderPromo();
     if (want('promoPass') || want('promo')) renderPromoPass();
+    // Kartu status memuat nama engine & jumlah thread; keduanya bisa berubah
+    // tanpa event promo, jadi ikut disegarkan pada slice terkait.
+    if (want('engines') || want('threads')) renderSbPromo(state?.promoPass);
     if (want('promoPass') || want('promo')) setPromoPane(promoPane, { silent: true });
     if (want('keys')) renderKeys();
     if (want('pool') || want('keys')) renderGateway();
@@ -754,23 +847,42 @@ window.__ahMachines = {
     // menyimpan nilai terpilih untuk dikirim ke /send
     $('#chat-model').classList.add('hidden');
     if (currentEngine === 'pool') $('#chat-model').value = selectedModel === 'auto' ? '' : selectedModel;
+    // Engine menentukan isi kartu status dan strip konteks di layar kosong.
+    // Keduanya digambar ulang di sini karena daftar engine datang dari request
+    // async — tanpa ini kartu sempat menampilkan id mentah ("claude").
+    renderSbPromo(state?.promoPass);
+    renderHeroContext();
   }
 
   // popover ditempel ke chip pemicunya — bukan melayang di pojok layar
-  function positionPop(popSel, triggerSel) {
+  function positionPop(popSel, trigger) {
     const pop = $(popSel);
-    const trigger = $(triggerSel);
-    if (!pop || !trigger) return;
+    const anchor = typeof trigger === 'string' ? $(trigger) : trigger;
+    if (!pop || !anchor) return;
     pop.style.left = 'auto'; pop.style.right = 'auto'; pop.style.top = 'auto'; pop.style.bottom = 'auto';
-    const r = trigger.getBoundingClientRect();
+    const r = anchor.getBoundingClientRect();
     const pw = pop.offsetWidth || 330;
     const ph = pop.offsetHeight || 180;
-    let x = Math.min(Math.max(8, r.right - pw), window.innerWidth - pw - 10);
+    // Utamakan di atas pemicu; kalau tidak cukup ruang, di bawahnya. Popover
+    // selalu digeser agar seluruh badan (termasuk daftar panjang) tetap di dalam
+    // viewport — sebelumnya popover tinggi bisa melewati tepi bawah layar.
     let y = r.top - ph - 10;
     if (y < 8) y = r.bottom + 10;
     if (y + ph > window.innerHeight - 8) y = Math.max(8, window.innerHeight - ph - 8);
+    let x = Math.min(Math.max(8, r.right - pw), window.innerWidth - pw - 10);
     pop.style.left = `${Math.round(x)}px`;
     pop.style.top = `${Math.round(y)}px`;
+    // Daftar engine bisa lebih tinggi dari layar: batasi tingginya sendiri agar
+    // bisa digulir, bukan terpotong tepi jendela.
+    const maxH = window.innerHeight - 16;
+    if (ph > maxH) {
+      pop.style.maxHeight = `${maxH}px`;
+      pop.style.overflowY = 'auto';
+      pop.style.top = '8px';
+    } else {
+      pop.style.maxHeight = '';
+      pop.style.overflowY = '';
+    }
   }
 
   function groupedEngines(list) {
@@ -788,7 +900,7 @@ window.__ahMachines = {
       <div class="pick-row ${currentEngine === e.id ? 'active' : ''}" data-engine="${esc(e.id)}" ${e.available ? '' : 'data-off="1"'} title="${esc(e.note || '')}">
         <span class="pick-ico">${icon(e.id)}</span>
         <span class="pick-main"><b>${esc(e.label)}</b><small>${esc(e.note || '')}</small></span>
-        ${currentEngine === e.id ? '<span class="pick-check">✓</span>' : ''}
+        ${currentEngine === e.id ? `<span class="pick-check">${CHECK_SVG}</span>` : ''}
       </div>`).join('')).join('');
     $$('#engine-rows .pick-row').forEach((row) => row.addEventListener('click', () => {
       if (row.dataset.off) return toast('Engine tidak tersedia — ' + (engines.find((x) => x.id === row.dataset.engine)?.note || ''));
@@ -842,7 +954,18 @@ window.__ahMachines = {
     const query = $('#skills-search').value.toLocaleLowerCase();
     const list = installedSkills.filter(s => `${s.name} ${s.description} ${s.source}`.toLocaleLowerCase().includes(query));
     $('#skills-summary').textContent = `${installedSkills.length} skill terdeteksi otomatis · ${list.length} ditampilkan`;
-    $('#skills-list').innerHTML = list.map(s => `<article class="cat-card"><div class="tags"><span class="chip free">Tersedia otomatis</span><span class="chip">${esc(s.source)}</span></div><b>${esc(s.name)}</b><p>${esc(s.description || 'Instruksi skill lokal')}</p><code class="skill-path">${esc(s.path)}</code><button class="btn tiny" data-use-skill="${esc(s.id)}">Pakai di chat</button></article>`).join('') || '<p class="muted small">Tidak ada skill yang cocok.</p>';
+    // Skill tidak lagi "dipilih": semuanya sudah aktif bila relevan. Kartu
+    // menampilkan kata kunci pemicunya supaya user tahu kapan skill menyala.
+    $('#skills-list').innerHTML = list.map(s => {
+      const triggers = String(s.id).split(/[-_]/).filter(w => w.length > 2).slice(0, 4);
+      return `<article class="cat-card">
+        <div class="tags"><span class="chip free">Aktif otomatis</span><span class="chip">${esc(s.source)}</span></div>
+        <b>${esc(s.name)}</b>
+        <p>${esc(s.description || 'Instruksi skill lokal')}</p>
+        ${triggers.length ? `<p class="skill-triggers muted small">Menyala saat permintaan menyebut: ${triggers.map(t => `<code>${esc(t)}</code>`).join(' ')}</p>` : ''}
+        <code class="skill-path">${esc(s.path)}</code>
+      </article>`;
+    }).join('') || '<p class="muted small">Tidak ada skill yang cocok.</p>';
   }
   async function loadSkills() {
     $('#skills-summary').textContent = 'Memindai skill terpasang…';
@@ -855,14 +978,6 @@ window.__ahMachines = {
   $('#btn-skills-refresh').addEventListener('click', loadSkills);
   $('#skills-search').addEventListener('input', renderSkills);
   $('#btn-project-picker-close').addEventListener('click', () => setLayer(null));
-  $('#skills-list').addEventListener('click', e => {
-    const button = e.target.closest('[data-use-skill]');
-    if (!button) return;
-    go('studio');
-    $('#composer-input').value = '/skill ' + button.dataset.useSkill + '\n' + $('#composer-input').value;
-    $('#composer-input').dispatchEvent(new Event('input', { bubbles: true }));
-    $('#composer-input').focus();
-  });
 
   let terminalSession = null;
   let terminalBusy = false;
@@ -870,13 +985,27 @@ window.__ahMachines = {
   let terminalTranscript = '';
   let terminalHistory = [];
   let terminalHistoryIndex = 0;
+  // Folder kerja terminal. Default: folder proyek aktif → folder kerja bebas →
+  // folder pengguna dari server. Dulu terminal menolak jalan tanpa proyek
+  // padahal user hanya ingin menjalankan `dir` — sekarang selalu punya direktori.
+  let terminalCwd = '';
+  function terminalDir() {
+    return terminalBusy ? (terminalSession?.cwd || terminalCwd) : (terminalCwd || activeCwd() || state?.server?.homeDir || '');
+  }
+  function paintTerminalCwd() {
+    const dir = terminalDir();
+    const el = $('#terminal-cwd');
+    if (!el) return;
+    el.textContent = dir || 'Belum ada folder — klik "Ganti folder"';
+    el.title = dir || '';
+  }
   function toggleTerminal(open) {
     $('#terminal-panel').classList.toggle('hidden', !open);
     $('#btn-terminal').setAttribute('aria-expanded', String(open));
-    $('#terminal-cwd').textContent = terminalBusy ? terminalSession?.cwd || '' : activeCwd() || 'Pilih folder proyek melalui pemilih folder';
+    paintTerminalCwd();
     if (open) $('#terminal-command').focus();
   }
-  function renderTerminal(session) {
+  async function renderTerminal(session) {
     const output = $('#terminal-output');
     const atBottom = output.scrollHeight - output.scrollTop - output.clientHeight < 48;
     const labels = { running: 'Berjalan', stopping: 'Menghentikan…', stopped: 'Dihentikan', done: 'Selesai', error: 'Gagal' };
@@ -885,8 +1014,9 @@ window.__ahMachines = {
     $('#terminal-stop').disabled = session.status !== 'running';
     $('#terminal-run').disabled = terminalBusy;
     $('#terminal-clear').disabled = terminalBusy;
-    $('#terminal-cwd').textContent = session.cwd;
-    output.textContent = terminalTranscript + '> ' + session.command + '\n' + (session.truncated ? '[Output awal dipangkas]\n' : '') + session.output;
+    if (session.cwd) terminalCwd = session.cwd;
+    paintTerminalCwd();
+    output.textContent = terminalTranscript + '$ ' + session.command + '\n' + (session.truncated ? '[Output awal dipangkas]\n' : '') + session.output;
     if (!terminalBusy) output.textContent += '\n[' + labels[session.status] + (session.exitCode != null ? ' · exit ' + session.exitCode : '') + ']\n\n';
     if (atBottom) output.scrollTop = output.scrollHeight;
   }
@@ -908,12 +1038,13 @@ window.__ahMachines = {
     if (terminalBusy) return;
     const command = $('#terminal-command').value.trim();
     if (!command) return;
-    if (!activeCwd()) { toast('Pilih folder proyek terlebih dahulu'); return; }
+    const dir = terminalDir();
+    if (!dir) { toast('Tentukan folder kerja terminal terlebih dahulu', 4000); return; }
     terminalBusy = true;
     $('#terminal-run').disabled = true;
     try {
       clearTimeout(terminalTimer);
-      const next = await api('/api/terminal', { method: 'POST', body: JSON.stringify({ command, cwd: activeCwd() }) });
+      const next = await api('/api/terminal', { method: 'POST', body: JSON.stringify({ command, cwd: dir }) });
       terminalTranscript = terminalSession ? $('#terminal-output').textContent.slice(-200000) : '';
       terminalSession = next;
       terminalHistory.push(command);
@@ -922,6 +1053,30 @@ window.__ahMachines = {
       renderTerminal(terminalSession);
       await pollTerminal();
     } catch (err) { terminalBusy = false; $('#terminal-run').disabled = false; toast('Terminal: ' + err.message); }
+  });
+  // Ganti folder kerja terminal tanpa menyentuh proyek aktif: terminal sering
+  // dipakai untuk hal di luar repo (mis. `dir` di C:\), jadi foldernya sendiri.
+  $('#terminal-cwd-change').addEventListener('click', async () => {
+    const v = await askPrompt('Folder tempat perintah terminal dijalankan.', terminalDir(), {
+      title: 'Direktori terminal',
+      placeholder: 'C:\\Users\\nama',
+      okLabel: 'Pakai folder',
+      requireValue: true,
+    });
+    if (v == null) return;
+    try {
+      const r = await api(`/api/workspace/check?cwd=${encodeURIComponent(v.trim())}`);
+      terminalCwd = r.cwd;
+      paintTerminalCwd();
+      toast('Direktori terminal: ' + terminalCwd, 3200, 'ok');
+    } catch (err) { toast('Folder tidak bisa dipakai: ' + err.message, 4500); }
+  });
+  $('#terminal-cwd-home').addEventListener('click', () => {
+    const home = state?.server?.homeDir;
+    if (!home) { toast('Folder pengguna tidak diketahui', 3000); return; }
+    terminalCwd = home;
+    paintTerminalCwd();
+    toast('Direktori terminal: ' + home, 3000, 'ok');
   });
   $('#terminal-stop').addEventListener('click', async () => {
     if (!terminalSession) return;
@@ -1010,7 +1165,7 @@ window.__ahMachines = {
     host.innerHTML = tiles.map((t) => `
       <button class="space-tile" data-space="${esc(t.key)}" data-task="${t.task ? '1' : ''}" title="${esc(t.label)}"
         style="background:${projectColor(t.label)}">${esc(projectInitials(t.label))}</button>`).join('') +
-      `<button class="space-tile add" id="rail-add-space" title="Proyek baru">＋</button>`;
+      `<button class="space-tile add" id="rail-add-space" title="Proyek baru">${icon('plus')}</button>`;
     $$('#rail-spaces [data-space]').forEach((btn) => btn.addEventListener('click', () => {
       const p = projectCache.find((x) => x.id === btn.dataset.space);
       if (p) { setActiveProject(p); go('studio'); return; }
@@ -1041,7 +1196,7 @@ window.__ahMachines = {
     if (tagRow) {
       tagRow.innerHTML = allTags.length
         ? allTags.map((tg) => `<button class="tag-chip ${tagFilter === tg ? 'active' : ''}" data-tagfilter="${esc(tg)}">${esc(tg)}</button>`).join('')
-          + (tagFilter ? '<button class="tag-chip clear" data-tagclear title="Hapus filter">✕</button>' : '')
+          + (tagFilter ? `<button class="tag-chip clear" data-tagclear title="Hapus filter">${X_SVG}</button>` : '')
         : '';
     }
 
@@ -1111,7 +1266,7 @@ window.__ahMachines = {
         ${r.folder ? `<span class="p-ico">${FOLDER_SVG}</span>` : `<span class="p-dot" style="background:${r.color}"></span>`}
         <span class="p-name">${esc(r.label)}</span>
         ${r.proj ? `<span class="p-ext" title="Edit proyek"><svg viewBox="0 0 24 24"><path d="M4 20h4L20 8l-4-4L4 16z"/></svg></span>` : ''}
-        ${r.check ? '<span class="p-check">✓</span>' : ''}
+        ${r.check ? `<span class="p-check">${CHECK_SVG}</span>` : ''}
       </div>`).join('');
     $$('#sb-projects .project-row').forEach((row) => {
       row.addEventListener('click', (e) => {
@@ -1140,9 +1295,41 @@ window.__ahMachines = {
     renderOnboarding();
     const heroTitle = $('#hero-project-name');
     if (heroTitle) heroTitle.textContent = activeLabel();
+    renderHeroContext();
     const sbTitle = $('#sb-title');
     if (sbTitle) sbTitle.textContent = 'AgentHub';
     $('#env-note').textContent = activeProject ? activeProject.primaryFolder : 'server jalan';
+  }
+
+  // Strip konteks di layar kosong: folder kerja, engine, mode izin, dan skill
+  // yang akan aktif. Semua bisa diklik — jadi layar pembuka bukan sekadar
+  // tulisan besar, melainkan tempat memeriksa keadaan sebelum mengetik.
+  function renderHeroContext() {
+    const host = $('#hero-context');
+    if (!host) return;
+    const dir = activeCwd() || state?.server?.homeDir || '';
+    const shortDir = dir.length > 46 ? '…' + dir.slice(-45) : dir;
+    const engineName = engineShort(currentEngine);
+    const engineReady = (engines || []).some((e) => e.id === currentEngine && e.available);
+    const accessLabel = PERMISSION_LABELS[permission] || 'Full access';
+    const chips = [
+      `<button class="hero-chip" type="button" data-hero-act="folder" title="${esc(dir || 'Belum ada folder')}">
+        <svg viewBox="0 0 24 24"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H9l2 2h7.5A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5z"/></svg>
+        <span>${esc(shortDir || 'Pilih folder')}</span></button>`,
+      `<button class="hero-chip ${engineReady ? '' : 'warn'}" type="button" data-hero-act="engine" title="Engine yang dipakai">
+        <svg viewBox="0 0 24 24"><path d="M12 3.6l1.9 6.5 6.5 1.9-6.5 1.9-1.9 6.5-1.9-6.5L3.6 12l6.5-1.9z"/></svg>
+        <span>${esc(engineName)}</span></button>`,
+      `<button class="hero-chip" type="button" data-hero-act="access" title="Mode izin tool">
+        <svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/></svg>
+        <span>${esc(accessLabel)}</span></button>`,
+    ];
+    host.innerHTML = chips.join('');
+    $$('#hero-context [data-hero-act]').forEach((b) => b.addEventListener('click', () => {
+      const act = b.dataset.heroAct;
+      if (act === 'folder') { renderProjectPicker(); setLayer('project'); return; }
+      if (act === 'engine') { renderEngineMenu(); setLayer('engines'); positionPop('#engine-pop', b); return; }
+      if (act === 'access') { renderAccessMenu(); setLayer('access'); positionPop('#access-pop', b); }
+    }));
   }
 
   // ---------- onboarding: 4 langkah pertama untuk instalasi baru ----------
@@ -1394,6 +1581,34 @@ window.__ahMachines = {
     el.textContent = `≈${tokens.toLocaleString('en-US')} tok`;
   }
   $('#composer-input').addEventListener('input', updateTokenEst);
+
+  // Skill yang aktif otomatis untuk isi composer. Ditanyakan ke server (yang
+  // memakai pencocokan yang sama dengan saat prompt dikirim), jadi yang tampil
+  // di sini benar-benar yang akan dipakai — bukan tebakan UI.
+  let skillProbeTimer;
+  let skillProbeLast = '';
+  async function updateComposerSkills() {
+    const host = $('#composer-skills');
+    if (!host) return;
+    const text = $('#composer-input').value.trim();
+    if (text.length < 8) { host.classList.add('hidden'); host.innerHTML = ''; skillProbeLast = ''; return; }
+    if (text === skillProbeLast) return;
+    skillProbeLast = text;
+    try {
+      const q = new URLSearchParams({ prompt: text.slice(0, 600) });
+      if (activeCwd()) q.set('cwd', activeCwd());
+      const r = await api('/api/skills?' + q.toString());
+      const active = r.active || [];
+      if (!active.length) { host.classList.add('hidden'); host.innerHTML = ''; return; }
+      host.innerHTML = `<svg viewBox="0 0 24 24"><path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5z"/></svg>${active.map(id => `<b>${esc(id)}</b>`).join('')}`;
+      host.classList.remove('hidden');
+      host.title = `Skill aktif otomatis: ${active.join(', ')}`;
+    } catch { host.classList.add('hidden'); }
+  }
+  $('#composer-input').addEventListener('input', () => {
+    clearTimeout(skillProbeTimer);
+    skillProbeTimer = setTimeout(updateComposerSkills, 420);
+  });
   $('#composer-input').addEventListener('input', (e) => {
     const ta = e.target;
     const m = ta.value.match(/@([^\s@]*)$/);
@@ -1525,10 +1740,10 @@ window.__ahMachines = {
         <span class="pick-main"><b>${esc(r.label)}</b><small>${esc(r.sub || '')}</small></span>
         ${r.free ? `<button class="icon-btn pick-edit" data-cwd="1" title="Ganti folder kerja bebas">${icon('pencil')}</button>` : ''}
         ${r.proj ? `<button class="icon-btn pick-edit" data-edit="${esc(r.proj.id)}" title="Edit proyek">${icon('pencil')}</button>` : ''}
-        ${r.check ? '<span class="pick-check">✓</span>' : ''}
+        ${r.check ? `<span class="pick-check">${CHECK_SVG}</span>` : ''}
       </div>`).join('') +
       `<div class="pick-row add" data-new="1">
-        <span class="pick-ico">＋</span>
+        <span class="pick-ico">${icon('plus')}</span>
         <span class="pick-main"><b>Buat proyek baru</b><small>Pilih folder sumber untuk agent</small></span>
       </div>`;
     $$('#project-rows .pick-row').forEach((row) => row.addEventListener('click', async (e) => {
@@ -1576,7 +1791,7 @@ window.__ahMachines = {
         <span class="pick-main"><b>${esc(f)}</b></span>
         ${f === editPrimary ? '<span class="chip">Primary</span>' : ''}
         <button class="icon-btn" data-primary="${i}" title="Jadikan folder utama">${icon('star')}</button>
-        <button class="icon-btn" data-remove="${i}" title="Hapus dari daftar">✕</button>
+        <button class="icon-btn" data-remove="${i}" title="Hapus dari daftar">${X_SVG}</button>
       </div>`).join('');
     $$('#project-edit-folders [data-remove]').forEach((btn) => btn.addEventListener('click', () => {
       editFolders.splice(+btn.dataset.remove, 1);
@@ -1691,7 +1906,7 @@ window.__ahMachines = {
         <span class="pick-ico">${m.available ? icon('spark') : icon('lock')}</span>
         <span class="pick-main"><b>${esc(m.label)}</b><small>${esc(m.reason || '')}</small></span>
         <button class="pick-fav ${favs.includes(m.model) ? 'on' : ''}" data-fav="${esc(m.model)}" title="${favs.includes(m.model) ? 'Hapus dari favorit' : 'Favoritkan'}">${icon('star')}</button>
-        ${selectedModel === m.model ? '<span class="pick-check">✓</span>' : ''}
+        ${selectedModel === m.model ? `<span class="pick-check">${CHECK_SVG}</span>` : ''}
       </div>`;
     host.innerHTML =
       (favList.length ? `<div class="intg-label">Favorit</div>` + favList.map(row).join('') : '') +
@@ -1753,7 +1968,7 @@ window.__ahMachines = {
     $('#effort-rows').innerHTML = EFFORT_OPTS.map(([v, l]) => `
       <div class="pick-row ${effort === v ? 'active' : ''}" data-effort="${v}">
         <span class="pick-main"><b>${l}</b></span>
-        ${effort === v ? '<span class="pick-check">✓</span>' : ''}
+        ${effort === v ? `<span class="pick-check">${CHECK_SVG}</span>` : ''}
       </div>`).join('');
     $$('#effort-rows .pick-row').forEach((row) => row.addEventListener('click', () => {
       effort = row.dataset.effort;
@@ -1781,12 +1996,13 @@ window.__ahMachines = {
     $('#access-rows').innerHTML = opts.map(([v, l, d]) => `
       <div class="pick-row ${permission === v ? 'active' : ''}" data-perm="${v}">
         <span class="pick-main"><b>${l}</b><small>${d}</small></span>
-        ${permission === v ? '<span class="pick-check">✓</span>' : ''}
+        ${permission === v ? `<span class="pick-check">${CHECK_SVG}</span>` : ''}
       </div>`).join('');
     $$('#access-rows .pick-row').forEach((row) => row.addEventListener('click', () => {
       permission = row.dataset.perm;
       localStorage.setItem('ah_permission', permission);
       $('#access-label').textContent = PERMISSION_LABELS[permission] || 'Full access';
+      renderHeroContext();
       setLayer(null);
     }));
   }
@@ -2494,6 +2710,8 @@ window.__ahMachines = {
         }
       });
       setRun(outcome);
+      if (outcome === 'done') toastBg('Run selesai — jawaban sudah siap di thread', 'run-done', 'ok');
+      else if (outcome === 'error') toastBg('Run gagal — periksa pesan di thread', 'run-error', 'err');
       curThread = await api(`/api/threads/${curThread.id}`);
       renderChat();
       renderSidebar();
@@ -2622,7 +2840,7 @@ window.__ahMachines = {
     delCtrl = new AbortController();
     $('#del-progress').classList.remove('hidden');
     $('#del-progress').innerHTML = selected.map((id) => `
-      <div class="del-run" data-engine="${esc(id)}"><span class="chip">${icon(id)} ${esc(engineLabel(id))}</span> <span class="del-status">⏳ mulai…</span><div class="del-out"></div></div>`).join('');
+      <div class="del-run" data-engine="${esc(id)}"><span class="chip">${icon(id)} ${esc(engineLabel(id))}</span> <span class="del-status st-working">mulai…</span><div class="del-out"></div></div>`).join('');
 
     try {
       const res = await fetch('/api/delegate', {
@@ -2638,10 +2856,15 @@ window.__ahMachines = {
         const row = $(`#del-progress .del-run[data-engine="${ev.engine}"] .del-status`);
         if (ev.type === 'sub') {
           const st = ev.status || 'working';
-          if (row) row.textContent = st === 'done' ? `✓ ${Math.round((ev.ms || 0) / 100) / 10}s`
-            : st === 'error' ? '× gagal'
-            : st === 'stopped' ? 'dihentikan'
-            : '⏳ bekerja…';
+          // Status per-engine: kelas + ikon SVG, bukan glyph ✓/×/⏳ yang
+          // bentuknya bergantung font sistem.
+          if (row) {
+            row.className = `del-status st-${st}`;
+            if (st === 'done') row.innerHTML = `${CHECK_SVG}${Math.round((ev.ms || 0) / 100) / 10}s`;
+            else if (st === 'error') row.innerHTML = `${X_SVG}gagal`;
+            else if (st === 'stopped') row.textContent = 'dihentikan';
+            else row.textContent = 'bekerja…';
+          }
         } else if (ev.type === 'subdelta') {
           const out = $(`#del-progress .del-run[data-engine="${ev.engine}"] .del-out`);
           if (out) { out.textContent = (out.textContent + ev.text).slice(-800); out.classList.add('live'); }
@@ -2740,7 +2963,7 @@ window.__ahMachines = {
       return `
       <div class="kcol" data-status="${key}">
         <div class="kcol-head"><span class="kico">${KICON[key]}</span><b>${label}</b> <span class="count">${cards.length}</span>
-          <button class="add" data-add="${key}" title="Tambah tugas">＋</button>
+          <button class="add" data-add="${key}" title="Tambah tugas">${icon('plus')}</button>
         </div>
         <div class="kcol-body">
           <input class="knew${openCol === key ? '' : ' hidden'}" placeholder="Tulis judul, Enter" data-status="${key}" value="${openCol === key ? esc(newTaskDraft) : ''}">
@@ -2753,7 +2976,7 @@ window.__ahMachines = {
             <div class="kcard-top"><span class="id-chip">${esc(taskCode(t, list))}</span>
               <span class="kcard-acts">
                 ${t.threadId ? `<button class="icon-btn" data-open-thread="${t.threadId}" title="Buka thread">${icon('external')}</button>` : ''}
-                <button class="icon-btn" data-del-task="1" title="Hapus">✕</button>
+                <button class="icon-btn" data-del-task="1" title="Hapus">${X_SVG}</button>
               </span>
             </div>
             <div class="kcard-title">${esc(t.title)}</div>
@@ -3098,7 +3321,7 @@ window.__ahMachines = {
         const gw = `${(state.server.lanUrl || state.server.localUrl).replace(/\/+$/, '')}/v1`;
         $('#adopt-result').classList.remove('hidden');
         $('#adopt-result').innerHTML = `
-          <b>✓ Siap dipakai agent — memakai key tersimpan</b><br>
+          <b class="adopt-ok">${CHECK_SVG} Siap dipakai agent — memakai key tersimpan</b><br>
           Model <code>${esc(adoptModelId)}</code> sudah aktif di pool. Arahkan agent ke endpoint ini:
           <div class="url-row" style="margin-top:8px"><code>${esc(gw)}</code></div>
           <div class="form-actions"><button class="btn tiny primary" id="adopt-copy">Salin env agent</button><button class="btn tiny" id="adopt-open-gw">Buka gateway</button></div>`;
@@ -3139,8 +3362,8 @@ window.__ahMachines = {
       }
       const title = bad ? 'Key ditolak provider'
         : unverified ? 'Key tersimpan, belum terverifikasi'
-        : inPool ? '✓ Siap dipakai agent'
-        : '✓ Key tersimpan';
+        : inPool ? `${CHECK_SVG} Siap dipakai agent`
+        : `${CHECK_SVG} Key tersimpan`;
       const note = bad ? 'Periksa kembali key promo Anda — model belum masuk rotasi.'
         : unverified && inPool ? 'Provider tidak menjawab saat validasi. Key tetap masuk pool dan dicek ulang otomatis.'
         : !inPool ? `Key tersimpan. Aktifkan lewat tab API Keys (tombol "+ Pool") atau pemilih model untuk memakainya.`
@@ -3304,42 +3527,78 @@ window.__ahMachines = {
     return r;
   }
 
+  // Kartu ringkas di bawah sidebar. Dulu ini kartu promo GLM yang hanya
+  // "mencatat" kuota secara lokal — tidak mengaktifkan akses provider apa pun,
+  // jadi janjinya menyesatkan dan tidak ada aksinya yang benar-benar berjalan.
+  // Sekarang kartu ini menampilkan keadaan nyata: engine yang dipakai, jumlah
+  // key di pool gateway, dan jumlah thread yang berjalan.
   function renderSbPromo(p) {
     const host = $('#sb-promo');
     if (!host) return;
-    if (!p || p.dismissed) {
+    // Kartu bisa diringkas user; pilihan itu disimpan supaya tidak muncul lagi
+    // setiap kali state diperbarui.
+    if (localStorage.getItem('ah_sbstatus_hidden') === '1') {
       host.classList.add('hidden');
       host.innerHTML = '';
       return;
     }
+    const running = (threadCache || []).filter((t) => t.running).length;
+    const pool = state?.pool || { active: 0, total: 0 };
+    const engineName = engineShort(currentEngine);
+    const engineReady = (engines || []).some((e) => e.id === currentEngine && e.available);
+    const rows = [
+      {
+        ico: '<path d="M12 3.6l1.9 6.5 6.5 1.9-6.5 1.9-1.9 6.5-1.9-6.5L3.6 12l6.5-1.9z"/>',
+        label: 'Engine',
+        value: engineName,
+        ok: engineReady,
+        act: 'engine',
+        title: engineReady ? 'Engine siap dipakai' : 'Engine belum siap — buka pilihan engine',
+      },
+      {
+        ico: '<rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/>',
+        label: 'Gateway pool',
+        value: pool.total ? `${pool.active}/${pool.total} key siap` : 'belum ada key',
+        ok: (pool.active || 0) > 0,
+        act: 'gateway',
+        title: 'Key API yang ikut diputar di gateway',
+      },
+      {
+        ico: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
+        label: 'Thread berjalan',
+        value: running ? `${running} aktif` : 'tidak ada',
+        ok: running > 0,
+        act: running ? 'threads' : 'new',
+        title: running ? 'Buka thread yang sedang berjalan' : 'Mulai percakapan baru',
+      },
+    ];
     host.classList.remove('hidden');
-    if (!p.claimed) {
-      host.innerHTML = `
-        <div class="sb-promo-card" role="button" tabindex="0" data-pp-act="open-plan">
-          <div class="spc-head">
-            <span class="spc-logo">A</span><b>AGENTHUB</b><span class="spc-series">GLOBAL BUILD</span>
-            <button class="spc-x" data-pp-act="dismiss" title="Sembunyikan kartu promo" aria-label="Sembunyikan kartu promo">✕</button>
-          </div>
-          <div class="spc-tokens"><b>${fmtNum(p.headlineTokens)}</b><span>tokens</span></div>
-          <div class="spc-foot">
-            <span>GLM-5.3-Flash quota</span>
-            <button class="spc-claim" data-pp-act="claim">Claim</button>
-          </div>
-        </div>`;
-      return;
-    }
     host.innerHTML = `
-      <div class="sb-promo-card is-claimed" role="button" tabindex="0" data-pp-act="open-plan">
-        <div class="spc-head">
-          <span class="spc-logo">A</span><b>AGENTHUB</b><span class="spc-series">GLOBAL BUILD</span>
-          <button class="spc-x" data-pp-act="dismiss" title="Sembunyikan kartu promo" aria-label="Sembunyikan kartu promo">✕</button>
-        </div>
-        <div class="spc-tokens"><b>${p.phase === 'expired' ? '0' : fmtCtx(p.headlineTokens)}</b><span>tokens</span></div>
-        <div class="spc-foot">
-          <span class="spc-phase ${esc(p.phase)}"><i></i>${esc(PASS_PHASE_TEXT[p.phase] || p.phase)} · ${esc(ppShort(p.planExpiresAt))}</span>
-          <button class="spc-claim" data-pp-act="open-plan">Lihat</button>
-        </div>
+      <div class="sb-status" aria-label="Status ruang kerja">
+        <div class="sbs-head"><b>Status ruang kerja</b><span class="grow"></span><button class="sbs-collapse" type="button" title="Ringkas kartu ini" aria-label="Ringkas kartu ini">${icon('x')}</button></div>
+        ${rows.map((r) => `
+          <button class="sbs-row ${r.ok ? 'ok' : 'warn'}" type="button" data-sbs="${r.act}" title="${esc(r.title)}">
+            <span class="sbs-ico"><svg viewBox="0 0 24 24">${r.ico}</svg></span>
+            <span class="sbs-label">${esc(r.label)}</span>
+            <span class="sbs-value">${esc(r.value)}</span>
+          </button>`).join('')}
       </div>`;
+    host.querySelector('.sbs-collapse')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      localStorage.setItem('ah_sbstatus_hidden', '1');
+      host.classList.add('hidden');
+      host.innerHTML = '';
+    });
+    $$('#sb-promo [data-sbs]').forEach((b) => b.addEventListener('click', () => {
+      const act = b.dataset.sbs;
+      // Popover engine ditempel ke baris yang diklik, bukan ke chip composer —
+      // chip itu bisa berada di sisi lain layar sehingga popover tampak lepas.
+      if (act === 'engine') { renderEngineMenu(); setLayer('engines'); positionPop('#engine-pop', b); return; }
+      if (act === 'gateway') { go('gateway'); return; }
+      if (act === 'new') { $('#btn-new-chat').click(); return; }
+      sidebarOpen = false; applySidebar();
+      go('studio');
+    }));
   }
 
   function passBalanceCard(m, p) {
@@ -3515,7 +3774,7 @@ window.__ahMachines = {
     }
     if (avail) avail.innerHTML += '<p class="muted small">Claim mencatat plan lokal; tidak menerbitkan API key atau mengaktifkan kuota provider. Untuk memakai promo ini, hubungkan akun atau API key provider yang memiliki akses. Untuk model gratis bawaan OpenCode, pilih engine Gratis · OpenCode.</p>';
     const shareBtn = $('#pp-claim-share');
-    if (shareBtn) shareBtn.textContent = p.sharedAt ? 'Shared ✓' : 'Share';
+    if (shareBtn) shareBtn.innerHTML = p.sharedAt ? `${CHECK_SVG} Dibagikan` : 'Bagikan';
   }
 
   async function claimAndOpenTicket() {
@@ -3811,7 +4070,7 @@ window.__ahMachines = {
           <div class="meta">${esc(k.baseUrl)} · key <code>${esc(k.keyMask)}</code>${k.latency ? ' · ' + k.latency + ' ms' : ''} · dicek ${fmtTime(k.lastChecked)}</div>
         </div>
         <div class="actions">
-          <button class="btn tiny ${k.pool ? 'primary' : ''}" data-act="key-pool">${k.pool ? '✓ Pool' : '+ Pool'}</button>
+          <button class="btn tiny ${k.pool ? 'primary' : ''}" data-act="key-pool">${k.pool ? `${CHECK_SVG} Pool` : 'Pool'}</button>
           <button class="btn tiny" data-act="key-check">${icon('refresh')} Cek</button>
           <button class="btn tiny danger" data-act="key-del">Hapus</button>
         </div>
@@ -3924,10 +4183,12 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
   const SETTINGS_SECTIONS = [
     ['providers', 'Penyedia', '<rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 8h.01M7 17h.01"/>'],
     ['models', 'Models', '<path d="M12 3.6l1.9 6.5 6.5 1.9-6.5 1.9-1.9 6.5-1.9-6.5L3.6 12l6.5-1.9z"/>'],
+    ['engines', 'Engine', '<path d="M4 8h9V4l7 8-7 8v-4H4z"/>'],
     ['connectors', 'Konektor', '<rect x="6" y="7" width="12" height="11" rx="3"/><path d="M9 7V4M15 7V4M3 11h3M18 11h3"/>'],
     ['projects', 'Proyek', '<path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H9l2 2h7.5A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5z"/>'],
     ['billing', 'Penagihan', '<rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M3 10h18"/><path d="M7 15h4"/>'],
     ['preferences', 'Preferensi', '<path d="M4 8h10M18 8h2M4 16h4M12 16h8"/><circle cx="16" cy="8" r="2"/><circle cx="10" cy="16" r="2"/>'],
+    ['language', 'Bahasa', '<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c2.4 2.6 2.4 15.4 0 18M12 3c-2.4 2.6-2.4 15.4 0 18"/>'],
     ['appearance', 'Tampilan', '<path d="M12 21a9 9 0 1 1 9-9c0 2.5-2 3-3.5 3H16a2 2 0 0 0-2 2c0 1.5-.5 4-2 4z"/><circle cx="8.5" cy="10.5" r="1"/><circle cx="12" cy="7.5" r="1"/>'],
     ['notifications', 'Notifikasi', '<path d="M6 9a6 6 0 1 1 12 0c0 5 2 6 2 6H4s2-1 2-6"/><path d="M10 20a2.2 2.2 0 0 0 4 0"/>'],
     ['privacy', 'Privasi', '<path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/><path d="M9.5 12l1.8 1.8 3.2-3.6"/>'],
@@ -3942,8 +4203,8 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
   let settingsPane = localStorage.getItem('ah_settings_pane') || 'preferences';
   // Kelompok nav ala halaman settings Kybern: Pribadi / Agent / Sistem.
   const SETTINGS_GROUPS = [
-    ['Pribadi', ['preferences', 'appearance', 'notifications', 'privacy', 'shortcuts']],
-    ['Agent', ['providers', 'models', 'connectors', 'projects', 'billing', 'schedules', 'orchestra']],
+    ['Pribadi', ['preferences', 'language', 'appearance', 'notifications', 'privacy', 'shortcuts']],
+    ['Agent', ['providers', 'models', 'engines', 'connectors', 'projects', 'billing', 'schedules', 'orchestra']],
     ['Sistem', ['phone', 'server', 'desktop', 'about']],
   ];
 
@@ -3969,6 +4230,179 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
     $$('#settings-nav .set-nav-item').forEach((b) => b.addEventListener('click', () => activateSettingsPane(b.dataset.setNav)));
   }
 
+  // ---------- statistik pemakaian ----------
+  // Semua angka berasal dari /api/stats, yang dihitung server dari peristiwa
+  // nyata (kirim chat, buat tugas, jalankan terminal, …). Tidak ada angka
+  // contoh: kalau belum pernah dipakai, grafiknya memang kosong dan UI
+  // mengatakannya apa adanya.
+  let statsData = null;
+  let statsDelta = null;
+  let statsRangeDays = Number(localStorage.getItem('ah_stats_range')) || 7;
+
+  function heatLevel(n, max) {
+    if (!n) return 0;
+    if (max <= 1) return 4;
+    const r = n / max;
+    if (r <= 0.25) return 1;
+    if (r <= 0.5) return 2;
+    if (r <= 0.75) return 3;
+    return 4;
+  }
+
+  function renderStats() {
+    if (!statsData) return;
+    const s = statsData;
+    const maxDay = Math.max(1, ...s.series.map((d) => d.total));
+
+    // --- kartu angka ---
+    $('#stat-total').textContent = s.total.toLocaleString('id-ID');
+    const todayCount = s.series[s.series.length - 1]?.total || 0;
+    $('#stat-today').textContent = todayCount.toLocaleString('id-ID');
+    $('#stat-streak').textContent = s.streak.toLocaleString('id-ID');
+    $('#stat-streak-sub').textContent = s.bestStreak
+      ? `hari berurutan · terbaik ${s.bestStreak}`
+      : 'hari berurutan';
+    $('#stat-avg').textContent = String(s.avgPerActiveDay).replace('.', ',');
+    $('#stat-active-days').textContent = s.activeDays.toLocaleString('id-ID');
+    $('#stat-total-sub').textContent = s.seeded
+      ? 'termasuk riwayat yang sudah ada'
+      : 'sepanjang pemakaian';
+    $('#stat-today-sub').textContent = todayCount === 1 ? 'aktivitas' : 'aktivitas';
+
+    // --- heatmap 53 minggu ---
+    // Kolom = minggu, baris = hari (Senin..Minggu). Seri dari server diakhiri
+    // hari ini, jadi padding awal disusun agar hari ini jatuh di baris yang benar.
+    const cells = [];
+    const first = new Date(s.series[0].date + 'T00:00:00');
+    const firstDow = (first.getDay() + 6) % 7; // Senin = 0
+    for (let i = 0; i < firstDow; i++) cells.push(null);
+    for (const d of s.series) cells.push(d);
+    const tail = (7 - (cells.length % 7)) % 7;
+    for (let i = 0; i < tail; i++) cells.push(null);
+
+    const parts = [];
+    for (let i = 0; i < cells.length; i += 7) {
+      const week = cells.slice(i, i + 7);
+      parts.push('<div class="heat-week">' + week.map((d) => {
+        if (!d) return '<i class="heat-cell empty"></i>';
+        const lv = heatLevel(d.total, maxDay);
+        const human = new Date(d.date + 'T00:00:00').toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+        return `<i class="heat-cell l${lv}" title="${human} — ${d.total} aktivitas"></i>`;
+      }).join('') + '</div>');
+    }
+    $('#heat-grid').innerHTML = parts.join('');
+
+    // Label bulan: satu label per pergantian bulan, diposisikan tepat di atas
+    // kolom minggu tempat bulan itu mulai. Posisi dihitung dari indeks kolom
+    // (bukan flexbox) supaya label lebar seperti "Nov" tidak terpotong dan
+    // tetap sejajar dengan kolomnya.
+    const CELL = 11, GAP = 3, WEEK = CELL + GAP;
+    const months = [];
+    let lastMonth = -1;
+    cells.forEach((d, idx) => {
+      if (!d || idx % 7 !== 0) return;
+      const dt = new Date(d.date + 'T00:00:00');
+      if (dt.getMonth() !== lastMonth) {
+        lastMonth = dt.getMonth();
+        months.push(`<span style="left:${(idx / 7) * WEEK}px">${dt.toLocaleDateString('id-ID', { month: 'short' })}</span>`);
+      }
+    });
+    $('#heat-months').innerHTML = months.join('');
+    $('#stats-heat-note').textContent = s.activeDays
+      ? `${s.activeDays} hari aktif dari ${s.series.length} hari terakhir`
+      : 'belum ada aktivitas tercatat';
+
+    // --- grafik batang sesuai rentang ---
+    const series = s.series.slice(-statsRangeDays);
+    const maxBar = Math.max(1, ...series.map((d) => d.total));
+    $('#stats-range-label').textContent = `${statsRangeDays} hari`;
+    const showDot = series.length <= 14;
+    $('#stats-bars').innerHTML = series.map((d) => {
+      const h = Math.round((d.total / maxBar) * 100);
+      const dt = new Date(d.date + 'T00:00:00');
+      const label = dt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
+      return `<div class="bar-col" title="${label} — ${d.total} aktivitas">
+        <span class="bar-val">${d.total || ''}</span>
+        <i class="bar-fill" style="height:${d.total ? Math.max(3, h) : 0}%"></i>
+        ${showDot ? `<span class="bar-label">${label.split(' ')[0]}</span>` : ''}
+      </div>`;
+    }).join('');
+
+    const delta = $('#stats-delta');
+    const d = statsDelta;
+    if (!d || !d.comparable) {
+      delta.textContent = d ? `${d.current} aktivitas / ${d.days} hari` : '';
+      delta.className = 'muted small';
+    } else if (d.previous === 0) {
+      delta.textContent = `${d.current} aktivitas · belum ada pembanding`;
+      delta.className = 'muted small';
+    } else if (d.deltaPct === 0) {
+      delta.textContent = `sama dengan ${d.days} hari sebelumnya`;
+      delta.className = 'muted small';
+    } else {
+      const up = d.deltaPct > 0;
+      delta.textContent = `${up ? '+' : ''}${d.deltaPct}% vs ${d.days} hari sebelumnya`;
+      delta.className = 'small ' + (up ? 'delta-up' : 'delta-down');
+    }
+
+    // --- rincian per fitur ---
+    const feats = s.features.filter((f) => f.count > 0);
+    $('#stats-features').innerHTML = feats.length
+      ? feats.map((f) => `
+        <div class="feat-row">
+          <span class="feat-ico"><svg class="ico" viewBox="0 0 24 24">${f.icon}</svg></span>
+          <span class="feat-name">${esc(f.label)}</span>
+          <span class="feat-bar"><i style="width:${Math.max(2, f.pct)}%"></i></span>
+          <span class="feat-num">${f.count.toLocaleString('id-ID')}</span>
+          <span class="feat-pct">${String(f.pct).replace('.', ',')}%</span>
+        </div>`).join('')
+      : '<p class="muted small" style="padding:6px 2px">Belum ada aktivitas. Kirim chat, buat tugas, atau jalankan terminal untuk mulai mengisi statistik.</p>';
+
+    // --- per engine ---
+    const eng = s.engines || [];
+    const engMax = Math.max(1, ...eng.map((e) => e.count));
+    $('#stats-engines').innerHTML = eng.length
+      ? eng.map((e) => `
+        <div class="feat-row">
+          <span class="feat-ico">${icon(e.id)}</span>
+          <span class="feat-name">${esc(engineLabel(e.id))}</span>
+          <span class="feat-bar"><i style="width:${Math.max(2, Math.round((e.count / engMax) * 100))}%"></i></span>
+          <span class="feat-num">${e.count.toLocaleString('id-ID')}</span>
+          <span class="feat-pct"></span>
+        </div>`).join('')
+      : '<p class="muted small" style="padding:6px 2px">Belum ada chat yang tercatat per engine.</p>';
+  }
+
+  async function loadStats(force = false) {
+    if (statsData && !force) { await loadStatsDelta(); renderStats(); return; }
+    try {
+      const [s, d] = await Promise.all([
+        api('/api/stats'),
+        api(`/api/stats?days=${statsRangeDays}`),
+      ]);
+      statsData = s;
+      statsDelta = d;
+      renderStats();
+    } catch (e) {
+      toast('Gagal memuat statistik: ' + e.message);
+    }
+  }
+
+  async function loadStatsDelta() {
+    try { statsDelta = await api(`/api/stats?days=${statsRangeDays}`); } catch { statsDelta = null; }
+  }
+
+  $('#btn-stats-refresh')?.addEventListener('click', () => loadStats(true));
+  $$('#stats-range .seg-btn').forEach((b) => b.addEventListener('click', async () => {
+    statsRangeDays = Number(b.dataset.range) || 7;
+    localStorage.setItem('ah_stats_range', String(statsRangeDays));
+    $$('#stats-range .seg-btn').forEach((x) => x.classList.toggle('active', x === b));
+    renderStats();
+    await loadStatsDelta();
+    renderStats();
+  }));
+  $$('#stats-range .seg-btn').forEach((b) => b.classList.toggle('active', Number(b.dataset.range) === statsRangeDays));
+
   function activateSettingsPane(id) {
     if (!SETTINGS_SECTIONS.some(([k]) => k === id)) return;
     settingsPane = id;
@@ -3976,6 +4410,7 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
     $$('#view-settings .settings-pane').forEach((p) => p.classList.toggle('hidden', p.dataset.pane !== id));
     $$('#settings-nav .set-nav-item').forEach((b) => b.classList.toggle('active', b.dataset.setNav === id));
     if (id === 'schedules') renderSchedules();
+    if (id === 'engines') renderEngineSettings();
     if (id === 'desktop') checkUpdates(true);
     if (id === 'orchestra') { renderOrchestra(); renderOrchestraEngines(); }
   }
@@ -4075,6 +4510,31 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
     applyTheme();
   }
   applyTheme();
+  // ---------- kepadatan & lebar: preferensi nyata, bukan hiasan ----------
+  // Dulu panel Tampilan hanya punya tema & warna. Dua preferensi ini mengubah
+  // CSS lewat atribut di <html>, jadi berlaku ke seluruh aplikasi tanpa reload.
+  const DENSITY_VALUES = ['compact', 'normal', 'comfortable'];
+  const WIDTH_VALUES = ['narrow', 'normal', 'wide'];
+  function applyDensity() {
+    const v = localStorage.getItem('ah_density') || 'normal';
+    document.documentElement.dataset.density = DENSITY_VALUES.includes(v) ? v : 'normal';
+    $$('#density-seg .seg-btn').forEach((b) => b.classList.toggle('active', b.dataset.density === document.documentElement.dataset.density));
+  }
+  function applyChatWidth() {
+    const v = localStorage.getItem('ah_width') || 'normal';
+    document.documentElement.dataset.chatWidth = WIDTH_VALUES.includes(v) ? v : 'normal';
+    $$('#width-seg .seg-btn').forEach((b) => b.classList.toggle('active', b.dataset.width === document.documentElement.dataset.chatWidth));
+  }
+  $$('#density-seg .seg-btn').forEach((b) => b.addEventListener('click', () => {
+    localStorage.setItem('ah_density', b.dataset.density);
+    applyDensity();
+  }));
+  $$('#width-seg .seg-btn').forEach((b) => b.addEventListener('click', () => {
+    localStorage.setItem('ah_width', b.dataset.width);
+    applyChatWidth();
+  }));
+  applyDensity();
+  applyChatWidth();
   const ACCENTS = [
     ['#ef7d45', 'Oranye (bawaan)'],
     ['#4f8cff', 'Biru'],
@@ -4306,17 +4766,149 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
       <span>Port</span><span>${s.port}</span>
       <span>URL lokal</span><span>${esc(s.localUrl)}</span>
       <span>URL LAN/HP</span><span>${esc(s.lanUrl)}</span>
+      <span>Folder pengguna</span><span>${esc(s.homeDir || '—')}</span>
       <span>Uptime</span><span>${Math.floor(s.uptimeMs / 60000)} menit</span>`;
-    $('#phone-url').textContent = s.phoneUrl;
-    $('#phone-url-pop').textContent = s.phoneUrl;
-    $('#qr-box').innerHTML = '';
-    try { new QRCode($('#qr-box'), { text: s.phoneUrl, width: 180, height: 180, correctLevel: QRCode.CorrectLevel.H }); } catch { }
-    $('#qr-box-pop').innerHTML = '';
-    try { new QRCode($('#qr-box-pop'), { text: s.phoneUrl, width: 190, height: 190, correctLevel: QRCode.CorrectLevel.H }); } catch { }
+    renderPairList(s);
     renderSettingsSummaries();
     fillAbout();
     renderTunnel();
+    renderReplyLangs();
     $('#account-name').textContent = s.hostname || 'AgentHub';
+    if (settingsPane === 'engines') renderEngineSettings();
+  }
+
+  // ---------- pengaturan engine ----------
+  // Halaman ini menjawab satu pertanyaan: "apa yang akan menjalankan prompt
+  // saya, dan kalau belum siap, apa yang kurang?" Dulu daftar engine hanya ada
+  // di popover kecil saat chat, jadi tidak ada tempat untuk memeriksa semuanya.
+  let engineFilter = '';
+  function renderEngineSettings() {
+    const host = $('#set-engines');
+    if (!host) return;
+    const q = engineFilter.trim().toLowerCase();
+    const labelOf = (id) => engines.find((e) => e.id === id)?.label || id;
+    const typeName = { pool: 'Gateway', cli: 'CLI' };
+    const groups = [
+      { id: 'ready', title: 'Siap dipakai', note: 'Sudah terpasang dan bisa langsung menjalankan chat.', items: engines.filter((e) => e.available) },
+      { id: 'notready', title: 'Belum siap', note: 'Terdaftar, tetapi butuh API key atau CLI yang terpasang.', items: engines.filter((e) => !e.available) },
+    ];
+    const rows = [];
+    for (const g of groups) {
+      const items = g.items.filter((e) => !q || `${e.label} ${e.id} ${e.note || ''}`.toLowerCase().includes(q));
+      if (!items.length) continue;
+      rows.push(`<div class="engine-group-title">${esc(g.title)} · ${items.length}<small>${esc(g.note)}</small></div>`);
+      for (const e of items) {
+        const cur = e.id === currentEngine;
+        rows.push(`
+          <div class="engine-row ${cur ? 'cur' : ''} ${e.available ? '' : 'off'}" data-engine-row="${esc(e.id)}">
+            <span class="engine-dot ${cur ? 'cur' : e.available ? 'ok' : 'off'}"></span>
+            <div class="engine-main">
+              <b>${esc(e.label)}</b>
+              <small>${esc(typeName[e.type] || e.type)}${e.model ? ' · ' + esc(e.model) : ''}${e.cmd ? ' · perintah: ' + esc(e.cmd) : ''}</small>
+              <small class="engine-note">${esc(e.note || '')}</small>
+            </div>
+            ${cur ? '<span class="chip ok-chip">Dipakai</span>' : `<button class="btn tiny" data-engine-use="${esc(e.id)}" ${e.available ? '' : 'disabled'}>Pakai</button>`}
+          </div>`);
+      }
+    }
+    host.innerHTML = rows.join('') || '<p class="muted small">Tidak ada engine yang cocok dengan pencarian.</p>';
+
+    const sel = $('#set-engine-default');
+    if (sel) {
+      const ready = engines.filter((e) => e.available);
+      sel.innerHTML = ready.map((e) => `<option value="${esc(e.id)}"${e.id === currentEngine ? ' selected' : ''}>${esc(e.label)}</option>`).join('')
+        || '<option value="">Tidak ada engine siap</option>';
+      sel.onchange = () => {
+        if (!sel.value) return;
+        currentEngine = sel.value;
+        applyEngine();
+        toast(`Engine default: ${labelOf(sel.value)}`, 3000, 'ok');
+        renderEngineSettings();
+      };
+    }
+    $$('#set-engines [data-engine-use]').forEach((b) => b.addEventListener('click', () => {
+      currentEngine = b.dataset.engineUse;
+      applyEngine();
+      renderEngineSettings();
+      toast(`Engine aktif: ${labelOf(currentEngine)}`, 3000, 'ok');
+    }));
+  }
+  $('#engine-search')?.addEventListener('input', (e) => { engineFilter = e.target.value; renderEngineSettings(); });
+  $('#btn-engine-refresh')?.addEventListener('click', async (e) => {
+    e.currentTarget.disabled = true;
+    try {
+      await renderEngines(true);
+      renderEngineSettings();
+      toast('Daftar engine diperbarui', 3000, 'ok');
+    } catch (err) { toast('Gagal memindai engine: ' + err.message, 4200); }
+    finally { e.currentTarget.disabled = false; }
+  });
+
+  // Daftar cara membuka AgentHub dari perangkat lain. Tiap baris adalah tautan
+  // NYATA — sudah berisi token, jadi sekali klik di HP langsung masuk. Dulu
+  // halaman ini hanya menampilkan satu URL tanpa token sehingga HP selalu
+  // mendarat di layar "butuh token".
+  let pairCurrent = '';
+  // Hasil QR di-cache per (url, ukuran). Membangun QR berarti menghitung mask
+  // terbaik lalu menggambar ke canvas; isinya deterministik untuk url+ukuran
+  // yang sama. Yang disimpan adalah data URL gambarnya — BUKAN elemen canvas:
+  // cloneNode() pada canvas menghasilkan kanvas kosong (piksel tidak ikut
+  // tersalin), sehingga QR hasil cache akan tampak putih.
+  const qrCache = new Map();
+  function paintPairQr(url, boxSel, size) {
+    const box = $(boxSel);
+    if (!box) return;
+    const key = `${size}|${url}`;
+    const cached = qrCache.get(key);
+    if (cached) {
+      box.innerHTML = `<img src="${cached}" width="${size}" height="${size}" alt="Kode QR untuk ${esc(url)}">`;
+    } else {
+      box.innerHTML = '';
+      try {
+        new QRCode(box, { text: url, width: size, height: size, correctLevel: QRCode.CorrectLevel.H });
+        const canvas = box.querySelector('canvas');
+        if (canvas) {
+          qrCache.set(key, canvas.toDataURL('image/png'));
+          // Batasi: token bisa berubah beberapa kali, jangan simpan selamanya.
+          if (qrCache.size > 8) qrCache.delete(qrCache.keys().next().value);
+        }
+      } catch { /* pustaka QR gagal dimuat — daftar tautan tetap bisa dipakai */ }
+    }
+    pairCurrent = url;
+    const label = $('#pair-qr-label');
+    if (label) label.textContent = url;
+  }
+  function renderPairList(s) {
+    const host = $('#pair-list');
+    if (!host) return;
+    const withToken = (base) => `${base}/?token=${encodeURIComponent(state.token)}`;
+    const rows = [
+      { key: 'lan', label: 'WiFi yang sama (HP)', note: 'Paling cepat — satu jaringan dengan komputer ini', url: withToken(s.lanUrl) },
+      { key: 'local', label: 'Komputer ini', note: 'Hanya untuk browser di mesin yang sama', url: withToken(s.localUrl) },
+    ];
+    host.innerHTML = rows.map((r) => `
+      <div class="pair-item">
+        <div class="pair-main"><b>${esc(r.label)}</b><small>${esc(r.note)}</small><code>${esc(r.url)}</code></div>
+        <div class="pair-acts">
+          <button class="btn tiny" data-pair-qr="${esc(r.url)}">QR</button>
+          <button class="btn tiny" data-pair-copy="${esc(r.url)}">Salin</button>
+        </div>
+      </div>`).join('');
+    $$('#pair-list [data-pair-copy]').forEach((b) => b.addEventListener('click', () => {
+      navigator.clipboard?.writeText(b.dataset.pairCopy).then(() => toast('Tautan HP disalin — buka di browser HP', 3600, 'ok'));
+    }));
+    $$('#pair-list [data-pair-qr]').forEach((b) => b.addEventListener('click', () => {
+      $$('#pair-list .pair-item').forEach((el) => el.classList.remove('active'));
+      b.closest('.pair-item')?.classList.add('active');
+      paintPairQr(b.dataset.pairQr, '#qr-box', 180);
+      paintPairQr(b.dataset.pairQr, '#qr-box-pop', 190);
+      $('#phone-url-pop').textContent = b.dataset.pairQr;
+    }));
+    const first = rows[0];
+    paintPairQr(first.url, '#qr-box', 180);
+    paintPairQr(first.url, '#qr-box-pop', 190);
+    const popCode = $('#phone-url-pop');
+    if (popCode) popCode.textContent = first.url;
   }
 
   // ---------- tunnel internet (data seluler) ----------
@@ -4609,17 +5201,45 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
       toast(e.target.checked ? 'Notifikasi aktif' : 'Notifikasi dimatikan');
     } catch { e.target.checked = !e.target.checked; }
   });
-  $('#btn-test-toast').addEventListener('click', () => toast('Tes notifikasi — ini tampilannya.', 4000));
+  // Peristiwa & durasi: preferensi lokal. Dulu panel ini hanya punya satu
+  // sakelar, sehingga user tidak bisa memilih apa yang layak mengganggu.
+  function paintNotifyPrefs() {
+    const prefs = notifyPrefs();
+    $$('#notify-events [data-notify-ev]').forEach((el) => {
+      const k = el.dataset.notifyEv;
+      el.checked = prefs[k] === undefined ? el.defaultChecked : !!prefs[k];
+    });
+    const ms = notifyMs();
+    $$('#notify-dur [data-dur]').forEach((b) => b.classList.toggle('active', Number(b.dataset.dur) === ms));
+  }
+  $$('#notify-events [data-notify-ev]').forEach((el) => el.addEventListener('change', () => {
+    const prefs = notifyPrefs();
+    prefs[el.dataset.notifyEv] = el.checked;
+    localStorage.setItem('ah_notify_events', JSON.stringify(prefs));
+    toast(el.checked ? `${NOTIFY_EVENTS[el.dataset.notifyEv]} — diberitahukan` : `${NOTIFY_EVENTS[el.dataset.notifyEv]} — tidak lagi diberitahukan`, 2600, el.checked ? 'ok' : 'info');
+  }));
+  $$('#notify-dur [data-dur]').forEach((b) => b.addEventListener('click', () => {
+    localStorage.setItem('ah_notify_ms', b.dataset.dur);
+    paintNotifyPrefs();
+    toast('Durasi notifikasi diperbarui', Number(b.dataset.dur), 'ok');
+  }));
+  paintNotifyPrefs();
+  $('#btn-test-toast').addEventListener('click', () => toast('Tes notifikasi — ini tampilannya.', undefined, 'info'));
 
   // tentang: versi aplikasi + versi kontrak mesin
   let machinesVersion = null;
   function fillAbout() {
     const el = $('#set-about');
-    if (!el || !machinesVersion) return;
-    el.innerHTML = `
-      <span>Aplikasi</span><span>AgentHub v${esc(state?.server?.version || '?')}</span>
+    if (!machinesVersion) { if (el && !el.innerHTML.trim()) el.innerHTML = '<span>Aplikasi</span><span>memuat versi…</span>'; return; }
+    const ver = state?.server?.version || '?';
+    if (el) el.innerHTML = `
+      <span>Aplikasi</span><span>AgentHub v${esc(ver)}</span>
       <span>Kontrak mesin</span><span>v${esc(machinesVersion)}</span>
+      <span>Platform</span><span>${esc(state?.server?.platform || '—')}</span>
+      <span>Nama host</span><span>${esc(state?.server?.hostname || '—')}</span>
       <span>Lisensi</span><span>MIT</span>`;
+    const vEl = $('#about-version');
+    if (vEl) vEl.textContent = 'v' + ver;
   }
   api('/api/version').then((v) => {
     machinesVersion = v.machines;
@@ -4629,10 +5249,84 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
     if (el) el.innerHTML = `<span></span><span class="muted small">Info versi gagal dimuat: ${esc(e.message)}</span>`;
   });
 
+  // ---------- bahasa: antarmuka + balasan agent ----------
+  // Dua pengaturan berbeda dengan tempat simpan berbeda:
+  //   • Bahasa antarmuka disimpan di perangkat ini (localStorage) — tiap
+  //     browser/HP boleh beda, sama seperti tema & kepadatan.
+  //   • Bahasa balasan agent disimpan di server (config.json) — karena ia
+  //     mengubah isi prompt yang dikirim, dan itu milik server, bukan tab.
+  loadDict(EN_DICT);
+
+  function applyLangPref() {
+    const stored = localStorage.getItem('ah_lang');
+    const use = LANGS.some((l) => l.id === stored) ? stored : 'id';
+    applyLanguage(use);
+    $$('#lang-seg .seg-btn').forEach((b) => b.classList.toggle('active', b.dataset.lang === use));
+    // Kalau UI berbahasa Inggris, label pilihan bahasa balasan ikut Inggris
+    // supaya tidak campur aduk dalam satu panel.
+    $$('#reply-lang-list .lang-opt').forEach((el) => {
+      const id = el.dataset.langOpt;
+      const row = REPLY_LANGS.find((l) => l.id === id);
+      if (!row) return;
+      const label = el.querySelector('.lang-opt-label');
+      if (label) label.textContent = use === 'en' ? row.labelEn : row.label;
+    });
+  }
+
+  function renderReplyLangs() {
+    const host = $('#reply-lang-list');
+    if (!host) return;
+    const use = localStorage.getItem('ah_lang') === 'en' ? 'en' : 'id';
+    const cur = state?.config?.replyLang || 'auto';
+    host.innerHTML = REPLY_LANGS.map((l) => `
+      <button type="button" class="lang-opt ${cur === l.id ? 'active' : ''}" data-lang-opt="${l.id}" role="radio" aria-checked="${cur === l.id}">
+        <span class="lang-opt-dot" aria-hidden="true"></span>
+        <span class="lang-opt-label">${esc(use === 'en' ? l.labelEn : l.label)}</span>
+        <span class="lang-opt-code">${l.id === 'auto' ? '' : l.id.toUpperCase()}</span>
+      </button>`).join('');
+    $$('#reply-lang-list .lang-opt').forEach((b) => {
+      b.addEventListener('click', async () => {
+        const next = b.dataset.langOpt;
+        $$('#reply-lang-list .lang-opt').forEach((x) => {
+          const on = x === b;
+          x.classList.toggle('active', on);
+          x.setAttribute('aria-checked', String(on));
+        });
+        try {
+          await api('/api/settings', { method: 'POST', body: JSON.stringify({ replyLang: next }) });
+          if (state?.config) state.config.replyLang = next;
+          toast(next === 'auto'
+            ? tr('Agent mengikuti bahasa pesan Anda')
+            : `${tr('Agent akan menjawab dalam')} ${(use === 'en' ? REPLY_LANGS.find((l) => l.id === next)?.labelEn : REPLY_LANGS.find((l) => l.id === next)?.label) || next}`);
+        } catch (e) {
+          toast(tr('Gagal menyimpan bahasa balasan:') + ' ' + e.message);
+          renderReplyLangs();
+        }
+      });
+    });
+  }
+
+  $$('#lang-seg .seg-btn').forEach((b) => b.addEventListener('click', () => {
+    const next = b.dataset.lang;
+    if (!LANGS.some((l) => l.id === next)) return;
+    localStorage.setItem('ah_lang', next);
+    applyLanguage(next);
+    applyLangPref();
+    // Beberapa teks dibuat dari state, bukan dari DOM statis (mis. label
+    // pilihan bahasa balasan, tanggal, dan daftar yang dirender ulang).
+    // Render ulang view aktif supaya semuanya ikut bahasa baru.
+    renderSettingsNav();
+    activateSettingsPane(settingsPane);
+    renderReplyLangs();
+    if (typeof renderStats === 'function' && statsData) renderStats();
+  }));
+
   // aktifkan pane tersimpan saat boot
   renderSettingsNav();
   renderThemeCards();
   activateSettingsPane(settingsPane);
+  applyLangPref();
+  renderReplyLangs();
 
   // ---------- jadwal (scheduled runs) ----------
   let schedCache = [];
@@ -5100,7 +5794,6 @@ Jangan mengarang — bila data tidak ada di folder, katakan tidak ada.`;
   $('#btn-copy-gwkey').addEventListener('click', () => navigator.clipboard?.writeText($('#gw-key').textContent).then(() => toast('API key gateway disalin')));
   $('#btn-copy-env').addEventListener('click', () => navigator.clipboard?.writeText(gatewayEnvText()).then(() => toast('Env agent disalin')));
   $('#btn-promo-gateway').addEventListener('click', () => go('gateway'));
-  $('#btn-copy-url').addEventListener('click', () => navigator.clipboard?.writeText($('#phone-url').textContent).then(() => toast('URL HP disalin')));
   $('#btn-copy-token').addEventListener('click', () => navigator.clipboard?.writeText(state?.token || '').then(() => toast('Token disalin')));
 
   // ---------- popover usage ----------
@@ -5124,6 +5817,10 @@ Jangan mengarang — bila data tidak ada di folder, katakan tidak ada.`;
   $('#usage-manage').addEventListener('click', () => {
     setLayer(null);
     go('gateway');
+  });
+  $('#usage-stats-link').addEventListener('click', () => {
+    setLayer(null);
+    go('stats');
   });
 
   // ---------- popover environment ----------
@@ -5181,9 +5878,20 @@ Jangan mengarang — bila data tidak ada di folder, katakan tidak ada.`;
     es.onmessage = (ev) => {
       try {
         const { scope } = JSON.parse(ev.data);
-        if (scope === 'promo') toast('Data promo diperbarui otomatis');
-        if (scope === 'schedules') renderSchedules();
-        if (scope === 'agents' && view === 'settings') renderConnectorPulse();
+        // Latar belakang vs depan: perubahan yang datang sendiri (jadwal, kartu
+        // tugas, status konektor, katalog promo) hanya diberitahukan bila jendela
+        // sedang tidak dilihat. Saat Anda menatap layar, toast untuk hal seperti
+        // itu justru menutupi pekerjaan — dulu semuanya muncul.
+        if (scope === 'promo') toastBg('Data promo diperbarui otomatis', 'promo');
+        if (scope === 'schedules') {
+          renderSchedules();
+          toastBg('Jadwal berjalan — hasil ada di thread terkait', 'schedule');
+        }
+        if (scope === 'tasks') toastBg('Papan tugas diperbarui', 'task-move');
+        if (scope === 'agents') {
+          if (view === 'settings') renderConnectorPulse();
+          toastBg('Status konektor berubah', 'connector');
+        }
         // perubahan berkas di folder kerja → segarkan drawer Perubahan bila terbuka
         if (scope === 'workspace' && !document.querySelector('#changes-drawer')?.classList.contains('hidden') && curThread) {
           refreshWorkspace();

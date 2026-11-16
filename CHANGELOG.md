@@ -1,5 +1,39 @@
 # Changelog
 
+## 1.6.13 — 2026-11-16
+- **Prompt terpotong di Windows (bug lama, serius)** — `lib/harness.js`
+  membungkus CLI lewat `cmd.exe` dengan escape `""`. Itu bukan escape yang sah
+  untuk argv, jadi **setiap prompt yang mengandung spasi** sampai ke CLI sebagai
+  beberapa token berisi tanda kutip harfiah. Karena prompt chat selalu memuat
+  spasi, praktis semua permintaan rusak. Diganti pengutipan aturan MSVC C
+  runtime (`winArg()`).
+- **`cmd.exe` memotong newline dan command line 8191 karakter** — katalog skill
+  saja ~6.700 karakter, jadi blok `<available_local_skills>` dan
+  `<reply_language>` diam-diam hilang. Kini resolver (`resolveShim()`) membaca
+  shim npm `.cmd`/`.bat` dan men-spawn executable aslinya langsung, tanpa shell.
+  Terverifikasi untuk keempat CLI terpasang (claude → `claude.exe`,
+  codex/gemini → `node …js`, opencode → `opencode.exe`) dan prompt 20.000
+  karakter lewat utuh.
+- Jalur `cmd.exe` tetap tersedia sebagai cadangan (harness yang sengaja memakai
+  redirection `>`/pipe), dengan pengutipan benar dan newline diratakan.
+- **Pengaturan bahasa** (`lib/lang.js`, `public/i18n.js`, `public/i18n-dict.js`)
+  — bahasa antarmuka (ID ⇄ EN, 590 kunci kamus) dan bahasa balasan agent
+  (7 pilihan, termasuk "ikuti bahasa pesan saya"). Keduanya terpisah: UI bisa
+  Indonesia sambil agent menjawab Inggris. Teks user dan balasan agent tidak
+  pernah ikut diterjemahkan.
+- **Statistik pemakaian** (`lib/stats.js`, `GET /api/stats`) — heatmap 53×7,
+  grafik batang 7/30/90 hari, rincian per fitur dan per engine, kartu ringkasan.
+  Angka dihitung dari peristiwa nyata (bukan contoh), memakai hari lokal.
+- **Halaman unduh dan situs** — tema gelap/oranye dan logo heksagon diselaraskan
+  dengan aplikasi; ikon emoji diganti SVG, termasuk favicon situs. Layout
+  unduhan menyesuaikan layar kecil dan teks privasi menjelaskan pengiriman
+  API key ke provider yang digunakan.
+- **Tab OS halaman unduh** — skrip dipindahkan ke `public/download.js` agar
+  berjalan dengan CSP `script-src 'self'`; tab mendukung tombol panah,
+  Home/End, fokus keyboard, dan relasi tab/panel untuk pembaca layar.
+- Tes regresi: `harness.test.js` (pengutipan + resolver) dan
+  `lang.test.js`, `stats.test.js`.
+
 ## 1.6.7 — 2026-11-16
 - **Tab "Daftar Free-Tier" ikut disaring** — tab itu menampilkan salinan mentah
   dari repo pihak ketiga (free-llm-api-resources) yang tertinggal berbulan-bulan,

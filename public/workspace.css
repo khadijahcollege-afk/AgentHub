@@ -14,8 +14,14 @@
 html, body { background: transparent; }
 body { padding: 8px; }
 #app.layout { height: calc(100dvh - 16px); background: var(--bg); border-radius: 12px; border-color: #303036; box-shadow: 0 12px 48px #0005; backdrop-filter: none; }
-.workspace-brand { display: flex; align-items: center; gap: 10px; padding: 6px 0 18px; }
+.workspace-brand { display: flex; align-items: center; gap: 10px; padding: 6px 0 18px; background: none; border: 0; cursor: pointer; font: inherit; color: inherit; text-align: left; border-radius: 10px; transition: background .14s; }
+.workspace-brand:hover { background: rgba(255, 255, 255, .045); }
+.workspace-brand:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .workspace-brand > span { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 9px; background: #f0f0f3; color: #18181b; font-size: 11px; font-weight: 750; letter-spacing: -.03em; }
+/* Logo ikon: heksagon gradien dengan tiga node terhubung — "agent workspace".
+   Bukan huruf "AH" lagi; satu berkas SVG inline supaya ikut warna tema. */
+.workspace-brand .brand-mark { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: #14141a; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .07); }
+.workspace-brand .brand-mark svg { width: 26px; height: 26px; display: block; }
 .workspace-brand b { display: none; font-size: 13px; font-weight: 650; }
 .workspace-brand small { display: block; margin-top: 3px; color: var(--muted); font-size: 10px; font-weight: 400; }
 .rail { background: var(--rail); border-right-color: var(--line); padding-top: 12px; }
@@ -230,17 +236,30 @@ label { color: #b5b5bf; font-size: 12px; gap: 8px; }
   body { background: transparent; padding: 0; }
   #app.layout { height: 100dvh; border: 0; border-radius: 0; }
   #app.layout { flex-direction: column; }
+  /* Di ponsel rail pindah ke bawah. Dulu isinya satu baris horizontal yang
+     bisa digeser: 12 tombol butuh ~524 px, jadi di layar 360-414 px tombol
+     Environment, Notifikasi, dan Pengaturan berada di luar layar dan tidak
+     pernah bisa diakses tanpa geser tak terlihat. Sekarang barisnya dibungkus
+     (wrap) jadi dua baris sehingga SEMUA tujuan navigasi terlihat sekaligus. */
   #app.layout > .rail {
-    order: 2; width: 100%; height: 54px; min-height: 54px; flex: 0 0 54px;
-    flex-direction: row; align-items: center; justify-content: flex-start; gap: 4px;
-    padding: 4px 2px calc(4px + env(safe-area-inset-bottom, 0px));
-    border: 0; border-top: 1px solid var(--line); overflow-x: auto; box-sizing: border-box;
+    order: 2; width: 100%; height: auto; min-height: 0; flex: 0 0 auto;
+    display: grid; grid-template-columns: repeat(6, 1fr); align-items: center; gap: 2px;
+    padding: 3px 2px calc(3px + env(safe-area-inset-bottom, 0px));
+    border: 0; border-top: 1px solid var(--line); overflow: visible; box-sizing: border-box;
   }
   #app.layout > .rail > .workspace-brand, #app.layout > .rail > .rail-spacer { display: none; }
-  #app.layout > .rail > .rail-top { flex: 0 0 auto; flex-direction: row; align-items: center; gap: 4px; }
-  #app.layout > .rail > .rail-btn { flex: 0 0 42px; width: 42px; height: 40px; }
+  /* display:contents membuat pembungkus .rail-top tidak menghalangi grid:
+     tombol-tombolnya ikut satu alur dengan tombol di luar pembungkus, jadi
+     hasilnya tepat 2 baris x 6 kolom yang rata. */
+  #app.layout > .rail > .rail-top { display: contents; }
+  #app.layout > .rail > .rail-btn { width: 100%; height: 38px; justify-self: center; }
   #app.layout > .rail > #rail-spaces { display: none; }
   #app.layout > .main { order: 1; flex: 1 1 auto; width: 100%; height: 0; min-width: 0; min-height: 0; }
+  /* Sidebar di ponsel menutupi seluruh lebar mulai dari tepi kiri. Aturan
+     sebelumnya memakai left:52px karena rail masih di kiri; sekarang rail ada
+     di bawah, jadi menyisakan 52 px kosong yang tidak bisa dipakai. */
+  .sidebar { left: 0; width: min(300px, 86vw); }
+  .sb-backdrop:not(.hidden) { inset: 0; }
   #app.layout > .main > .view { height: 100%; min-width: 0; }
   #view-studio.active, #view-tasks.active, #view-notes.active { min-height: 0; }
   #view-studio.active > .chat { min-width: 0; height: 100%; }

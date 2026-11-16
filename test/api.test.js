@@ -550,6 +550,50 @@ test('stats: statistik sesi thread dihitung dari pesan nyata', async () => {
 });
 
 
+test('stats fitur: /api/stats menghitung dari peristiwa nyata, bukan angka karangan', async () => {
+  const before = await (await api('/api/stats')).json();
+
+  // Bentuk kontrak yang dipakai UI.
+  assert.equal(before.series.length, 364, 'heatmap butuh 364 hari (52 minggu)');
+  assert.equal(before.series.at(-1).date, before.today, 'seri diakhiri hari ini');
+  assert.ok(Array.isArray(before.features) && before.features.length >= 10, 'semua fitur terdaftar');
+  for (const f of before.features) {
+    assert.ok(typeof f.id === 'string' && typeof f.label === 'string');
+    assert.ok(Number.isFinite(f.count) && f.count >= 0);
+  }
+  // Seri tidak boleh punya lubang tanggal: satu entri per hari, berurutan.
+  for (let i = 1; i < before.series.length; i++) {
+    const a = Date.parse(before.series[i - 1].date);
+    const b = Date.parse(before.series[i].date);
+    assert.equal(Math.round((b - a) / 86400000), 1, 'tanggal seri harus berurutan');
+  }
+
+  // Konsistensi yang mudah terlihat user: chat total = jumlah per engine.
+  const chat = before.features.find((f) => f.id === 'chat');
+  const engineSum = before.engines.reduce((n, e) => n + e.count, 0);
+  assert.equal(chat.count, engineSum, 'chat harus sama dengan total per engine');
+
+  // Tindakan nyata menambah angka fitur yang tepat — dan hanya itu.
+  const noteBefore = chat && before.features.find((f) => f.id === 'notes').count;
+  await api('/api/notes', { method: 'POST', body: JSON.stringify({ title: 'Uji statistik', body: 'isi' }) });
+  const after = await (await api('/api/stats')).json();
+  assert.equal(after.features.find((f) => f.id === 'notes').count, noteBefore + 1);
+  assert.equal(after.total, before.total + 1, 'total ikut naik tepat satu');
+  assert.equal(after.features.find((f) => f.id === 'chat').count, chat.count, 'fitur lain tidak tersentuh');
+
+  // Perbandingan rentang membandingkan panjang yang sama.
+  for (const days of [7, 30, 90]) {
+    const d = await (await api(`/api/stats?days=${days}`)).json();
+    assert.equal(d.days, days);
+    assert.equal(typeof d.current, 'number');
+    if (d.comparable) assert.equal(typeof d.previous, 'number');
+    // deltaPct hanya bermakna bila ada pembanding
+    if (d.previous === 0) assert.equal(d.deltaPct, null, 'tanpa pembanding → null, bukan 0/Infinity');
+  }
+  const clamped = await (await api('/api/stats?days=abc')).json();
+  assert.equal(clamped.days, 7, 'nilai aneh jatuh ke 7 hari, bukan NaN');
+});
+
 test('katalog promo: berisi entri hasil riset Nov 2026 dengan sumber', async () => {
   const state = await (await api('/api/state')).json();
   const catalog = state.catalog || [];
