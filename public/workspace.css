@@ -243,7 +243,7 @@ label { color: #b5b5bf; font-size: 12px; gap: 8px; }
      (wrap) jadi dua baris sehingga SEMUA tujuan navigasi terlihat sekaligus. */
   #app.layout > .rail {
     order: 2; width: 100%; height: auto; min-height: 0; flex: 0 0 auto;
-    display: grid; grid-template-columns: repeat(6, 1fr); align-items: center; gap: 2px;
+    display: grid; grid-template-columns: repeat(5, 1fr); align-items: center; gap: 2px;
     padding: 3px 2px calc(3px + env(safe-area-inset-bottom, 0px));
     border: 0; border-top: 1px solid var(--line); overflow: visible; box-sizing: border-box;
   }
@@ -252,6 +252,13 @@ label { color: #b5b5bf; font-size: 12px; gap: 8px; }
      tombol-tombolnya ikut satu alur dengan tombol di luar pembungkus, jadi
      hasilnya tepat 2 baris x 6 kolom yang rata. */
   #app.layout > .rail > .rail-top { display: contents; }
+  /* Nav bawah yang rapi: 5 tujuan utama saja (Studio, Tugas, Promo, Gateway,
+     Lainnya). Sisanya dibuka lewat sheet "Lainnya" — bukan dipadatkan jadi
+     dua baris yang timpang seperti sebelumnya. */
+  #app.layout > .rail > .rail-top > .rail-btn:not(.rail-primary),
+  #app.layout > .rail > .rail-btn:not(.rail-primary):not(#rail-more) { display: none; }
+  #app.layout > .rail > #rail-more { display: inline-flex; position: relative; }
+  #app.layout > .rail > .rail-btn, #app.layout > .rail > .rail-top > .rail-btn { height: 44px; width: 100%; }
   #app.layout > .rail > .rail-btn { width: 100%; height: 38px; justify-self: center; }
   #app.layout > .rail > #rail-spaces { display: none; }
   #app.layout > .main { order: 1; flex: 1 1 auto; width: 100%; height: 0; min-width: 0; min-height: 0; }
@@ -278,3 +285,40 @@ label { color: #b5b5bf; font-size: 12px; gap: 8px; }
   .btn { min-height: 36px; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0s !important; } }
+
+/* ---------- bottom sheet "Lainnya" (nav ponsel) ---------- */
+#rail-more { display: none; }
+.more-sheet { position: fixed; inset: 0; z-index: 95; background: rgba(0, 0, 0, .5); display: flex; align-items: flex-end; }
+.more-sheet.hidden { display: none; }
+.more-sheet-card {
+  width: 100%; background: #1b1b1e; border-top: 1px solid #2c2c31;
+  border-radius: 16px 16px 0 0; padding: 14px 14px calc(12px + env(safe-area-inset-bottom, 0px));
+  display: flex; flex-direction: column; gap: 12px;
+  animation: ms-up .18s ease;
+}
+@keyframes ms-up { from { transform: translateY(18px); opacity: .5; } to { transform: none; opacity: 1; } }
+.ms-title { font-size: 11px; font-weight: 600; color: #b9b9c0; letter-spacing: .08em; text-transform: uppercase; }
+.ms-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.ms-item {
+  display: flex; flex-direction: column; align-items: center; gap: 7px;
+  padding: 12px 4px 10px; border-radius: 12px;
+  background: #232327; border: 1px solid #303036;
+  color: #d6d6dc; font: inherit; font-size: 10.5px; text-align: center;
+  cursor: pointer;
+}
+.ms-item svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.65; stroke-linecap: round; stroke-linejoin: round; }
+.ms-item:active { background: #303034; color: #fff; }
+.ms-close {
+  align-self: center; min-height: 34px; padding: 6px 22px;
+  background: none; border: 1px solid #3a3a40; border-radius: 99px;
+  color: #b9b9c0; font: inherit; font-size: 12px; cursor: pointer;
+}
+.ms-close:active { background: #303034; color: #fff; }
+
+/* chat-top ponsel: judul meliputi rapi, terminal kecil, tidak tumpang tindih */
+@media (max-width: 560px) {
+  .chat-top { flex-wrap: wrap; row-gap: 6px; height: auto; min-height: 52px; padding: 8px 12px; }
+  .chat-top b { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chat-top .find-bar { order: 9; flex: 1 1 100%; }
+  #btn-terminal { min-height: 34px; font-size: 11px; padding: 6px 10px; }
+}

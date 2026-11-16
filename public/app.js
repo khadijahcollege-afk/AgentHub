@@ -536,6 +536,22 @@ window.__ahMachines = {
     if (v === 'alerts') markReadSoon();
   }
   $('#btn-side-toggle').addEventListener('click', () => { sidebarOpen = !sidebarOpen; applySidebar(); });
+
+  // ---------- bottom sheet "Lainnya" (nav ponsel) ----------
+  // Rail ponsel hanya memuat 5 tujuan utama; sisanya dibuka lewat sheet ini
+  // supaya baris navigasi rapi satu baris dan semua tujuan tetap terjangkau.
+  const moreSheet = $('#more-sheet');
+  const closeSheet = () => moreSheet?.classList.add('hidden');
+  $('#rail-more')?.addEventListener('click', () => moreSheet?.classList.toggle('hidden'));
+  $('#ms-close')?.addEventListener('click', closeSheet);
+  moreSheet?.addEventListener('click', (e) => {
+    if (e.target === moreSheet) return closeSheet();
+    const item = e.target.closest('.ms-item');
+    if (!item) return;
+    closeSheet();
+    go(item.dataset.view);
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSheet(); });
   // Logo = tombol sidebar. Satu klik dari ikon brand membuka sidebar studio,
   // jadi rail tidak lagi jadi satu-satunya jalan.
   $('#brand-home').addEventListener('click', () => {
@@ -876,6 +892,10 @@ window.__ahMachines = {
     const badge = $('#badge-alerts');
     badge.classList.toggle('hidden', unread === 0);
     badge.textContent = unread > 9 ? '9+' : unread;
+    // cermin badge di tombol Lainnya (nav ponsel) — notifikasi tak boleh
+    // hilang dari pandangan hanya karena tombolnya dipindah ke sheet
+    const bm = $('#badge-alerts-m');
+    if (bm) { bm.classList.toggle('hidden', unread === 0); bm.textContent = badge.textContent; }
   }
 
   function engineLabel(id) {
