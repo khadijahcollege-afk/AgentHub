@@ -2379,6 +2379,64 @@ html[data-density="comfortable"] .kcol-head { padding-bottom: 16px; }
 .instr-src.on b { color: var(--accent); }
 .instr-warn { margin: 4px 0 0; font-size: 12px; color: #d9a13b; line-height: 1.6; }
 
+/* ---------- plugin (settings) ---------- */
+.plug-list { display: flex; flex-direction: column; gap: 8px; margin: 14px 0 18px; }
+.plug-row {
+  display: flex; align-items: flex-start; gap: 10px;
+  background: #1b1b1e; border: 1px solid #2c2c31; border-radius: 10px;
+  padding: 10px 12px;
+}
+.plug-row.off { opacity: .62; }
+.plug-main { flex: 1; min-width: 0; }
+.plug-title { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.plug-title b { font-size: 13px; color: #e6e6ec; overflow-wrap: anywhere; }
+.plug-src {
+  font-size: 10.5px; color: #9a9aa2;
+  border: 1px solid #33333a; border-radius: 5px; padding: 1px 5px;
+  white-space: nowrap;
+}
+.plug-desc { margin-top: 4px; font-size: 12.5px; color: #b6b6bd; overflow-wrap: anywhere; }
+.plug-bits { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.plug-bits span {
+  font-size: 10.5px; color: #8f8f97;
+  background: rgba(255, 255, 255, .04); border-radius: 5px; padding: 2px 6px;
+  overflow-wrap: anywhere;
+}
+.plug-err { margin-top: 6px; font-size: 12px; color: var(--err); line-height: 1.55; overflow-wrap: anywhere; }
+.plug-warn { margin-top: 6px; font-size: 12px; color: #d9a13b; line-height: 1.55; overflow-wrap: anywhere; }
+.plug-trust { margin-top: 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.plug-trust .plug-ok { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: #6ec98a; }
+.plug-trust .plug-ok .ico { width: 13px; height: 13px; }
+.plug-trust .plug-warn-text { font-size: 12px; color: #d9a13b; }
+.plug-acts { display: flex; gap: 2px; flex: 0 0 auto; }
+.plug-commands { margin-top: 16px; }
+.plug-cmd-head { font-size: 12px; color: #9a9aa2; margin-bottom: 6px; }
+.plug-cmd {
+  display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+  padding: 5px 0; border-top: 1px solid rgba(255, 255, 255, .045);
+}
+.plug-cmd code { font-size: 11.5px; color: var(--accent); overflow-wrap: anywhere; }
+.plug-cmd span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.plug-market-add { display: flex; gap: 8px; margin-bottom: 8px; }
+.plug-market-add input {
+  flex: 1; min-width: 0;
+  background: #131316; border: 1px solid #2c2c31; border-radius: 8px;
+  padding: 8px 10px; color: #e6e6ec; font: inherit; font-size: 13px;
+}
+.plug-market-add input:focus { outline: none; border-color: var(--accent); }
+.plug-market-list, .plug-available { display: flex; flex-direction: column; gap: 6px; }
+.plug-market {
+  display: flex; align-items: center; gap: 10px;
+  background: #1b1b1e; border: 1px solid #2c2c31; border-radius: 9px;
+  padding: 8px 10px;
+}
+.plug-market > div { flex: 1; min-width: 0; }
+.plug-market b { font-size: 12.5px; color: #e6e6ec; }
+.plug-path { font-size: 11px; overflow-wrap: anywhere; }
+@media (hover: none) {
+  .plug-acts .icon-btn { width: 30px; height: 30px; }
+}
+
 /* ---------- server MCP & hook (settings) ---------- */
 .mcp-list, .hook-list { display: flex; flex-direction: column; gap: 8px; margin: 14px 0 18px; }
 .mcp-row, .hook-row, .hook-trust-row {

@@ -274,6 +274,7 @@ window.__ahMachines = {
     play: '<path d="M8 5.5v13l10-6.5z"/>',
     pause: '<rect x="8" y="5.5" width="3" height="13" rx="1"/><rect x="13.5" y="5.5" width="3" height="13" rx="1"/>',
     plug: '<path d="M9 4v5M15 4v5"/><path d="M7 9h10v3a5 5 0 0 1-10 0z"/><path d="M12 17v3"/>',
+    trash: '<path d="M4 7h16"/><path d="M9 7V5h6v2"/><path d="M6 7l1 13h10l1-13"/><path d="M10 11v6M14 11v6"/>',
   };
   const icon = (id) => `<svg class="ico" viewBox="0 0 24 24">${ICON_PATHS[id] || ICON_PATHS.robot}</svg>`;
   // Tanda centang & silang sebagai SVG, bukan karakter ✓/✕: bentuknya sama di
@@ -484,6 +485,7 @@ window.__ahMachines = {
         if (slices.includes('notes') && view === 'notes') renderNotes();
         if (slices.includes('memory') && view === 'settings' && settingsPane === 'memory') renderMemory();
         if (slices.includes('config') && view === 'settings' && settingsPane === 'mcp') renderMcp();
+        if (slices.includes('config') && view === 'settings' && settingsPane === 'plugins') renderPlugins();
         // Instruksi bisa berubah karena thread berganti folder kerja, jadi ikut
         // disegarkan saat state berubah — bukan hanya saat panel dibuka.
         if (view === 'settings' && settingsPane === 'instructions'
@@ -2861,6 +2863,20 @@ window.__ahMachines = {
     }
   }
 
+  // Nama perintah dari plugin. Diisi dari /api/plugins; dipakai agar slash
+  // command plugin tidak ditolak sebagai "tidak dikenal" di composer.
+  let pluginCommandNames = new Set();
+  let pluginCommandsLoaded = false;
+  async function loadPluginCommands() {
+    if (pluginCommandsLoaded) return pluginCommandNames;
+    pluginCommandsLoaded = true;
+    try {
+      const d = await api('/api/plugins');
+      pluginCommandNames = new Set((d.commands || []).map((c) => c.name.toLowerCase()));
+    } catch { /* server lama atau plugin mati: biarkan kosong */ }
+    return pluginCommandNames;
+  }
+
   async function sendPrompt(directPrompt) {
     if (runActive()) return;
     const typed = $('#composer-input').value.trim();
@@ -2871,8 +2887,13 @@ window.__ahMachines = {
         $('#composer-input').value = '';
         return;
       }
-      toast(`Perintah /${cmd} tidak dikenal — /help untuk daftar`);
-      return;
+      // Bukan perintah lokal, tetapi mungkin perintah dari plugin: perintah itu
+      // diperluas di server, jadi teksnya harus tetap dikirim apa adanya.
+      const names = await loadPluginCommands();
+      if (!names.has(cmd.toLowerCase())) {
+        toast(`Perintah /${cmd} tidak dikenal — /help untuk daftar`);
+        return;
+      }
     }
     // Lampiran saja (tanpa teks) tetap boleh dikirim: file sering jadi prompt.
     // Regenerate tidak membawa chip composer supaya tidak mengirim file dua kali.
@@ -4515,6 +4536,7 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
     ['privacy', 'Privasi', '<path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/><path d="M9.5 12l1.8 1.8 3.2-3.6"/>'],
     ['memory', 'Memori', '<path d="M8 4h8a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3h-2v3l-3-3H8a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3z"/><path d="M8.5 9h7M8.5 12h5"/>'],
   ['instructions', 'Instruksi', '<path d="M6 3.5h9l4 4V20a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1z"/><path d="M14.5 3.5V8h4.5"/><path d="M8.5 12.5h7M8.5 16h4.5"/>'],
+  ['plugins', 'Plugin', '<path d="M10 3.5h4v3a2.5 2.5 0 0 0 5 0v3.5a2.5 2.5 0 0 1-2.5 2.5H13v3a2.5 2.5 0 0 1-5 0V12H5.5A2.5 2.5 0 0 1 3 9.5V6a2.5 2.5 0 0 1 2.5-2.5H10z"/>'],
     ['mcp', 'Server MCP', '<path d="M4 7h6l2 3h8"/><path d="M4 17h5"/><circle cx="17.5" cy="17" r="2.5"/><circle cx="7" cy="7" r="2.5"/><circle cx="6.5" cy="17" r="2.5"/>'],
     ['hooks', 'Hook', '<path d="M9 4v6a3 3 0 0 0 3 3h8"/><path d="M17 10l3 3-3 3"/><circle cx="6" cy="4" r="2"/><path d="M6 6v14"/>'],
     ['shortcuts', 'Pintasan', '<rect x="2.5" y="6" width="19" height="12" rx="2.5"/><path d="M6.5 10h.01M10 10h.01M13.5 10h.01M17 10h.01M7.5 14h9"/>'],
@@ -4529,7 +4551,7 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
   // Kelompok nav ala halaman settings Kybern: Pribadi / Agent / Sistem.
   const SETTINGS_GROUPS = [
     ['Pribadi', ['preferences', 'language', 'appearance', 'notifications', 'privacy', 'memory', 'shortcuts']],
-    ['Agent', ['providers', 'models', 'engines', 'instructions', 'mcp', 'hooks', 'connectors', 'projects', 'billing', 'schedules', 'orchestra']],
+    ['Agent', ['providers', 'models', 'engines', 'instructions', 'plugins', 'mcp', 'hooks', 'connectors', 'projects', 'billing', 'schedules', 'orchestra']],
     ['Sistem', ['phone', 'server', 'desktop', 'about']],
   ];
 
@@ -4740,6 +4762,7 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
     if (id === 'orchestra') { renderOrchestra(); renderOrchestraEngines(); }
     if (id === 'memory') renderMemory();
     if (id === 'instructions') renderInstructions();
+    if (id === 'plugins') renderPlugins();
     if (id === 'mcp') { renderMcp(); syncMcpTransport(); }
     if (id === 'hooks') renderHooks();
   }
@@ -5219,6 +5242,237 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
     toast('Instruksi dimuat ulang dari berkas');
   });
 
+  // ---------- plugin ----------
+  // Satu panel untuk empat kontribusi sekaligus (skill, perintah, hook, MCP).
+  // Yang ditonjolkan adalah status kepercayaan: plugin yang belum disetujui
+  // tetap boleh memasang skill (teks), tetapi hook dan MCP-nya diam sampai
+  // pengguna menyetujui digest-nya.
+  async function renderPlugins() {
+    const host = $('#plug-list');
+    if (!host) return;
+    let data;
+    try { data = await api('/api/plugins'); } catch (err) {
+      host.innerHTML = `<p class="muted small">Gagal memuat plugin: ${esc(err.message)}</p>`;
+      return;
+    }
+    const tgl = $('#set-plugins-on');
+    if (tgl) tgl.checked = data.enabled !== false;
+
+    const plugins = data.plugins || [];
+    if (!plugins.length) {
+      host.innerHTML = '<p class="muted small">Belum ada plugin terpasang. Pasang dari folder di atas, atau tambahkan marketplace lalu pilih dari daftarnya.</p>';
+    } else {
+      host.innerHTML = plugins.map((p) => {
+        const m = p.manifest || {};
+        const bits = [];
+        if (m.skills) bits.push('skill');
+        if (m.commands) bits.push('perintah');
+        if (m.hooks) bits.push(`hook: ${(m.hookEvents || []).join(', ')}`);
+        if (m.mcp) bits.push(`MCP: ${(m.mcpServers || []).join(', ')}`);
+        const needsTrust = !!(m.hooks || m.mcp);
+        const errs = p.diagnostics?.errors || [];
+        const warns = p.diagnostics?.warnings || [];
+        return `<div class="plug-row ${p.enabled ? '' : 'off'}">
+          <div class="plug-main">
+            <div class="plug-title">
+              <b>${esc(p.name)}</b>
+              ${p.version ? `<span class="muted small">v${esc(p.version)}</span>` : ''}
+              <span class="plug-src">${p.source === 'marketplace' ? esc(p.marketplace || 'marketplace') : 'lokal'}</span>
+              ${p.disabled ? '<span class="plug-src">nonaktif</span>' : ''}
+              ${!p.globalEnabled ? '<span class="plug-src">plugin dimatikan global</span>' : ''}
+            </div>
+            ${p.description ? `<div class="plug-desc">${esc(p.description)}</div>` : ''}
+            ${bits.length ? `<div class="plug-bits">${bits.map((b) => `<span>${esc(b)}</span>`).join('')}</div>` : ''}
+            ${errs.length ? `<div class="plug-err">${errs.map((e) => esc(e)).join('<br>')}</div>` : ''}
+            ${warns.length ? `<div class="plug-warn">${warns.map((e) => esc(e)).join('<br>')}</div>` : ''}
+            ${needsTrust && !errs.length ? `<div class="plug-trust" data-plug-trust="${esc(p.name)}"><span class="muted small">memuat status izin…</span></div>` : ''}
+          </div>
+          <div class="plug-acts">
+            <button class="icon-btn" data-plug-toggle="${esc(p.name)}" title="${p.disabled ? 'Aktifkan plugin' : 'Nonaktifkan plugin'}">${p.disabled ? icon('check') : icon('x')}</button>
+            <button class="icon-btn" data-plug-update="${esc(p.name)}" title="Perbarui dari sumber">${icon('refresh')}</button>
+            <button class="icon-btn danger" data-plug-del="${esc(p.name)}" title="Copot plugin">${icon('trash')}</button>
+          </div>
+        </div>`;
+      }).join('');
+    }
+
+    // Status izin diambil per plugin: digest hanya dihitung server, jadi UI
+    // tidak bisa salah menghitung sendiri.
+    $$('#plug-list [data-plug-trust]').forEach(async (el) => {
+      const name = el.dataset.plugTrust;
+      try {
+        const st = await api(`/api/plugins/${encodeURIComponent(name)}/trust`);
+        if (!st.needsTrust) { el.remove(); return; }
+        el.innerHTML = st.trusted
+          ? `<span class="plug-ok">${icon('check')} hook &amp; MCP aktif</span> <button class="btn tiny" data-plug-untrust="${esc(name)}">Cabut izin</button>`
+          : `<span class="plug-warn-text">hook &amp; MCP belum aktif</span> <button class="btn tiny" data-plug-trust-btn="${esc(name)}" data-digest="${esc(st.digest)}">Setujui</button>`;
+      } catch { el.remove(); }
+    });
+
+    // Perintah slash yang tersedia — pengguna perlu tahu apa yang bisa diketik.
+    const cmdHost = $('#plug-commands');
+    if (cmdHost) {
+      const cmds = data.commands || [];
+      cmdHost.innerHTML = cmds.length
+        ? `<div class="plug-cmd-head">Perintah dari plugin</div>${cmds.map((c) => `
+          <div class="plug-cmd">
+            <code>/${esc(c.name)}${c.argumentHint ? ` ${esc(c.argumentHint)}` : ''}</code>
+            <span class="muted small">${esc(c.description || c.plugin)}</span>
+          </div>`).join('')}`
+        : '';
+    }
+
+    // Marketplace
+    const mkHost = $('#plug-market-list');
+    if (mkHost) {
+      const markets = data.marketplaces || [];
+      mkHost.innerHTML = markets.length ? markets.map((m) => `
+        <div class="plug-market">
+          <div>
+            <b>${esc(m.name)}</b>
+            <span class="muted small">${m.error ? esc(m.error) : `${m.available} plugin tersedia`}</span>
+            <div class="muted small plug-path">${esc(m.path)}</div>
+          </div>
+          <button class="icon-btn danger" data-market-del="${esc(m.name)}" title="Hapus marketplace">${icon('x')}</button>
+        </div>`).join('') : '<p class="muted small">Belum ada marketplace.</p>';
+    }
+    const avHost = $('#plug-available');
+    if (avHost) {
+      const avail = (data.available || []).filter((p) => !p.installed);
+      avHost.innerHTML = avail.length ? avail.map((p) => `
+        <div class="plug-market">
+          <div>
+            <b>${esc(p.name)}</b>${p.version ? ` <span class="muted small">v${esc(p.version)}</span>` : ''}
+            <div class="muted small">${esc(p.description || p.marketplace)}</div>
+          </div>
+          <button class="btn tiny" data-plug-from-market="${esc(p.name)}" data-market="${esc(p.marketplace)}">Pasang</button>
+        </div>`).join('') : '';
+    }
+  }
+
+  async function pluginAction(work, okMessage) {
+    const status = $('#plug-status');
+    if (status) status.textContent = 'Memproses…';
+    try {
+      const r = await work();
+      if (status) status.textContent = '';
+      if (okMessage) toast(okMessage);
+      // Daftar perintah plugin berubah setelah pasang/copot/aktifkan: cache di
+      // composer harus ikut dibuang, kalau tidak perintah baru tetap ditolak.
+      pluginCommandsLoaded = false;
+      await renderPlugins();
+      return r;
+      return r;
+    } catch (err) {
+      if (status) status.textContent = `Gagal: ${err.message}`;
+      toast('Gagal: ' + err.message);
+      return null;
+    }
+  }
+
+  $('#set-plugins-on')?.addEventListener('change', async (e) => {
+    await pluginAction(
+      () => api('/api/plugins/enabled', { method: 'POST', body: JSON.stringify({ enabled: e.target.checked }) }),
+      e.target.checked ? 'Plugin diaktifkan' : 'Plugin dimatikan',
+    );
+  });
+
+  $('#plug-install')?.addEventListener('click', async () => {
+    const input = $('#plug-path');
+    const dir = (input?.value || '').trim();
+    if (!dir) return toast('Isi path folder plugin dulu');
+    const r = await pluginAction(
+      () => api('/api/plugins/install', { method: 'POST', body: JSON.stringify({ name: dir }) }),
+      'Plugin terpasang',
+    );
+    if (r) input.value = '';
+  });
+
+  $('#plug-validate')?.addEventListener('click', async () => {
+    const dir = ($('#plug-path')?.value || '').trim();
+    if (!dir) return toast('Isi path folder plugin dulu');
+    try {
+      const r = await api('/api/plugins/validate', { method: 'POST', body: JSON.stringify({ dir }) });
+      const lines = [];
+      if (r.name) lines.push(`${r.name}${r.version ? ` v${r.version}` : ''}`);
+      if (r.contributes?.skills) lines.push('- skill');
+      if (r.contributes?.commands) lines.push(`- ${r.contributes.commands} perintah`);
+      if (r.contributes?.hookEvents?.length) lines.push(`- hook: ${r.contributes.hookEvents.join(', ')}`);
+      if (r.contributes?.mcpServers?.length) lines.push(`- MCP: ${r.contributes.mcpServers.join(', ')}`);
+      for (const e of r.errors || []) lines.push(`Masalah: ${e}`);
+      for (const w of r.warnings || []) lines.push(`Catatan: ${w}`);
+      const status = $('#plug-status');
+      if (status) status.textContent = r.ok ? 'Struktur sah — siap dipasang' : 'Ada masalah pada manifest';
+      toast(lines.join('\n') || 'Tidak ada isi yang bisa dibaca', 7000);
+    } catch (err) { toast('Gagal memeriksa: ' + err.message); }
+  });
+
+  $('#plug-market-add')?.addEventListener('click', async () => {
+    const input = $('#plug-market-path');
+    const dir = (input?.value || '').trim();
+    if (!dir) return toast('Isi path marketplace dulu');
+    const r = await pluginAction(
+      () => api('/api/plugins/marketplaces', { method: 'POST', body: JSON.stringify({ dir }) }),
+      'Marketplace ditambahkan',
+    );
+    if (r && input) input.value = '';
+  });
+
+  // Aksi per baris plugin memakai delegasi: daftar ini dirender ulang setiap
+  // kali state berubah, jadi listener per tombol akan hilang.
+  document.addEventListener('click', async (e) => {
+    const t = e.target.closest('[data-plug-toggle],[data-plug-del],[data-plug-update],[data-plug-trust-btn],[data-plug-untrust],[data-market-del],[data-plug-from-market]');
+    if (!t) return;
+    const d = t.dataset;
+    if (d.plugToggle) {
+      const on = t.title.startsWith('Aktifkan');
+      await pluginAction(
+        () => api(`/api/plugins/${encodeURIComponent(d.plugToggle)}/enabled`, { method: 'POST', body: JSON.stringify({ enabled: on }) }),
+        on ? 'Plugin diaktifkan' : 'Plugin dinonaktifkan',
+      );
+      return;
+    }
+    if (d.plugUpdate) {
+      await pluginAction(() => api(`/api/plugins/${encodeURIComponent(d.plugUpdate)}/update`, { method: 'POST', body: JSON.stringify({}) }), 'Plugin diperbarui');
+      return;
+    }
+    if (d.plugDel) {
+      const ok = await askConfirm(`Copot plugin "${d.plugDel}"? Data plugin disimpan supaya bisa dipakai lagi saat dipasang ulang.`, {
+        title: 'Copot plugin', okLabel: 'Copot', danger: true,
+      });
+      if (!ok) return;
+      await pluginAction(() => api(`/api/plugins/${encodeURIComponent(d.plugDel)}?keepData=1`, { method: 'DELETE' }), 'Plugin dicopot');
+      return;
+    }
+    if (d.plugTrustBtn) {
+      // Izin menyetujui eksekusi kode: konfirmasi eksplisit, bukan sekali klik.
+      const ok = await askConfirm(
+        `Plugin "${d.plugTrustBtn}" akan menjalankan hook dan server MCP di komputer ini setiap kali dipakai. Setujui hanya bila Anda mengenal isi pluginnya.`,
+        { title: 'Setujui plugin', okLabel: 'Setujui', danger: true },
+      );
+      if (!ok) return;
+      await pluginAction(
+        () => api(`/api/plugins/${encodeURIComponent(d.plugTrustBtn)}/trust`, { method: 'POST', body: JSON.stringify({ digest: d.digest }) }),
+        'Plugin disetujui',
+      );
+      return;
+    }
+    if (d.plugUntrust) {
+      await pluginAction(() => api(`/api/plugins/${encodeURIComponent(d.plugUntrust)}/trust`, { method: 'DELETE' }), 'Izin plugin dicabut');
+      return;
+    }
+    if (d.marketDel) {
+      await pluginAction(() => api(`/api/plugins/marketplaces?name=${encodeURIComponent(d.marketDel)}`, { method: 'DELETE' }), 'Marketplace dihapus');
+      return;
+    }
+    if (d.plugFromMarket) {
+      await pluginAction(
+        () => api('/api/plugins/install', { method: 'POST', body: JSON.stringify({ name: d.plugFromMarket, marketplace: d.market }) }),
+        'Plugin terpasang',
+      );
+    }
+  });
+
   // ---------- MCP & hooks (REA ZCode) ----------
   // Dua panel ini mengelola konfigurasi yang dipakai server saat run: server MCP
   // memasok tool eksternal, hook menyisipkan logika lokal di titik siklus hidup.
@@ -5248,18 +5502,26 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
         ? `${esc(s.command || '')} ${(s.args || []).join(' ')}`
         : esc(s.url || '');
       const state = st.connected ? `${st.toolCount ?? 0} tool` : 'belum terhubung';
+      // Server milik plugin tidak bisa diubah di sini: hidup-matinya mengikuti
+      // plugin. Tombolnya disembunyikan supaya pengguna tidak menekan Hapus lalu
+      // mendapat 409 tanpa konteks.
+      const managed = s.managedBy || null;
+      const acts = managed
+        ? `<span class="chip">dari ${esc(String(managed).replace(/^plugin:/, 'plugin '))}</span>`
+        : `<button class="icon-btn" data-mcp-toggle="${esc(s.name)}" data-on="${s.enabled ? '1' : '0'}" title="${s.enabled ? 'Nonaktifkan' : 'Aktifkan'}">${icon(s.enabled ? 'pause' : 'play')}</button>
+        <button class="icon-btn" data-mcp-del="${esc(s.name)}" title="Hapus server">${icon('x')}</button>`;
       return `
       <div class="mcp-row">
         <div class="mcp-main">
           <div class="mcp-name">${esc(s.name)}<span class="chip">${esc(s.type)}</span>
             ${s.enabled ? '' : '<span class="chip warn">nonaktif</span>'}
             ${s.hasEnv || s.headerNames.length ? '<span class="chip">rahasia tersimpan</span>' : ''}
+            ${managed ? '<span class="chip warn">baca-saja</span>' : ''}
           </div>
           <div class="mcp-detail" title="${detail}">${detail}</div>
           <div class="muted small">${esc(state)}${st.error ? ` · ${esc(st.error)}` : ''}</div>
         </div>
-        <button class="icon-btn" data-mcp-toggle="${esc(s.name)}" data-on="${s.enabled ? '1' : '0'}" title="${s.enabled ? 'Nonaktifkan' : 'Aktifkan'}">${icon(s.enabled ? 'pause' : 'play')}</button>
-        <button class="icon-btn" data-mcp-del="${esc(s.name)}" title="Hapus server">${icon('x')}</button>
+        ${acts}
       </div>`;
     }).join('') : '<p class="muted small">Belum ada server MCP. Tambahkan satu di bawah — tool-nya langsung tersedia untuk agent.</p>';
   }

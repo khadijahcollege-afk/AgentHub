@@ -757,6 +757,34 @@
             <div id="hook-trust" class="hook-trust"></div>
           </div>
 
+          <div class="settings-pane" data-pane="plugins">
+            <h3>Plugin</h3>
+            <p class="muted small">Satu paket bisa membawa skill, perintah slash, hook, dan server MCP sekaligus. Skill dan perintah hanya teks — tidak menambah izin. Hook dan server MCP adalah kode yang benar-benar dijalankan, jadi keduanya baru aktif setelah Anda menyetujui digest-nya. Mengubah isi skrip plugin otomatis mencabut izin lama.</p>
+            <label class="mem-toggle"><input type="checkbox" id="set-plugins-on"><span>Aktifkan plugin</span></label>
+            <div class="form-grid">
+              <label class="span2">Pasang dari folder<input id="plug-path" placeholder="C:\proyek\plugin-saya" autocomplete="off"></label>
+              <div class="span2 form-actions">
+                <button class="btn primary" type="button" id="plug-install">Pasang plugin</button>
+                <button class="btn" type="button" id="plug-validate">Periksa folder</button>
+                <span class="muted small" id="plug-status"></span>
+              </div>
+            </div>
+            <div id="plug-list" class="plug-list"></div>
+            <details class="cd-rules" id="plug-market">
+              <summary>Marketplace</summary>
+              <div class="cd-rules-body">
+                <p class="muted small">Folder berisi <code>marketplace.json</code> dan sub-folder plugin. Marketplace hanya memberi daftar — instalasi tetap terjadi saat Anda menekan Pasang.</p>
+                <div class="plug-market-add">
+                  <input id="plug-market-path" placeholder="Path folder marketplace" autocomplete="off">
+                  <button class="btn" type="button" id="plug-market-add">Tambah</button>
+                </div>
+                <div id="plug-market-list" class="plug-market-list"></div>
+                <div id="plug-available" class="plug-available"></div>
+              </div>
+            </details>
+            <div id="plug-commands" class="plug-commands"></div>
+          </div>
+
           <div class="settings-pane" data-pane="shortcuts">
             <h3>Pintasan</h3>
             <p class="muted small">Tekan <kbd>Ctrl /</kbd> kapan saja untuk overlay pintasan yang bisa diklik.</p>

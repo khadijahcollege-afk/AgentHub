@@ -49,6 +49,7 @@ import * as mcp from './lib/mcp.js';
 import * as hooks from './lib/hooks.js';
 import * as checkpoints from './lib/checkpoints.js';
 import * as instructionsLib from './lib/instructions.js';
+import * as pluginsLib from './lib/plugins.js';
 import { toolSummary, PERMISSION_MODES, normalizeMode } from './lib/tools.js';
 
 // Nilai `permission` yang diterima dari UI. Nama lama (ask/edits/full) tetap sah
@@ -432,6 +433,7 @@ function appState() {
     mcp: mcp.status(),
     hooks: hooks.summary(),
     instructions: instructionsLib.instructionsSummary(),
+    plugins: pluginsLib.summary(),
     permissionModes: PERMISSION_MODES,
     // kontrak state machine — UI memakainya untuk tombol/label yang sah,
     // agent memakainya untuk tahu transisi apa yang diizinkan tanpa menebak.
@@ -747,7 +749,11 @@ ${msgs || '<p class="meta">Percakapan kosong.</p>'}
         }));
       }
       return sendJson(res, 404, { error: 'Rute MCP tidak dikenal' });
-    } catch (error) { return sendJson(res, error.statusCode || 500, { error: error.message }); }
+    } catch (error) {
+      // `code` wajib ikut: UI membedakan 409 MCP_MANAGED_BY_PLUGIN (server milik
+      // plugin, baca-saja) dari konflik lain hanya lewat kode ini.
+      return sendJson(res, error.statusCode || 500, { error: error.message, code: error.code });
+    }
   }
 
   // ---- Hooks: lifecycle program lokal (REA ZCode 09-hooks) ----
@@ -827,6 +833,88 @@ ${msgs || '<p class="meta">Percakapan kosong.</p>'}
       }
       return sendJson(res, 405, { error: 'Metode tidak didukung' });
     } catch (error) { return sendJson(res, error.statusCode || 500, { error: error.message }); }
+  }
+
+  // ---- plugin: skill + perintah + hook + MCP dalam satu paket (REA ZCode 10) ----
+  if (p === '/api/plugins' || p.startsWith('/api/plugins/')) {
+    try {
+      if (p === '/api/plugins' && method === 'GET') {
+        return sendJson(res, 200, {
+          ...pluginsLib.summary(),
+          plugins: pluginsLib.listPlugins(),
+          commands: pluginsLib.listCommands(),
+          marketplaces: pluginsLib.listMarketplaces(),
+          available: pluginsLib.availablePlugins(),
+        });
+      }
+      if (p === '/api/plugins/enabled' && method === 'POST') {
+        const b = await readBody(req);
+        const r = pluginsLib.setEnabled(b.enabled);
+        mcp.closeAll();
+        broadcast('config');
+        return sendJson(res, 200, r);
+      }
+      if (p === '/api/plugins/validate' && method === 'POST') {
+        const b = await readBody(req);
+        return sendJson(res, 200, pluginsLib.validatePlugin(b.dir || b.name));
+      }
+      if (p === '/api/plugins/install' && method === 'POST') {
+        const b = await readBody(req);
+        const r = pluginsLib.installPlugin(b.name || b.dir, { marketplace: b.marketplace, scope: b.scope });
+        mcp.closeAll();
+        broadcast('config');
+        return sendJson(res, 200, r);
+      }
+      if (p === '/api/plugins/marketplaces' && method === 'POST') {
+        const b = await readBody(req);
+        const r = pluginsLib.addMarketplace(b.dir || b.path);
+        broadcast('config');
+        return sendJson(res, 200, r);
+      }
+      if (p === '/api/plugins/marketplaces' && method === 'DELETE') {
+        const name = url.searchParams.get('name');
+        const r = pluginsLib.removeMarketplace(name);
+        broadcast('config');
+        return sendJson(res, 200, r);
+      }
+      let m2;
+      if ((m2 = p.match(/^\/api\/plugins\/([A-Za-z0-9._-]+)\/enabled$/)) && method === 'POST') {
+        const b = await readBody(req);
+        const r = pluginsLib.setPluginEnabled(m2[1], b.enabled);
+        mcp.closeAll();
+        broadcast('config');
+        return sendJson(res, 200, r);
+      }
+      if ((m2 = p.match(/^\/api\/plugins\/([A-Za-z0-9._-]+)\/trust$/)) && method === 'POST') {
+        const b = await readBody(req);
+        const r = pluginsLib.grantTrust(m2[1], b.digest);
+        broadcast('config');
+        return sendJson(res, 200, r);
+      }
+      if ((m2 = p.match(/^\/api\/plugins\/([A-Za-z0-9._-]+)\/trust$/)) && method === 'DELETE') {
+        const r = pluginsLib.revokeTrust(m2[1]);
+        mcp.closeAll();
+        broadcast('config');
+        return sendJson(res, 200, r);
+      }
+      if ((m2 = p.match(/^\/api\/plugins\/([A-Za-z0-9._-]+)\/trust$/)) && method === 'GET') {
+        return sendJson(res, 200, pluginsLib.trustStatus(m2[1]));
+      }
+      if ((m2 = p.match(/^\/api\/plugins\/([A-Za-z0-9._-]+)\/update$/)) && method === 'POST') {
+        const r = pluginsLib.updatePlugin(m2[1]);
+        mcp.closeAll();
+        broadcast('config');
+        return sendJson(res, 200, r);
+      }
+      if ((m2 = p.match(/^\/api\/plugins\/([A-Za-z0-9._-]+)$/)) && method === 'DELETE') {
+        const keepData = url.searchParams.get('keepData') !== '0';
+        const r = pluginsLib.uninstallPlugin(m2[1], { keepData });
+        mcp.closeAll();
+        broadcast('config');
+        return sendJson(res, 200, r);
+      }
+      return sendJson(res, 404, { error: 'Rute plugin tidak dikenal' });
+    } catch (error) { return sendJson(res, error.statusCode || 500, { error: error.message, code: error.code }); }
   }
   if (p === '/api/openrouter/connect' && method === 'POST') {
     try {
@@ -1534,13 +1622,19 @@ ${msgs || '<p class="meta">Percakapan kosong.</p>'}
     const rawPrompt = String(b.prompt || '').slice(0, 16000);
     const kind = engineType(engineId);
     recordFeature('chat', { engine: engineId });
+    // Perintah dari plugin: `/nama argumen` diperluas menjadi isi
+    // commands/<nama>.md sebelum apa pun dikirim. Teks asli yang user ketik tetap
+    // tersimpan di thread, jadi ia melihat apa yang ia tulis — bukan instruksi
+    // panjang hasil perluasan.
+    const pluginCommand = pluginsLib.expandCommand(rawPrompt);
+    const basePrompt = pluginCommand ? pluginCommand.body : rawPrompt;
     // CLI punya akses disk → beri path. Pool tidak → inline isi teksnya.
     let modelPrompt = attachments.length
-      ? await augmentPrompt(rawPrompt, attachments, {
+      ? await augmentPrompt(basePrompt, attachments, {
         includePaths: kind !== 'pool',
         inlineText: kind === 'pool',
       })
-      : rawPrompt;
+      : basePrompt;
     // Memori jangka panjang disuntikkan di server (bukan UI) supaya SEMUA
     // jalur kirim — UI, API langsung, maupun agent eksternal — mendapat konteks
     // yang sama. Prompt yang terlihat user di chat tetap tanpa blok memori.
