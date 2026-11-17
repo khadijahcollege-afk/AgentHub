@@ -3092,3 +3092,15 @@ html[data-tl="1"] .view-head .seg {
   backdrop-filter: blur(10px);
 }
 html[data-tl="1"] .heat-cell { border-radius: 2px; }
+
+/* ---------- radius seragam: tombol, input, chip lebih membulat ---------- */
+.btn { border-radius: 10px; }
+.btn.tiny { border-radius: 9px; }
+.icon-btn { border-radius: 9px; }
+input, select, textarea { border-radius: 10px; }
+.dd-btn { border-radius: 10px; }
+.search, .search.small { border-radius: 10px; }
+.mini-btn { border-radius: 10px; }
+.seg-btn { border-radius: 8px; }
+.ask-input, .ask-opt { border-radius: 10px; }
+.kcol-head .add { border-radius: 9px; }
