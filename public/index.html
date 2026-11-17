@@ -10,7 +10,7 @@
 <link rel="apple-touch-icon" href="/public/icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="stylesheet" href="/public/style.css?v=1.8.8">
+<link rel="stylesheet" href="/public/style.css?v=1.8.9">
 <link rel="stylesheet" href="/public/workspace.css?v=20261116">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%23f2905c'/%3E%3Cstop offset='100%25' stop-color='%23e46a30'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='100' height='100' rx='22' fill='url(%23g)'/%3E%3Ccircle cx='50' cy='38' r='16' fill='white'/%3E%3Crect x='30' y='62' width='40' height='10' rx='5' fill='white'/%3E%3C/svg%3E">
 </head>
@@ -619,12 +619,36 @@
 
           <div class="settings-pane" data-pane="preferences">
             <h3>Preferensi</h3>
-            <form id="form-settings" class="form-grid">
-              <label>Refresh sumber promo (jam)<input id="set-refresh" type="number" min="1" max="168"></label>
-              <label>Health-check agent (menit)<input id="set-agent" type="number" min="1" max="1440"></label>
-              <label>Re-validasi API key (jam)<input id="set-keys" type="number" min="1" max="168"></label>
-              <label class="switch-row span2"><input id="set-autopool" type="checkbox"><span>Key baru otomatis masuk pool gateway (langsung siap dipakai agent)</span></label>
-              <div class="span2 form-actions"><button class="btn primary" type="submit">Simpan</button></div>
+            <p class="muted small">Interval pemeliharaan otomatis. Angka kecil = pemeriksaan lebih sering (boros kuota health-check); angka besar = hemat.</p>
+            <form id="form-settings">
+              <div class="set-card">
+                <div class="set-card-title">Pemantauan promo</div>
+                <div class="set-field">
+                  <span class="set-field-label">Refresh sumber promo — jam</span>
+                  <input id="set-refresh" type="number" min="1" max="168">
+                  <p class="muted small">Seberapa sering daftar model gratis & harga disegarkan dari OpenRouter dan models.dev.</p>
+                </div>
+              </div>
+              <div class="set-card">
+                <div class="set-card-title">Kesehatan agent & key</div>
+                <div class="set-grid-2">
+                  <div class="set-field">
+                    <span class="set-field-label">Health-check agent — menit</span>
+                    <input id="set-agent" type="number" min="1" max="1440">
+                    <p class="muted small">Probe konektor; hasilnya mengisi sparkline pulse.</p>
+                  </div>
+                  <div class="set-field">
+                    <span class="set-field-label">Re-validasi API key — jam</span>
+                    <input id="set-keys" type="number" min="1" max="168">
+                    <p class="muted small">Cek key: aktif/tidak, kuota, status pool.</p>
+                  </div>
+                </div>
+                <div class="set-field">
+                  <label class="switch-row"><input id="set-autopool" type="checkbox"><span>Key baru otomatis masuk pool gateway</span></label>
+                  <p class="muted small">Key yang lolos validasi langsung melayani endpoint /v1 — agent tinggal pakai tanpa setelan tambahan.</p>
+                </div>
+              </div>
+              <div class="ap-foot"><button class="btn primary" type="submit">Simpan preferensi</button></div>
             </form>
           </div>
 
@@ -1457,6 +1481,6 @@
 <div id="toast-wrap" class="toast-wrap"></div>
 <script src="/public/pwa.js"></script>
 <script src="/public/qrcode.min.js"></script>
-<script type="module" src="/public/app.js?v=1.8.8"></script>
+<script type="module" src="/public/app.js?v=1.8.9"></script>
 </body>
 </html>

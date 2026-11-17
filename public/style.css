@@ -3058,3 +3058,13 @@ html[data-tl="1"] .chat.has-thread .chat-messages {
   padding-bottom: 190px;
 }
 html[data-tl="1"] .chat.has-thread .chat-scroll { scroll-padding-bottom: 190px; }
+
+/* ---------- kartu settings (ala pane Bahasa) ---------- */
+.set-card { background: #161619; border: 1px solid #26262b; border-radius: 12px; padding: 2px 14px 8px; margin-bottom: 14px; }
+.set-card-title { font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #8d8d94; padding: 12px 0 8px; border-bottom: 1px solid #222227; margin-bottom: 10px; }
+.set-card .set-field { margin-bottom: 12px; }
+.set-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 640px) { .set-grid-2 { grid-template-columns: 1fr; } }
+.set-field input[type="number"] { width: 100%; max-width: 320px; }
+.set-field .switch-row { display: flex; align-items: center; gap: 9px; font-size: 13px; color: #d6d6dc; cursor: pointer; }
+.set-field .switch-row input { width: auto; flex: 0 0 auto; accent-color: var(--accent); }
