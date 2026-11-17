@@ -3248,6 +3248,8 @@ window.__ahMachines = {
     const slot = empty ? $('#hero-composer-slot') : $('#bottom-composer-slot');
     const c = $('#composer');
     if (c.parentElement !== slot) slot.appendChild(c);
+    // kaca mengambang: hanya saat thread berisi pesan (composer overlay)
+    $('#chat-root')?.classList.toggle('has-thread', !empty);
     const hide = (sel, on) => { const el = $(sel); if (el) el.classList.toggle('hidden', on); };
     hide('#chat-empty', !empty);
     hide('#chat-messages', empty);

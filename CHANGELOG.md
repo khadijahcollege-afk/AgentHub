@@ -423,6 +423,12 @@ ditunggu, dan apa yang harus bisa dipulihkan setelah gagal.
   `share`, `port-helper` — 424 tes, semuanya lulus.
 
 ## 1.6.14 — 2026-11-17
+- **Tema glassy (frosted)** — saat Translucent aktif: composer mengambang
+  overlay di dasar chat sehingga pesan ber scroll di balik kacanya
+  (backdrop-blur 26px + saturasi), sidebar/rail/topbar memakai blur 14-22px,
+  tepi atas permukaan diberi highlight 1px ala Acrylic; backdrop Mica/Acrylic
+  tetap diteruskan ke Electron di Windows 11. Strip konteks pindah ke dalam
+  kartu composer sehingga sudutnya membulat utuh (bukan slab lancip).
 - **Tampilan depan ala ZCode + panel Translucensi ala Kybern + tray menu** —
   judul hero kini sapaan per jam (Pagi/Siang/Sore/Malam, kerja bagus hari
   ini) dengan 4 quick chips (Ringkasan mingguan, Perbaiki error, Riset web,
