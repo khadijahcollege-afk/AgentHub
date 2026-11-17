@@ -134,9 +134,9 @@ html.electron-desktop .chat-top > * { -webkit-app-region: no-drag; }
 #skills-summary { margin-bottom: 18px; }
 .skill-path { overflow-wrap: anywhere; color: var(--muted); font-size: 10px; line-height: 1.6; background: transparent; padding: 0; }
 #skills-list .cat-card { padding: 20px; gap: 14px; }
-.promo-access-notice { border: 1px solid #75603b; background: #292318; border-radius: 10px; padding: 20px; margin: 20px 0; }
-.promo-access-notice b { color: #f0d3a2; font-size: 14px; }
-.promo-access-notice p { color: #c5bcae; line-height: 1.7; margin: 10px 0 16px; font-size: 12px; }
+.promo-access-notice { border: 1px solid rgba(255,255,255,.09); background: rgba(79,140,255,.06); border-radius: 12px; padding: 20px; margin: 20px 0; }
+.promo-access-notice b { color: #dbe7ff; font-size: 14px; }
+.promo-access-notice p { color: #a9b6d0; line-height: 1.7; margin: 10px 0 16px; font-size: 12px; }
 #usage-pop { width: 380px; padding: 18px; }
 #usage-rows { max-height: min(440px, 60dvh); overflow-y: auto; padding-right: 6px; }
 .usage-summary { display: flex; align-items: baseline; gap: 12px; padding: 8px 0 20px; margin-bottom: 16px; border-bottom: 1px solid var(--line); }

@@ -5664,7 +5664,7 @@ window.__ahMachines = {
     host.innerHTML = `
       <div class="pp-page-head">
         <span class="pp-page-logo">A</span>
-        <h3>Catatan promo</h3><span class="chip run">Akses provider belum diverifikasi</span>
+        <h3>Catatan promo</h3><span class="chip">Akses provider belum diverifikasi</span>
         <span class="grow"></span>
         ${p.dismissed ? '<button class="btn tiny" data-pp-act="restore">Tampilkan kartu promo</button>' : ''}
         <button class="btn tiny" data-pp-act="show-ticket">Lihat tiket</button>
