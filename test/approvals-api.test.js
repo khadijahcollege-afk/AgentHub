@@ -78,6 +78,38 @@ const upstreamHandler = (req, res) => {
             function: { name: 'write_file', arguments: JSON.stringify({ path: 'izin.txt', content: 'ditulis setelah izin' }) },
           }],
         };
+    } else if (scenario === 'plan') {
+      // Agent memutuskan sendiri menyusun rencana: masuk plan, ajukan rencana,
+      // lalu menulis berkas. Urutannya ditentukan dari hasil tool terakhir,
+      // bukan dari nomor panggilan — server juga memanggil /v1/models.
+      const lastTool = String(toolMsgs.at(-1)?.content || '');
+      if (!hasToolResult) {
+        reply = { tool_calls: [{ id: 'call_enter', type: 'function', function: { name: 'EnterPlanMode', arguments: '{}' } }] };
+      } else if (lastTool.includes('Plan mode aktif')) {
+        reply = {
+          tool_calls: [{
+            id: 'call_exit',
+            type: 'function',
+            function: {
+              name: 'ExitPlanMode',
+              arguments: JSON.stringify({
+                plan: '## Rencana\n\n- tulis `rencana-api.txt` berisi "dari rencana"',
+                allowedPrompts: [{ prompt: 'jalankan tes' }],
+              }),
+            },
+          }],
+        };
+      } else if (lastTool.includes('Rencana disetujui')) {
+        reply = {
+          tool_calls: [{
+            id: 'call_write_plan',
+            type: 'function',
+            function: { name: 'write_file', arguments: JSON.stringify({ path: 'rencana-api.txt', content: 'dari rencana' }) },
+          }],
+        };
+      } else {
+        reply = { content: 'Rencana dijalankan.' };
+      }
     } else {
       // Pertanyaan: setelah hasil tool berisi jawaban, model menyimpulkan.
       reply = hasToolResult
@@ -339,6 +371,110 @@ test('aturan "selalu di folder ini" tersimpan dan dipakai ulang', async () => {
   assert.equal(cleared.ok, true);
   const after = await (await api('/api/permissions')).json();
   assert.equal(Object.keys(after.rules).some((k) => k.toLowerCase() === work.toLowerCase()), false);
+});
+
+test('rencana diajukan lewat SSE, disetujui, lalu tulis berkas berjalan', async () => {
+  scenario = 'plan';
+  const t = await newThread();
+  fs.rmSync(path.join(work, 'rencana-api.txt'), { force: true });
+  const planFile = path.join(work, '.agenthub', 'plans', `plan-${t.id}.md`);
+  try { fs.rmSync(planFile, { force: true }); } catch { /* belum ada */ }
+
+  let asked = null;
+  const approvalsSeen = [];
+  const modeEvents = [];
+  const events = await runStream(t.id, {
+    prompt: 'Rencanakan lalu kerjakan', cwd: work, permission: 'build', tools: true,
+  }, async (ev) => {
+    if (ev.type === 'mode') modeEvents.push(ev);
+    if (ev.type !== 'approval') return;
+    approvalsSeen.push(ev.kind);
+    if (ev.kind === 'plan') {
+      // Kartu rencana: yang tampil harus teks rencananya, dan izinnya ada di
+      // daftar tunggu dengan jenis yang sama.
+      asked = ev;
+      const pending = await (await api(`/api/threads/${t.id}/approvals`)).json();
+      assert.equal(pending.requests[0].kind, 'plan');
+      const r = await api(`/api/threads/${t.id}/approvals/${ev.requestId}`, {
+        method: 'POST', body: JSON.stringify({ decision: 'approve' }),
+      });
+      assert.equal(r.status, 200, await r.text());
+      return;
+    }
+    // Setelah rencana disetujui, run kembali ke mode sebelumnya (`build`), dan
+    // di mode itu menulis berkas tetap butuh izin. Itu disengaja: menyetujui
+    // rencana bukan menyetujui setiap perintah di dalamnya.
+    await api(`/api/threads/${t.id}/approvals/${ev.requestId}`, {
+      method: 'POST', body: JSON.stringify({ decision: 'allow' }),
+    });
+  });
+
+  assert.ok(asked, 'SSE harus membawa kartu rencana');
+  assert.equal(asked.kind, 'plan');
+  assert.match(asked.plan, /rencana-api\.txt/, 'kartu membawa teks rencananya, bukan nama tool');
+  assert.equal(asked.allowedPrompts[0].prompt, 'jalankan tes');
+  // Urutan kartu: rencana dulu, izin tulis sesudahnya.
+  assert.deepEqual(approvalsSeen, ['plan', 'permission']);
+
+  // Mode dilaporkan ke UI: masuk plan, lalu keluar setelah disetujui.
+  assert.equal(modeEvents[0].mode, 'plan');
+  assert.equal(modeEvents.at(-1).mode, 'build');
+  assert.equal(modeEvents.at(-1).planActive, false);
+
+  // Rencana tersimpan di folder kerja dan berkas yang direncanakan benar-benar
+  // ditulis — di run yang sama, tanpa kartu izin tambahan.
+  assert.match(fs.readFileSync(planFile, 'utf8'), /rencana-api\.txt/);
+  assert.equal(fs.readFileSync(path.join(work, 'rencana-api.txt'), 'utf8'), 'dari rencana');
+
+  const done = events.find((e) => e.type === 'done');
+  assert.ok(done, 'run harus selesai setelah rencana disetujui');
+  const thread = await (await api(`/api/threads/${t.id}`)).json();
+  assert.equal(thread.lastMode, 'build', 'mode akhir run disimpan ke thread');
+});
+
+test('rencana ditolak: tidak ada berkas yang ditulis dan run tetap di plan', async () => {
+  scenario = 'plan';
+  const t = await newThread();
+  fs.rmSync(path.join(work, 'rencana-api.txt'), { force: true });
+
+  let asked = null;
+  const events = await runStream(t.id, {
+    prompt: 'Rencanakan', cwd: work, permission: 'yolo', tools: true,
+  }, async (ev) => {
+    if (ev.type !== 'approval' || asked) return;
+    asked = ev;
+    const r = await api(`/api/threads/${t.id}/approvals/${ev.requestId}`, {
+      method: 'POST', body: JSON.stringify({ decision: 'reject', reason: 'belum perlu ubah berkas' }),
+    });
+    assert.equal(r.status, 200, await r.text());
+  });
+
+  assert.ok(asked);
+  assert.equal(asked.kind, 'plan');
+  assert.equal(fs.existsSync(path.join(work, 'rencana-api.txt')), false);
+  assert.ok(events.find((e) => e.type === 'done'), 'penolakan bukan kegagalan run');
+  const thread = await (await api(`/api/threads/${t.id}`)).json();
+  const last = thread.messages.at(-1);
+  const exit = (last.tools || []).find((x) => x.name === 'ExitPlanMode');
+  assert.equal(exit.ok, false);
+});
+
+test('kartu rencana menolak keputusan allow/deny biasa', async () => {
+  scenario = 'plan';
+  const t = await newThread();
+  let checked = false;
+  await runStream(t.id, { prompt: 'Rencanakan', cwd: work, permission: 'build', tools: true }, async (ev) => {
+    if (ev.type !== 'approval' || checked) return;
+    checked = true;
+    const bad = await (await api(`/api/threads/${t.id}/approvals/${ev.requestId}`, {
+      method: 'POST', body: JSON.stringify({ decision: 'allow' }),
+    })).json();
+    assert.equal(bad.code, 'BAD_DECISION', 'rencana memakai approve/reject, bukan allow/deny');
+    await api(`/api/threads/${t.id}/approvals/${ev.requestId}`, {
+      method: 'POST', body: JSON.stringify({ decision: 'reject' }),
+    });
+  });
+  assert.equal(checked, true);
 });
 
 test('/stop melepas permintaan yang menunggu', async () => {

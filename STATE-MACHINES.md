@@ -23,6 +23,7 @@ transition changes; the tests and the generated browser copy follow it.
 | `task` | inbox → todo → running → review → done | `lib/tasks.js` | `data/tasks.json` | `POST /api/tasks/:id` → `409 ILLEGAL_TRANSITION` |
 | `run` | idle → running → done/error/stopped → idle | `lib/runs.js` | thread fields `runState`, `runStartedAt`, `runEndedAt`, `runError` | `POST /api/threads/:id/send` → `409 RUN_IN_PROGRESS`; `/stop` is idempotent |
 | `queueItem` | waiting ⇄ reserved → (gone) | `lib/queue.js` | `data/queue.json` | `POST …/queue/reserve` → `409 QUEUE_RESERVED`; item removed only after its run starts |
+| `planMode` | outside ⇄ plan → (approved, back to the pre-plan mode) | `lib/tools.js#executeTool` (writes `planRuntime`) | none per run; the durable trace is `<cwd>/.agenthub/plans/plan-<id>.md` | `ExitPlanMode` denies with `NOT_IN_PLAN_MODE` outside plan; approval requires a human, even in `yolo` |
 | `step` | working → done/error/stopped | `server.js` (delegate), `lib/threads.js#updateSubrun` | message `status` on subrun messages | written only through `updateSubrun` |
 | `delegation` | idle → starting → running → done/error/stopped | `public/app.js` | none (client session) | button lock + `Hentikan`/`Batal` switch, server run outcome is the source of truth |
 | `noteEditor` | closed → editing ⇄ dirty → saving | `public/app.js` | none (draft in DOM) | close is confirmed while `dirty` |
@@ -289,6 +290,48 @@ not change, and nothing is trimmed by default.
 | `refId` is the ORIGINAL index | `GET …/message-body?refId=` must never return the wrong message, even after `messageLimit` already dropped earlier ones. |
 | A trimmed response says so | `truncatedMessages`, `bodyRefs`, and `byteBudgetApplied` are what make the UI able to offer "show full message" and "load N earlier messages" instead of silently showing less. |
 
+## Plan mode lifecycle (the agent that stops to plan)
+
+Mode `plan` existed before this stage, but only as something the *user* picked
+from the access chip. The agent could not decide a task needed planning, and
+"approval" meant nothing because there was no document to approve. Owner:
+`lib/plan.js` (pure rules, plan file) plus the plan branch of
+`lib/tools.js#executeTool`.
+
+```
+outside ──EnterPlanMode──> plan(active) ──ExitPlanMode──> askPlan ──approve──> previous mode
+   ^                            ^                              │
+   └────────ExitPlanMode denied (NOT_IN_PLAN_MODE)─────────────┴──reject───> plan(active)
+```
+
+Two tools, deliberately asymmetric: `EnterPlanMode` only *removes* capability
+(no writes, no commands), so asking would be a click for nothing.
+`ExitPlanMode` restores write access, so it always asks — including in `yolo`.
+
+| Invariant | Why |
+| --- | --- |
+| `EnterPlanMode` never prompts | It reduces what the agent can do. Prompting for a reduction teaches users to click through the prompts that matter. |
+| `ExitPlanMode` always asks, even in `yolo` | Approving a plan is the only thing that re-opens writing for the rest of the run. A mode with no prompts is exactly where an unattended agent would otherwise promote itself. |
+| `ExitPlanMode` outside plan is `deny` + `NOT_IN_PLAN_MODE` | Not a schema error: the call is well-formed but illegal. A silent `allow` would leave the model believing it had approval it never received. |
+| An empty plan is a schema error | Whitespace is not a plan. Accepting it means "approve anything I do next", which is the exact thing the card exists to prevent. |
+| `MAX_PLAN_CHARS = 20000` | A plan longer than this is a document nobody reads before clicking approve. Matches ZCode. |
+| The pre-plan mode is remembered | Leaving plan from `yolo` returns to `yolo`, not to `build`. Falling back to the default would silently tighten every later run. |
+| The plan file is written **before** the mode changes | If the write fails the run stays in plan mode. Otherwise a run would be allowed to write files while its plan — the agreed record — does not exist. |
+| `allowedPrompts` are display-only | One lax category ("install dependencies") would cover any command. Real permissions stay one card per call. |
+| `askPlan` is not inherited by subagents | Approving a plan raises the write permission for the rest of the run. A child must not be able to raise its own ceiling through a card meant for the parent; a child calling `ExitPlanMode` takes the no-client path and stays in plan. |
+| Plan decisions are `approve`/`reject`, not `allow`/`deny` | Approving a plan is not approving one tool call. Sharing the vocabulary would let an old `allow` payload quietly approve a plan. |
+| `reject` keeps the run in plan mode | "No" must not behave like "yes" for the gate. The model gets a reason and is told to ask what should change. |
+| The plan file is re-injected after compact | A folded summary can drop the message that carried the plan. Without the reminder the model re-plans from scratch — or, worse, diverges from what was agreed. |
+| The tool list is rebuilt when the mode changes | `ExitPlanMode` must make write tools *reappear*. A model that only sees read tools concludes the work is impossible. |
+| Plan transitions run before the normal permission gate | The card must show the plan text, not "Permission needed: ExitPlanMode". A prompt that cannot be evaluated is worse than no prompt. |
+| The effective mode lives in one shared object | `planRuntime.mode` is what the next tool reads. Passing the run's starting mode to every call would deny the write that was just approved. |
+
+Approved plans go to `<cwd>/.agenthub/plans/plan-<sanitized threadId>.md`
+(atomic `.tmp` + rename), deliberately outside the tracked tree so a plan can
+never be committed by accident. `STATE-MACHINES` treats this as a lifecycle, not
+a machine: it is per-run, never persisted as a thread field, and the only durable
+trace is the plan file.
+
 ## Why these are not machines (yet)
 
 Centralising everything costs more than it buys when the state is a single frame of
@@ -371,9 +414,9 @@ Never infer status from a button's disabled state or from `thread.running`. Quer
 | `test/desktop.test.js` | UI shell contract: unique element IDs, separate textareas, composer slots, in-app dialog (no native confirm/prompt), packaged handshake version |
 | `test/projects.test.js` | project/environment metadata routes that the UI's overlay and rail depend on |
 | `test/approval.test.js` | approval broker: allow/deny, timeout releases the run, abort and `cancelThread` release the registry, wrong-thread and bad-decision rejections, per-folder "always" rules limited to write tools, question answered/rejected, subagent tagging, no nested branching |
-| `test/approvals-api.test.js` | the same promises over the real server: `build` stops at a write until answered, deny writes nothing, `AskUserQuestion` reaches the model as an answer, questions still asked in `yolo`, wrong-thread 403, always-rule persisted and reused, `/stop` releases a waiting prompt |
+| `test/approvals-api.test.js` | the same promises over the real server: `build` stops at a write until answered, deny writes nothing, `AskUserQuestion` reaches the model as an answer, questions still asked in `yolo`, wrong-thread 403, always-rule persisted and reused, `/stop` releases a waiting prompt, and plan mode end-to-end (`kind: 'plan'` carrying the plan text, approve writing plan file + planned file in the same run, `mode` events reporting `plan` then the restored mode, `lastMode` persisted, reject writing nothing, `allow`/`deny` refused with `BAD_DECISION`) |
 | `test/ask-question.test.js` | `AskUserQuestion` contract: 1–4 questions, 2–4 options, unique text/labels, header length, `Other` rejection, preview safety, answer normalization, and the text the model finally sees |
-| `test/agent-loop.test.js` | the tool loop end-to-end against a local OpenAI-compatible provider: tool call → execute → result → answer, round limit, cancellation, tools offered per mode |
+| `test/agent-loop.test.js` | the tool loop end-to-end against a local OpenAI-compatible provider: tool call → execute → result → answer, round limit, cancellation, tools offered per mode, a plan approved mid-run (`mode` event emitted, write tool allowed for the rest of that run, plan file on disk) with the reject path still denied, and `SessionStart` hook context surviving the second turn (the system prompt is rebuilt when the mode changes) |
 | `test/hook-wiring.test.js` | hook events actually wired into the loop: `ask` becomes `allow` only through `PermissionRequest`, denial writes nothing, a missing approval client denies instead of waiting |
 | `test/subagents-api.test.js` | subagent runs through the real server: `subagent` SSE events, child tool tagging, mode never looser than the parent |
 | `test/port-helper.test.js` | `pickFreePort` skips ports that are already answering (including the Windows case where a neighbour listens on `::` only, so an IPv4 bind still "succeeds") |
@@ -388,6 +431,7 @@ Never infer status from a button's disabled state or from `thread.running`. Quer
 | `test/snapshot.test.js` | payload budget: no parameters returns the same object untouched, `messageLimit` trims from the front and reports the count, the largest assistant message is trimmed first, user and subrun messages never trimmed, the caller's data not mutated, `bodyFor` returning full content with a matching hash and rejecting unknown or path-like `refId`, budget clamping, and the 2000-character preview floor |
 | `test/queue-api.test.js` | the same promises over the real server: a send during a run lands in the queue instead of `409`, the queued item really executes after the previous run ends (including from the `stopped` path), two items run in FIFO order, `reserve` refused with `RUN_IN_PROGRESS`, delete and clear, unknown attachments refused before queueing, and a repeated `clientCommandId` not stacking items |
 | `test/send-replay.test.js` | `/send` idempotency and the snapshot routes over HTTP: the same `clientCommandId` answering `duplicate: true` without a second user message or a second model call, the same id in another thread treated as new, a malformed id ignored rather than rejected, a large thread requested small and its full body fetched back with a matching hash, and `messageLimit` reporting `truncatedMessages` |
+| `test/plan.test.js` | plan mode contract: `sanitizeName` cannot escape the plan folder, empty/oversize plans rejected, `EnterPlanMode` never asks while `ExitPlanMode` always does (and is `NOT_IN_PLAN_MODE` outside plan), the pre-plan mode is remembered, the plan file is atomic and its header names thread and folder, the reminder only appears when a file exists, approval writes the file and *then* allows `write_file` in the same run, rejection keeps plan mode and still denies writes, no client is `NO_CLIENT` rather than a hang, and the tool list swaps between plan and out-of-plan |
 
 ## Wiring
 

@@ -17,15 +17,29 @@ fs.writeFileSync(path.join(work, 'catatan.txt'), 'isi asli\n');
 let calls = 0;
 let lastBody = null;
 let mode = 'tool';
+// System prompt setiap permintaan: dipakai untuk membuktikan konteks awal run
+// tidak hilang di putaran kedua.
+const systemPrompts = [];
 const server = http.createServer((req, res) => {
   let raw = '';
   req.on('data', (d) => { raw += d; });
   req.on('end', () => {
     lastBody = JSON.parse(raw || '{}');
+    systemPrompts.push(String(lastBody.messages?.[0]?.content || ''));
     calls++;
     const reply = mode === 'spin'
       ? { tool_calls: [{ id: `c${calls}`, type: 'function', function: { name: 'read_file', arguments: JSON.stringify({ path: 'catatan.txt' }) } }] }
-      : calls === 1
+      : mode === 'planflow'
+        // Alur rencana: masuk plan → ajukan rencana → (disetujui) tulis berkas
+        // → jawab. Tiga panggilan tool berurutan dalam satu run.
+        ? (calls === 1
+          ? { tool_calls: [{ id: 'p1', type: 'function', function: { name: 'EnterPlanMode', arguments: '{}' } }] }
+          : calls === 2
+            ? { tool_calls: [{ id: 'p2', type: 'function', function: { name: 'ExitPlanMode', arguments: JSON.stringify({ plan: '## Rencana\n- tulis rencana.txt' }) } }] }
+            : calls === 3
+              ? { tool_calls: [{ id: 'p3', type: 'function', function: { name: 'write_file', arguments: JSON.stringify({ path: 'rencana.txt', content: 'dari rencana' }) } }] }
+              : { content: 'Rencana dijalankan.' })
+        : calls === 1
         ? { tool_calls: [{ id: 'call_1', type: 'function', function: { name: 'read_file', arguments: JSON.stringify({ path: 'catatan.txt' }) } }] }
         : { content: 'Berkas berisi: isi asli' };
     res.writeHead(200, { 'content-type': 'application/json' });
@@ -101,7 +115,7 @@ test('mode plan menyembunyikan tool tulis dari model', async () => {
   // dan anaknya mewarisi mode plan sehingga tool tulisnya juga tidak ada.
   // `AskUserQuestion` juga tetap ada: menyusun rencana justru saat pengguna
   // perlu ikut memilih arah, sebelum ada yang diubah.
-  assert.deepEqual(names.sort(), ['Agent', 'AskUserQuestion', 'grep_files', 'list_files', 'read_file']);
+  assert.deepEqual(names.sort(), ['Agent', 'AskUserQuestion', 'EnterPlanMode', 'ExitPlanMode', 'grep_files', 'list_files', 'read_file']);
   assert.equal(names.includes('write_file'), false);
 });
 
@@ -147,6 +161,92 @@ test('mode build menawarkan tool tulis/perintah, tetapi keputusannya ask', async
   // meminta izin dan pengguna tidak tahu apa yang sedang ditahan.
   assert.equal(names.includes('write_file'), true);
   assert.equal(names.includes('run_command'), true);
+});
+
+test('rencana disetujui di tengah run membuka tool tulis untuk sisa run itu', async () => {
+  calls = 0; mode = 'planflow';
+  const events = [];
+  const asked = [];
+  const planFile = path.join(work, '.agenthub', 'plans', 'plan-thr-loop.md');
+  try { fs.rmSync(planFile, { force: true }); } catch { /* belum ada */ }
+
+  const r = await runAgentLoop({
+    prompt: 'Rencanakan lalu kerjakan',
+    cwd: work,
+    mode: 'yolo',
+    threadId: 'thr-loop',
+    onEvent: (e) => events.push(e),
+    approvals: {
+      askPlan: async ({ plan: text }) => { asked.push(text); return { decision: 'approve' }; },
+    },
+  });
+
+  assert.equal(asked.length, 1);
+  assert.match(asked[0], /tulis rencana\.txt/);
+  // Mode akhir dilaporkan: run ini masuk plan lalu keluar, dan server memakai
+  // nilai itu untuk menyimpan mode thread.
+  assert.equal(r.planMode, 'yolo');
+  assert.equal(r.planApproved, true);
+  // Perubahan mode dilaporkan ke UI supaya chip akses tidak berbohong.
+  const modeEvent = events.find((e) => e.type === 'mode');
+  assert.equal(modeEvent?.mode, 'plan');
+  // Inti: berkas benar-benar tertulis SESUDAH persetujuan, di run yang sama.
+  assert.equal(fs.readFileSync(path.join(work, 'rencana.txt'), 'utf8'), 'dari rencana');
+  // Dan rencananya tersimpan di folder kerja, bukan hanya di percakapan.
+  assert.match(fs.readFileSync(planFile, 'utf8'), /tulis rencana\.txt/);
+});
+
+test('rencana ditolak di tengah run: tulis berkas tetap ditolak', async () => {
+  calls = 0; mode = 'planflow';
+  const r = await runAgentLoop({
+    prompt: 'Rencanakan',
+    cwd: work,
+    mode: 'build',
+    threadId: 'thr-loop-no',
+    maxTurns: 6,
+    approvals: { askPlan: async () => ({ decision: 'reject', reason: 'belum perlu' }) },
+  });
+  assert.equal(r.planApproved, false);
+  assert.equal(r.planMode, 'plan');
+  // Berkas dari tes sebelumnya ada di folder kerja yang sama: hapus dulu, kalau
+  // tidak pemeriksaan "tidak tertulis" lolos karena sisa run lain.
+  try { fs.rmSync(path.join(work, 'rencana.txt'), { force: true }); } catch { /* belum ada */ }
+  assert.equal(fs.existsSync(path.join(work, 'rencana.txt')), false);
+  const writeAttempt = r.tools.find((t) => t.name === 'write_file');
+  assert.equal(writeAttempt?.ok, false);
+});
+
+test('konteks SessionStart bertahan di putaran kedua, bukan hanya yang pertama', async () => {
+  // Regresi: konteks hook dulu ditambahkan langsung ke `messages[0].content`.
+  // System prompt disusun ulang setiap putaran (mode bisa berubah di tengah
+  // run), jadi pada putaran kedua konteks itu hilang tanpa jejak — model
+  // kehilangan instruksi yang justru diberikan di awal run.
+  const hookScript = path.join(dataDir, 'hook-start.mjs');
+  fs.writeFileSync(hookScript, `
+    let raw = '';
+    for await (const c of process.stdin) raw += c;
+    const event = JSON.parse(raw || '{}');
+    process.stdout.write(JSON.stringify({
+      hookSpecificOutput: { hookEventName: event.hook_event_name, additionalContext: 'pakai pnpm, jangan npm' },
+    }));
+  `);
+  const hookFile = path.join(dataDir, 'hooks.json');
+  fs.writeFileSync(hookFile, JSON.stringify({
+    enabled: true,
+    events: { SessionStart: [{ matcher: '*', hooks: [{ type: 'process', command: process.execPath, args: [hookScript] }] }] },
+  }));
+  try {
+    calls = 0; mode = 'tool';
+    systemPrompts.length = 0;
+    await runAgentLoop({ prompt: 'Baca catatan.txt', cwd: work, mode: 'yolo' });
+  } finally {
+    fs.rmSync(hookFile, { force: true });
+  }
+  // Dua permintaan: satu yang memanggil tool, satu yang menjawab.
+  assert.equal(calls, 2);
+  assert.equal(systemPrompts.length, 2);
+  assert.match(systemPrompts[0], /pakai pnpm, jangan npm/, 'konteks ada di putaran pertama');
+  assert.match(systemPrompts[1], /pakai pnpm, jangan npm/, 'konteks masih ada saat model menjawab');
 });
 
 test('mode yolo menawarkan semua tool bawaan', async () => {

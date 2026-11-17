@@ -449,6 +449,61 @@ a { color: var(--blue); }
 }
 .ask-card.ask-permission { border-color: rgba(255, 196, 92, .3); background: rgba(255, 196, 92, .045); }
 .ask-card.ask-permission .ask-ico { color: #ffc45c; }
+/* Rencana: warna sendiri (ungu) supaya tidak tertukar dengan izin kuning atau
+   pertanyaan biru. Isinya dokumen, bukan satu pertanyaan, jadi kartunya lebih
+   tinggi dan bagian tengahnya yang menggulung. */
+.ask-card.ask-plan {
+  border-color: rgba(160, 140, 255, .3); background: rgba(160, 140, 255, .05);
+  /* Batas tinggi eksplisit. `max-height: 100%` (aturan dasar kartu) tidak
+     mengikat di sini karena tinggi `.chat-asks` adalah `auto`: persentase
+     terhadap induk ber-tinggi auto diabaikan, sehingga isi rencana tumbuh
+     melewati kartu dan tertutup `overflow: hidden` di host — tombol keputusan
+     tertimbun isi. Dengan batas vh, `.ask-body` benar-benar menyusut dan
+     menggulung sendiri. */
+  max-height: 46vh;
+}
+.ask-card.ask-plan .ask-ico { color: #b4a4ff; }
+.ask-plan-count {
+  font-size: 9.5px; padding: 1px 6px; border-radius: 999px; flex-shrink: 0;
+  background: rgba(255, 255, 255, .06); color: #9d9da5;
+  font-variant-numeric: tabular-nums;
+}
+/* Markdown rencana: ukuran teks disamakan dengan isi percakapan, tetapi jarak
+   antarblok dirapatkan — kartu ini punya tinggi terbatas dan tujuan utamanya
+   dibaca cepat sebelum menyetujui. */
+.ask-plan-body {
+  min-width: 0; overflow-wrap: anywhere;
+  font-size: 11.5px; line-height: 1.55; color: #d8d8de;
+}
+.ask-plan-body > :first-child { margin-top: 0; }
+.ask-plan-body > :last-child { margin-bottom: 0; }
+.ask-plan-body h1, .ask-plan-body h2, .ask-plan-body h3, .ask-plan-body h4 {
+  font-size: 12px; margin: 10px 0 4px; color: #ececf0;
+}
+.ask-plan-body p { margin: 0 0 6px; }
+.ask-plan-body ul, .ask-plan-body ol { margin: 0 0 6px; padding-left: 18px; }
+.ask-plan-body li { margin: 0 0 2px; }
+.ask-plan-body code {
+  font-family: ui-monospace, Consolas, monospace; font-size: 10.5px;
+  background: rgba(0, 0, 0, .32); padding: 1px 4px; border-radius: 4px;
+}
+.ask-plan-body pre {
+  margin: 0 0 6px; padding: 7px 9px; border-radius: 7px;
+  background: rgba(0, 0, 0, .32); border: 1px solid rgba(255, 255, 255, .05);
+  overflow-x: auto;
+}
+.ask-plan-body pre code { background: none; padding: 0; }
+.ask-plan-prompts {
+  display: flex; flex-direction: column; gap: 3px;
+  padding: 7px 9px; border-radius: 8px;
+  background: rgba(255, 255, 255, .03); border: 1px solid rgba(255, 255, 255, .05);
+  min-width: 0;
+}
+.ask-plan-prompts b { font-size: 10px; color: #9d9da5; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+.ask-plan-prompt {
+  font-size: 10.5px; color: #c2c2c9; overflow-wrap: anywhere;
+  font-family: ui-monospace, Consolas, monospace;
+}
 
 .ask-head { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; min-width: 0; flex-shrink: 0; }
 .ask-head b { font-size: 11.5px; font-weight: 600; color: #e6e6ea; }
@@ -541,6 +596,10 @@ a { color: var(--blue); }
   .chat-asks { padding: 0 12px 8px; max-height: 52vh; }
   .ask-opts { grid-template-columns: 1fr; }
   .ask-card { padding: 9px 10px; }
+  /* Kartu rencana memakai batas tinggi sendiri yang lebih ketat: di layar
+     pendek, kartu setinggi 52vh menyisakan terlalu sedikit ruang untuk
+     percakapan di atasnya. */
+  .ask-card.ask-plan { max-height: 44vh; }
 }
 @media (max-width: 420px) {
   .ask-head b, .ask-q-text, .ask-reason, .ask-opt-label { font-size: 11px; }

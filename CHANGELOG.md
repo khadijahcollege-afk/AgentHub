@@ -1,5 +1,85 @@
 # Changelog
 
+## 1.7.5 — 2026-11-17
+Agent yang berhenti untuk menyusun rencana, meminta persetujuan atas dokumennya,
+lalu baru mengubah berkas.
+
+Sampai 1.7.4, mode `plan` hanya bisa dipilih pengguna dari chip akses. Agent tidak
+bisa memutuskan "pekerjaan ini sebaiknya direncanakan dulu", dan tidak ada dokumen
+yang bisa disetujui — jadi "setuju" berarti tidak ada yang disetujui, dan setelah
+persetujuan tidak ada jejak apa yang sudah disepakati. Yang diambil dari ZCode
+(`docs/plan-slash-command.md`, `plan-mode-approval-boundary.md`,
+`plan-mode-independent-state.md`, `plan-mode-plan-file-compact-continuity.md`,
+`contracts/src/tools/plan-mode.ts`, `core/src/permission/plan-mode-policy.ts`)
+adalah aturan transisinya; slash command `/plan` tidak diambil karena di sini
+rencana dipimpin agent, bukan diketik sebagai perintah.
+
+- **`EnterPlanMode` boleh tanpa bertanya, `ExitPlanMode` selalu bertanya**
+  (`lib/plan.js`) — masuk plan hanya MENGURANGI kemampuan (tidak menulis, tidak
+  menjalankan perintah), jadi menanyakannya hanya menambah klik yang membuat
+  pengguna terbiasa menekan "izinkan". Keluar plan membuka kembali kemampuan
+  menulis, jadi ia bertanya bahkan di `yolo`.
+- **`ExitPlanMode` di luar plan ditolak `NOT_IN_PLAN_MODE`** — bukan kesalahan
+  schema: bentuknya sah, tetapi tidak boleh. `allow` diam-diam akan membuat model
+  mengira ia sudah punya persetujuan yang tidak pernah diberikan.
+- **Rencana kosong adalah kesalahan schema, bukan rencana hampa** — spasi bukan
+  rencana. Menerimanya berarti "setujui apa pun yang saya lakukan berikutnya",
+  tepat hal yang kartu ini ada untuk mencegah. Batas `MAX_PLAN_CHARS = 20000`
+  sama dengan ZCode: lebih dari itu bukan rencana lagi, melainkan dokumen yang
+  tidak dibaca siapa pun sebelum menekan setujui.
+- **Mode sebelum plan diingat** — keluar dari plan kembali ke mode yang dipilih
+  pengguna, bukan ke bawaan. Agent yang masuk plan dari `yolo` lalu keluar ke
+  `build` akan diam-diam memperketat setiap run berikutnya.
+- **Rencana ditulis ke berkas SEBELUM mode berubah**
+  (`<cwd>/.agenthub/plans/plan-<id>.md`, atomik) — kalau penulisan gagal, run
+  tetap di plan mode. Kalau tidak, run boleh menulis berkas sementara rencananya
+  — catatan yang disepakati — tidak ada.
+- **Rencana diingat setelah ringkasan konteks** — `compact` membuang pesan lama,
+  termasuk pesan yang memuat rencana. Tanpa pengingat ini model menyusun ulang
+  rencana yang berbeda dari yang sudah disepakati, atau lupa bahwa ia sudah boleh
+  menulis.
+- **Daftar tool dibangun ulang saat mode berubah** — setelah disetujui, tool
+  tulis harus MUNCUL kembali. Model yang hanya melihat tool baca menyimpulkan
+  pekerjaannya mustahil dilanjutkan, padahal izinnya sudah ada.
+- **Persetujuan rencana memakai `approve`/`reject`, bukan `allow`/`deny`** —
+  menyetujui rencana bukan menyetujui satu pemanggilan tool. `reject` menyimpan
+  run di plan mode: "tidak" tidak boleh berperilaku seperti "ya" untuk gerbang
+  izin. `PLAN_TIMEOUT_MS = 900000` lebih panjang dari izin (3 menit) dan
+  pertanyaan (10 menit) karena pengguna harus membaca dokumen.
+- **`askPlan` tidak diwariskan ke subagent** — persetujuan rencana menaikkan izin
+  tulis untuk sisa run; anak tidak boleh menaikkan plafonnya sendiri lewat kartu
+  yang ditujukan untuk induk. Anak yang memanggil `ExitPlanMode` mendapat jalur
+  tanpa-klien dan tetap di plan.
+- **`allowedPrompts` hanya keterangan, bukan izin** — satu kategori longgar
+  ("install dependencies") bisa menutupi perintah apa pun. Izin tetap satu kartu
+  per pemanggilan.
+- **UI: kartu rencana** — teks rencana dirender sebagai markdown sungguhan
+  (judul dan daftar, bukan `##`/`-` mentah) dan digulung di dalam kartu, dengan
+  jumlah karakter, daftar "akan membutuhkan", serta tombol **Minta revisi**
+  (meminta alasan) dan **Setujui rencana**. Chip akses ikut berubah lewat event
+  SSE `mode`; mode akhir run disimpan ke thread.
+- **Satu bug nyata yang ditemukan audit UI, bukan tes** — kartu rencana memakai
+  `max-height: 100%` dari aturan dasar `.ask-card`, dan persentase terhadap induk
+  ber-tinggi `auto` diabaikan: isi rencana tumbuh melewati kartu, tertutup
+  `overflow: hidden` di host, dan tombol Setujui tertimbun. Sekarang kartu punya
+  batas `46vh` sendiri (44vh di layar ≤560px), sehingga `.ask-body` benar-benar
+  menyusut dan menggulung.
+- **Bug laten yang ikut diperbaiki: konteks `SessionStart` hilang di putaran
+  kedua** — konteks hook dulu ditambahkan langsung ke `messages[0].content`,
+  sementara system prompt kini disusun ulang setiap putaran (karena mode bisa
+  berubah di tengah run). Instruksi yang diberikan di awal run lenyap tepat saat
+  model mulai bekerja. Sekarang konteks itu disimpan sebagai bagian system yang
+  ikut disusun ulang.
+- Regresi: `plan` (20, murni + gerbang izin), `agent-loop` (+3: rencana disetujui
+  di tengah run membuka tool tulis, penolakan tetap menutupnya, konteks
+  `SessionStart` bertahan di putaran kedua), `approvals-api`
+  (+3: kartu `kind: 'plan'` lewat SSE, alur setuju menyimpan berkas rencana dan
+  menulis berkas yang direncanakan di run yang sama, `allow`/`deny` ditolak
+  `BAD_DECISION`) — suite penuh 560 tes, semuanya lulus. Audit UI di
+  1440/1024/390/320 dua bahasa: kartu di dalam layar, isi menggulung, tidak ada
+  teks yang keluar wadah, tombol terjangkau, dan chip akses berubah setelah
+  disetujui.
+
 ## 1.7.4 — 2026-11-17
 Antrean pesan yang tidak pernah membuang ketikan, kiriman yang aman diulang, dan
 muatan thread yang tidak lagi menenggelamkan HP.

@@ -371,6 +371,57 @@ window.__ahMachines = {
     return out;
   }
   const copyIco = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>';
+  // Markdown kecil untuk isi RENCANA. `md()` di atas hanya menangani kode,
+  // tebal, dan ganti baris — cukup untuk balasan chat, tetapi sebuah rencana
+  // hampir selalu berupa judul dan daftar langkah. Tanpa blok di sini, kartu
+  // menampilkan "## Rencana" dan "- langkah" apa adanya, dan aturan CSS untuk
+  // `h1..h4`/`li` di `.ask-plan-body` tidak pernah kena.
+  function mdPlan(s) {
+    const inline = (t) => esc(t)
+      .replace(/`([^`\n]+)`/g, '<code>$1</code>')
+      .replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>');
+    const out = [];
+    let list = null; // 'ul' | 'ol' | null
+    let para = [];
+    let code = null;
+    const flushPara = () => {
+      if (para.length) { out.push(`<p>${inline(para.join(' '))}</p>`); para = []; }
+    };
+    const flushList = () => {
+      if (list) { out.push(`</${list}>`); list = null; }
+    };
+    for (const raw of String(s || '').split(/\r?\n/)) {
+      const line = raw.trimEnd();
+      if (code) {
+        if (/^\s*```/.test(line)) { out.push(`<pre><code>${esc(code.join('\n'))}</code></pre>`); code = null; }
+        else code.push(raw);
+        continue;
+      }
+      if (/^\s*```/.test(line)) { flushPara(); flushList(); code = []; continue; }
+      if (!line.trim()) { flushPara(); flushList(); continue; }
+      const head = line.match(/^\s*(#{1,4})\s+(.*)$/);
+      if (head) {
+        flushPara(); flushList();
+        const lvl = Math.min(head[1].length + 1, 4);
+        out.push(`<h${lvl}>${inline(head[2])}</h${lvl}>`);
+        continue;
+      }
+      const ul = line.match(/^\s*[-*+]\s+(.*)$/);
+      const ol = line.match(/^\s*\d+[.)]\s+(.*)$/);
+      if (ul || ol) {
+        flushPara();
+        const want = ul ? 'ul' : 'ol';
+        if (list !== want) { flushList(); out.push(`<${want}>`); list = want; }
+        out.push(`<li>${inline((ul || ol)[1])}</li>`);
+        continue;
+      }
+      flushList();
+      para.push(line.trim());
+    }
+    if (code) out.push(`<pre><code>${esc(code.join('\n'))}</code></pre>`);
+    flushPara(); flushList();
+    return out.join('');
+  }
   // ---------- aksi pesan via delegasi: lupa memori, edit/cabang, bacakan ----------
   document.addEventListener('click', async (e) => {
     const del = e.target.closest('[data-mem-del]');
@@ -3350,7 +3401,10 @@ window.__ahMachines = {
     const i = runAsks.findIndex((a) => a.requestId === ev.requestId);
     const row = {
       requestId: ev.requestId,
-      kind: ev.kind === 'question' ? 'question' : 'permission',
+      // Tiga jenis, bukan dua: rencana punya payload dan keputusan sendiri
+      // (approve/reject), jadi menyamakannya dengan `permission` akan
+      // merendernya sebagai "Butuh izin EnterPlanMode" tanpa isi rencananya.
+      kind: ev.kind === 'question' ? 'question' : ev.kind === 'plan' ? 'plan' : 'permission',
       tool: ev.tool || '',
       reason: ev.reason || '',
       input: ev.input || null,
@@ -3358,6 +3412,8 @@ window.__ahMachines = {
       cwd: ev.cwd || null,
       risk: ev.risk || null,
       questions: Array.isArray(ev.questions) ? ev.questions : [],
+      plan: typeof ev.plan === 'string' ? ev.plan : '',
+      allowedPrompts: Array.isArray(ev.allowedPrompts) ? ev.allowedPrompts : [],
       subagent: ev.subagent || null,
       agentId: ev.agentId || null,
       createdAt: ev.createdAt || Date.now(),
@@ -3440,6 +3496,35 @@ window.__ahMachines = {
 
   function askCardHtml(a) {
     const who = a.subagent ? `<span class="ask-who">${esc(a.subagent)}</span>` : '';
+    // Kartu rencana. Berbeda dari izin: yang dinilai adalah ISI rencana, jadi
+    // teksnya ditampilkan penuh dan bisa digulung — bukan satu baris ringkas.
+    // Tanpa ini "setujui" berarti menyetujui sesuatu yang tidak terbaca.
+    if (a.kind === 'plan') {
+      const planText = String(a.plan || '');
+      const prompts = Array.isArray(a.allowedPrompts) && a.allowedPrompts.length
+        ? `<div class="ask-plan-prompts"><b>${tr('Akan membutuhkan')}</b>${a.allowedPrompts
+          .map((p) => `<span class="ask-plan-prompt">${esc(p.tool)}: ${esc(p.prompt)}</span>`).join('')}</div>`
+        : '';
+      return `<div class="ask-card ask-plan" data-ask-id="${esc(a.requestId)}">
+        <div class="ask-head">
+          <span class="ask-ico">${svgIco('<path d="M9 5h6M9 9h6M9 13h4"/><path d="M5 3h14v18H5z"/>')}</span>
+          <b>${tr('Rencana menunggu persetujuan')}</b>${who}
+          <span class="grow"></span>
+          <span class="ask-plan-count">${esc(tr('{n} karakter').replace('{n}', String(planText.length)))}</span>
+        </div>
+        <div class="ask-body">
+          <div class="ask-plan-body">${mdPlan(planText)}</div>
+          ${prompts}
+        </div>
+        <div class="ask-foot">
+          <span class="ask-hint">${tr('Selama belum disetujui, agent tidak boleh mengubah berkas.')}</span>
+          <span class="grow"></span>
+          <button type="button" class="btn tiny" data-ask-plan-reject="${esc(a.requestId)}"${a.busy ? ' disabled' : ''}>${tr('Minta revisi')}</button>
+          <button type="button" class="btn primary tiny" data-ask-plan-approve="${esc(a.requestId)}"${a.busy ? ' disabled' : ''}>${tr('Setujui rencana')}</button>
+        </div>
+        ${a.error ? `<p class="ask-err">${esc(a.error)}</p>` : ''}
+      </div>`;
+    }
     if (a.kind === 'question') {
       const qs = a.questions.map((q, qi) => {
         const picks = picksOf(a, qi);
@@ -3564,7 +3649,7 @@ window.__ahMachines = {
 
   // Kartu diklik lewat delegasi supaya render ulang tidak perlu memasang
   // listener baru untuk setiap tombol.
-  document.addEventListener('click', (e) => {
+  document.addEventListener('click', async (e) => {
     const opt = e.target.closest?.('[data-ask-opt]');
     if (opt) {
       const [qi, oi] = opt.dataset.askOpt.split(':').map(Number);
@@ -3630,6 +3715,17 @@ window.__ahMachines = {
     if (always) { answerAsk(always.dataset.askAlways, { decision: 'allow', always: true }); return; }
     const deny = e.target.closest?.('[data-ask-deny]');
     if (deny) { answerAsk(deny.dataset.askDeny, { decision: 'deny' }); return; }
+    // Rencana: `approve`/`reject`, bukan allow/deny. "Minta revisi" mengirim
+    // alasan sehingga model tahu apa yang harus diubah, bukan sekadar "tidak".
+    const planApprove = e.target.closest?.('[data-ask-plan-approve]');
+    if (planApprove) { answerAsk(planApprove.dataset.askPlanApprove, { decision: 'approve' }); return; }
+    const planReject = e.target.closest?.('[data-ask-plan-reject]');
+    if (planReject) {
+      const reason = await askPrompt(tr('Bagian mana yang perlu diubah?'), '', { title: tr('Minta revisi rencana') });
+      if (reason === null) return;
+      answerAsk(planReject.dataset.askPlanReject, { decision: 'reject', reason: String(reason || '').slice(0, 500) });
+      return;
+    }
   });
 
   // Input bebas disimpan saat diketik: render ulang berikutnya (timer atau
@@ -4190,6 +4286,19 @@ window.__ahMachines = {
           // "Working" yang tidak bergerak dan mungkin menekan Stop — padahal yang
           // ditunggu justru jawabannya.
           upsertAsk(ev);
+        } else if (ev.type === 'mode') {
+          // Rencana disetujui: mode run berubah di tengah jalan. Chip akses harus
+          // ikut, karena menampilkan "Plan mode" padahal agent sudah boleh
+          // menulis membuat pengguna mengira batasnya dilanggar. Nilai ini juga
+          // disimpan supaya run berikutnya memakai mode yang sama.
+          if (ev.mode) {
+            permission = ev.mode;
+            localStorage.setItem('ah_permission', permission);
+            const lbl = $('#access-label');
+            if (lbl) lbl.textContent = PERMISSION_LABELS[normalizePermission(permission)] || PERMISSION_LABELS.full;
+            renderHeroContext();
+            toast(ev.planActive ? tr('Agent masuk plan mode') : tr('Rencana disetujui — agent boleh mengubah berkas'));
+          }
         } else if (ev.type === 'done') {
           const meta = curThread.messages[curThread.messages.length - 1];
           meta.content = acc; meta.ms = ev.ms; meta.servedBy = ev.servedBy; meta.status = 'done';

@@ -856,6 +856,9 @@ async function handleSend(threadId, b, res, { onStarted = null } = {}) {
       useTools,
       signal: ctrl.signal,
       approvals: approvalClient,
+      // Folder rencana disimpan per thread: berkas rencana harus bisa ditemukan
+      // lagi setelah halaman dimuat ulang atau setelah konteks diringkas.
+      threadId,
       // Event tool diteruskan apa adanya ke UI: pengguna harus bisa melihat
       // tool apa yang dipanggil dan apakah ditolak, bukan hanya "Working".
       onEvent: (evt) => {
@@ -878,6 +881,10 @@ async function handleSend(threadId, b, res, { onStarted = null } = {}) {
           });
         } else if (evt?.type === 'tool_start') send({ type: 'tool', phase: 'start', name: evt.name, decision: evt.decision, reason: evt.reason, input: summarizeToolInput(evt.input), ...child });
         else if (evt?.type === 'tool_result') send({ type: 'tool', phase: 'result', name: evt.name, ok: evt.ok, ms: evt.ms, preview: String(evt.text || '').slice(0, 400), ...child });
+        // Perubahan mode di tengah run (rencana disetujui). Tab lain dan chip
+        // akses harus ikut berubah: menampilkan "Plan mode" padahal run sudah
+        // boleh menulis membuat pengguna mengira agent melanggar batasnya.
+        else if (evt?.type === 'mode') send({ type: 'mode', mode: evt.mode, planActive: !!evt.planActive });
       },
       onDelta: (chunk) => {
         acc += chunk;
@@ -885,6 +892,16 @@ async function handleSend(threadId, b, res, { onStarted = null } = {}) {
       },
     });
     if (!acc.trim()) { acc = r.text; send({ type: 'delta', text: r.text }); }
+    // Mode akhir run disimpan ke thread sebagai catatan yang tahan lama. UI
+    // yang sedang terbuka sudah mengikuti event `mode` di atas; nilai ini untuk
+    // pembaca berikutnya — API, dan tab yang memuat ulang thread setelah run
+    // selesai — supaya mode yang benar-benar dipakai tidak hilang bersama
+    // localStorage yang belum ikut berubah.
+    const finalMode = r.planMode || (PERMISSION_INPUTS.includes(b.permission) ? b.permission : null);
+    if (finalMode && finalMode !== 'plan' && r.planApproved) {
+      threads.patchThread(threadId, { lastMode: finalMode });
+      broadcast('threads');
+    }
     threads.appendMessage(threadId, {
       role: 'assistant',
       engine: engineId,

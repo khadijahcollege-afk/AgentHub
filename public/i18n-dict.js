@@ -943,4 +943,16 @@ export const EN = {
   'Muat {n} pesan sebelumnya': 'Load {n} earlier messages',
   'Gagal memuat pesan lengkap: ': 'Could not load the full message: ',
   'Gagal memuat seluruh thread: ': 'Could not load the whole thread: ',
+  // --- plan mode ---
+  'Rencana menunggu persetujuan': 'Plan awaiting approval',
+  '{n} karakter': '{n} characters',
+  'Akan membutuhkan': 'Will need',
+  'Setujui rencana': 'Approve plan',
+  'Minta revisi': 'Request changes',
+  'Minta revisi rencana': 'Request plan changes',
+  'Bagian mana yang perlu diubah?': 'Which part should change?',
+  'Selama belum disetujui, agent tidak boleh mengubah berkas.':
+    'Until it is approved the agent cannot change files.',
+  'Agent masuk plan mode': 'Agent entered plan mode',
+  'Rencana disetujui — agent boleh mengubah berkas': 'Plan approved — the agent may now change files',
 };
