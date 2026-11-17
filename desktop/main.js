@@ -129,6 +129,14 @@ ipcMain.on('agenthub:window-control', (event, action) => {
   else if (action === 'toggle-maximize') win.isMaximized() ? win.unmaximize() : win.maximize();
   else if (action === 'close') win.hide();
 });
+ipcMain.on('agenthub:set-backdrop', (event, mode) => {
+  if (!win || win.isDestroyed() || event.sender !== win.webContents) return;
+  if (process.platform !== 'win32') return;
+  try {
+    const allowed = { mica: 'mica', acrylic: 'acrylic', none: 'none', auto: 'auto' };
+    win.setBackgroundMaterial(allowed[mode] || 'none');
+  } catch { /* versi Windows/Electron tidak mendukung — biarkan solid */ }
+});
 ipcMain.handle('agenthub:window-state', (event) => {
   if (!win || win.isDestroyed() || event.sender !== win.webContents) return { maximized: false };
   return { maximized: win.isMaximized() };
@@ -218,12 +226,76 @@ function trayTemplate() {
     { label: 'Buka AgentHub', click: () => showWindow().catch(failStartup) },
     { type: 'separator' },
     {
+      label: 'Task baru',
+      click: () => {
+        showWindow().then(() => {
+          try { win?.webContents?.send('agenthub:tray-event', { type: 'new-task' }); } catch { /* jendela belum siap */ }
+        }).catch(failStartup);
+      },
+    },
+    {
+      label: 'Buka folder kerja',
+      click: async () => {
+        let target = '';
+        try {
+          const cfg = localConfig();
+          const res = await fetch(`http://127.0.0.1:${cfg.port}/api/state`, {
+            headers: { authorization: `Bearer ${cfg.token}` },
+          });
+          if (res.ok) {
+            const st = await res.json();
+            const folders = (st.projects || []).flatMap((x) => x.folders || []);
+            target = folders[0] || st.config?.cwd || '';
+          }
+        } catch { /* server mati — pakai fallback */ }
+        if (!target) target = path.join(app.getPath('home'), 'Documents');
+        shell.openPath(target);
+      },
+    },
+    { type: 'separator' },
+    {
       label: 'Jalankan saat PC menyala', type: 'checkbox',
       checked: app.getLoginItemSettings({ path: process.execPath, args: ['--hidden'] }).openAtLogin,
       enabled: app.isPackaged,
       click: (item) => app.setLoginItemSettings({ openAtLogin: item.checked, path: process.execPath, args: ['--hidden'] }),
     },
     { label: 'Cek pembaruan', click: () => checkForUpdates(true) },
+    {
+      label: 'Tentang AgentHub',
+      click: () => {
+        dialog.showMessageBox({
+          type: 'info',
+          title: 'Tentang AgentHub',
+          message: `AgentHub ${VERSION}`,
+          detail: 'Studio agent lokal + gateway token gratis.\nLisensi MIT — github.com/khadijahcollege-afk/AgentHub',
+          buttons: ['Tutup'],
+        });
+      },
+    },
+    {
+      label: 'Ekspor log',
+      click: async () => {
+        try {
+          const cfg = localConfig();
+          const bundle = { app: 'agenthub-diagnostics', exportedAt: new Date().toISOString(), version: VERSION, port: serverPort };
+          try {
+            const res = await fetch(`http://127.0.0.1:${cfg.port}/api/backup`, {
+              headers: { authorization: `Bearer ${cfg.token}` },
+            });
+            if (res.ok) bundle.backup = await res.json();
+          } catch { /* server mati — ekspor seadanya */ }
+          const { canceled, filePath } = await dialog.showSaveDialog({
+            title: 'Ekspor log & diagnostik',
+            defaultPath: path.join(app.getPath('documents'), `agenthub-diagnostik-${Date.now()}.json`),
+            filters: [{ name: 'JSON', extensions: ['json'] }],
+          });
+          if (!canceled && filePath) {
+            fs.writeFileSync(filePath, JSON.stringify(bundle, null, 1));
+            shell.showItemInFolder(filePath);
+          }
+        } catch (e) { dialog.showErrorBox('Ekspor log gagal', String(e.message || e)); }
+      },
+    },
   ];
   if (updateMenuUrl) {
     template.push({ label: 'Unduh versi baru', click: () => shell.openExternal(updateMenuUrl) });

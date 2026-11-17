@@ -1680,8 +1680,8 @@ window.__ahMachines = {
     const label = activeLabel();
     const chip = $('#cwd-name');
     if (chip) chip.textContent = label;
-    const hero = $('#hero-project-name');
-    if (hero) hero.textContent = label;
+    const greet = $('#hero-greet');
+    if (greet) greet.textContent = heroGreeting();
     $('#task-project-name').textContent = taskProject === 'all' ? label : taskProject;
   }
 
@@ -1872,8 +1872,8 @@ window.__ahMachines = {
       $$('#hero-recent .recent-item').forEach((el) => el.addEventListener('click', () => openThread(el.dataset.id)));
     }
     renderOnboarding();
-    const heroTitle = $('#hero-project-name');
-    if (heroTitle) heroTitle.textContent = activeLabel();
+    const heroTitle = $('#hero-greet');
+    if (heroTitle) heroTitle.textContent = heroGreeting();
     renderHeroContext();
     const sbTitle = $('#sb-title');
     if (sbTitle) sbTitle.textContent = 'AgentHub';
@@ -4133,6 +4133,83 @@ window.__ahMachines = {
       } catch (err) { toast('Gagal: ' + err.message); }
     }
   });
+  // ---------- translucensi: panel ala Kybern ----------
+  // Jendela Electron sudah transparent sejak awal; opasitas diatur lewat
+  // variabel CSS, backdrop Mica/Acrylic via IPC ke main (khusus Win11).
+  const AP_DEFAULT = { window: 'translucent', sidebarOnly: false, sidebar: 71, content: 72, surface: 71, backdrop: 'acrylic' };
+  function apLoad() {
+    try { return { ...AP_DEFAULT, ...(JSON.parse(localStorage.getItem('ah_appearance') || '{}')) }; }
+    catch { return { ...AP_DEFAULT }; }
+  }
+  function apSave(v) { localStorage.setItem('ah_appearance', JSON.stringify(v)); }
+  function apApply() {
+    const v = apLoad();
+    const root = document.documentElement;
+    const on = v.window === 'translucent';
+    root.dataset.tl = on ? '1' : '0';
+    root.style.setProperty('--t-side', on ? v.sidebar / 100 : 1);
+    root.style.setProperty('--t-content', on && !v.sidebarOnly ? v.content / 100 : 1);
+    root.style.setProperty('--t-surface', on ? v.surface / 100 : 1);
+    window.agentHubDesktop?.setBackdrop?.(on ? v.backdrop : 'none');
+  }
+  function apRender() {
+    const v = apLoad();
+    $$('#ap-window-seg button').forEach((b) => b.classList.toggle('active', b.dataset.apWindow === v.window));
+    $('#ap-sidebar-only')?.classList.toggle('on', !!v.sidebarOnly);
+    const setSlider = (sel, val) => {
+      const el = $(sel);
+      if (!el) return;
+      el.value = val;
+      const pct = el.closest('.ap-slider')?.querySelector('.ap-pct');
+      if (pct) pct.textContent = val + '%';
+    };
+    setSlider('#ap-slider-side', v.sidebar);
+    setSlider('#ap-slider-content', v.content);
+    setSlider('#ap-slider-surface', v.surface);
+    $$('#ap-backdrop-seg button').forEach((b) => b.classList.toggle('active', b.dataset.apBackdrop === v.backdrop));
+    $('#ap-backdrop-seg')?.classList.toggle('disabled', !window.agentHubDesktop);
+    $('#ap-inuse')?.classList.toggle('hidden', v.window !== 'translucent');
+  }
+  function apBind() {
+    apApply();
+    apRender();
+    $('#ap-window-seg button').forEach((b) => b.addEventListener('click', () => {
+      const v = apLoad(); v.window = b.dataset.apWindow; apSave(v); apApply(); apRender();
+    }));
+    $('#ap-sidebar-only')?.addEventListener('click', () => {
+      const v = apLoad(); v.sidebarOnly = !v.sidebarOnly; apSave(v); apApply(); apRender();
+    });
+    const bindSlider = (sel, key) => {
+      const el = $(sel);
+      if (!el) return;
+      el.addEventListener('input', () => {
+        const v = apLoad(); v[key] = Number(el.value); apSave(v); apApply();
+        const pct = el.closest('.ap-slider')?.querySelector('.ap-pct');
+        if (pct) pct.textContent = el.value + '%';
+      });
+    };
+    bindSlider('#ap-slider-side', 'sidebar');
+    bindSlider('#ap-slider-content', 'content');
+    bindSlider('#ap-slider-surface', 'surface');
+    $$('#ap-backdrop-seg button').forEach((b) => b.addEventListener('click', () => {
+      const v = apLoad(); v.backdrop = b.dataset.apBackdrop; apSave(v); apApply(); apRender();
+    }));
+    $('#ap-adv-toggle')?.addEventListener('click', () => $('#ap-adv-body')?.classList.toggle('hidden'));
+    $('#ap-reset')?.addEventListener('click', () => {
+      apSave({ ...AP_DEFAULT }); apApply(); apRender(); toast('Tampilan dikembalikan ke bawaan');
+    });
+  }
+
+  // ---------- hero: sapaan per jam (ala ZCode) ----------
+  function heroGreeting() {
+    const h = new Date().getHours();
+    const salam = h >= 4 && h < 11 ? 'Pagi'
+      : h >= 11 && h < 15 ? 'Siang'
+      : h >= 15 && h < 19 ? 'Sore'
+      : h >= 19 || h < 4 ? 'Malam' : 'Pagi';
+    return `${salam}, kerja bagus hari ini`;
+  }
+
   async function openSessionInfo() {
     if (!curThread) return;
     let s;
@@ -4229,7 +4306,33 @@ window.__ahMachines = {
     if (e.target.closest('#compact-drop')) { e.preventDefault(); compactDrop(); }
   });
 
+  apBind();
   $('#btn-share')?.addEventListener('click', () => shareThread());
+
+  // Task baru dari tray (klik kanan ikon tray di desktop)
+  window.agentHubDesktop?.onTrayEvent?.((payload) => {
+    if (payload?.type === 'new-task') {
+      go('studio');
+      $('#btn-new-chat')?.click();
+    }
+  });
+
+  // ---------- quick chips di hero (ala ZCode) ----------
+  document.addEventListener('click', (e) => {
+    const chip = e.target.closest('[data-quick-act]');
+    if (!chip) return;
+    const act = chip.dataset.quickAct;
+    if (act === 'weekly') { go('stats'); return; }
+    if (act === 'errorfix') {
+      const ta = $('#composer-input');
+      ta.value = 'Periksa folder kerja ini: cari error/bug, jelaskan akar masalahnya singkat, lalu perbaiki dengan diff kecil. Jangan mengarang — kalau tidak ada error, katakan tidak ada.';
+      ta.dispatchEvent(new Event('input', { bubbles: true }));
+      ta.focus();
+      return;
+    }
+    if (act === 'web') { $('#tool-research')?.click(); return; }
+    if (act === 'idle') { go('settings'); activateSettingsPane('schedules'); return; }
+  });
   $('#share-open')?.addEventListener('click', () => shareThread());
   $('#btn-sys-prompt')?.addEventListener('click', async () => {
     if (!curThread) return;

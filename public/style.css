@@ -2971,3 +2971,43 @@ html[data-density="comfortable"] .kcol-head { padding-bottom: 16px; }
   .mf-act .ico { width: 13px; height: 13px; }
   .msg .mf-act:active { opacity: 1; }
 }
+
+/* ---------- hero quick chips (ala ZCode) ---------- */
+.hero-quick { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 24px; max-width: 680px; }
+.hero-quick-chip {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 8px 15px; border: 1px solid #2e2e35; border-radius: 99px;
+  background: rgba(255, 255, 255, .03); color: #c9c9d1;
+  font: inherit; font-size: 12px; cursor: pointer; transition: border-color .14s, color .14s, background .14s;
+}
+.hero-quick-chip svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.hero-quick-chip:hover { border-color: #45454e; color: #fff; background: rgba(255, 255, 255, .06); }
+.hero-quick-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ---------- panel translucensi (ala Kybern) ---------- */
+.ap-head-row { display: flex; align-items: center; justify-content: space-between; }
+.ap-inuse { color: var(--accent); font-size: 11.5px; }
+.ap-block { background: #161619; border: 1px solid #26262b; border-radius: 12px; padding: 2px 14px; }
+.ap-row { display: flex; align-items: center; gap: 14px; padding: 13px 2px; border-bottom: 1px solid #222227; }
+.ap-row:last-child { border-bottom: 0; }
+.ap-row > div:first-child { flex: 1; min-width: 0; }
+.ap-row b { font-size: 13px; color: #f0f0f3; }
+.ap-advanced { border-top: 1px solid #222227; padding: 6px 2px 2px; }
+.ap-adv-toggle { background: none; border: 0; color: #c9c9d1; font: inherit; font-size: 12px; cursor: pointer; padding: 6px 2px; display: inline-flex; gap: 6px; align-items: center; }
+.ap-adv-body { padding: 2px 0 4px; }
+.ap-slider { display: flex; align-items: center; gap: 10px; min-width: 210px; }
+.ap-slider input[type="range"] { width: 140px; accent-color: var(--accent); padding: 0; border: 0; background: none; }
+.ap-pct { font-size: 11px; color: var(--muted); width: 38px; text-align: right; }
+.ap-foot { padding: 8px 2px 8px; text-align: right; }
+.ap-block .seg { display: inline-flex; background: #232327; border-radius: 9px; padding: 3px; gap: 2px; flex-shrink: 0; }
+.ap-block .seg button { border: 0; background: none; color: #b9b9c0; font: inherit; font-size: 11.5px; padding: 5px 12px; border-radius: 7px; cursor: pointer; }
+.ap-block .seg button.active { background: #3a3a40; color: #fff; }
+.ap-block .seg.disabled { opacity: .45; pointer-events: none; }
+
+/* ---------- kaca: aktif hanya bila html[data-tl="1"] ---------- */
+html[data-tl="1"] #app.layout { background: rgba(11, 11, 12, var(--t-content, 1)); }
+html[data-tl="1"] .rail { background: rgba(15, 15, 16, var(--t-side, 1)); }
+html[data-tl="1"] .sidebar { background: rgba(21, 21, 23, var(--t-side, 1)); }
+html[data-tl="1"] .pill-main { background: rgba(24, 24, 27, var(--t-surface, 1)); }
+html[data-tl="1"] .pop { background: rgba(27, 27, 30, var(--t-surface, 1)); }
+html[data-tl="1"] .dialog-card { background: rgba(27, 27, 30, var(--t-surface, 1)); }

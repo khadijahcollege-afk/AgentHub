@@ -10,7 +10,7 @@
 <link rel="apple-touch-icon" href="/public/icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="stylesheet" href="/public/style.css?v=1.6.14">
+<link rel="stylesheet" href="/public/style.css?v=1.8.1">
 <link rel="stylesheet" href="/public/workspace.css?v=20261116">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%23f2905c'/%3E%3Cstop offset='100%25' stop-color='%23e46a30'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='100' height='100' rx='22' fill='url(%23g)'/%3E%3Ccircle cx='50' cy='38' r='16' fill='white'/%3E%3Crect x='30' y='62' width='40' height='10' rx='5' fill='white'/%3E%3C/svg%3E">
 </head>
@@ -167,9 +167,15 @@
         <div class="chat-scroll" id="chat-scroll">
           <div id="chat-empty" class="hero hidden">
             <div class="hero-sub">Let's work in</div>
-            <div class="hero-title"><span id="hero-project-name">AgentHub</span> <span class="caret">▾</span></div>
+            <div class="hero-title" id="hero-greet">Selamat bekerja</div>
             <div id="hero-context" class="hero-context"></div>
             <div id="hero-composer-slot" class="hero-slot"></div>
+            <div id="hero-quick" class="hero-quick">
+              <button class="hero-quick-chip" data-quick-act="weekly"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg><span>Ringkasan mingguan</span></button>
+              <button class="hero-quick-chip" data-quick-act="errorfix"><svg viewBox="0 0 24 24"><path d="M8 4.5 3.5 12 8 19.5M16 4.5 20.5 12 16 19.5"/></svg><span>Perbaiki error</span></button>
+              <button class="hero-quick-chip" data-quick-act="web"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-3.4-3.4"/></svg><span>Riset web</span></button>
+              <button class="hero-quick-chip" data-quick-act="idle"><svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg><span>Tugas terjadwal</span></button>
+            </div>
             <div id="hero-continue" class="hero-continue">
               <div class="continue-label">Continue</div>
               <div id="hero-recent"></div>
@@ -647,6 +653,30 @@
             <p class="muted small">Tema mengikuti pilihan Anda atau pengaturan Windows. Warna aksen dipakai pada tombol utama, cursor streaming, dan chip model.</p>
             <div class="set-field"><span class="set-field-label">Tema</span><div id="theme-cards" class="theme-cards"></div></div>
             <div class="set-field"><span class="set-field-label">Warna aksen</span><div id="accent-swatches" class="accent-swatches"></div></div>
+            <div class="set-field ap-head-row"><span class="set-field-label" id="ap-translucent">Translucensi</span><span class="ap-inuse hidden" id="ap-inuse">Dipakai sekarang</span></div>
+            <div class="ap-block">
+              <div class="ap-row">
+                <div><b>Jendela</b><p class="muted small">Translucent membiarkan desktop terlihat di balik AgentHub.</p><p class="muted small hidden" id="ap-fx-off">Efek transparansi Windows sedang nonaktif — aplikasi tampil solid.</p></div>
+                <div class="seg" id="ap-window-seg" role="group" aria-label="Mode jendela">
+                  <button type="button" data-ap-window="solid">Solid</button>
+                  <button type="button" data-ap-window="translucent">Translucent</button>
+                </div>
+              </div>
+              <div class="ap-row">
+                <div><b>Hanya sidebar</b><p class="muted small">Percakapan tetap solid. Hanya sidebar dan bingkai yang transparan.</p></div>
+                <button type="button" class="pp-toggle" id="ap-sidebar-only" aria-label="Hanya sidebar"><i></i></button>
+              </div>
+              <div class="ap-advanced">
+                <button type="button" class="ap-adv-toggle" id="ap-adv-toggle"><span class="caret">▾</span> Advanced</button>
+                <div class="ap-adv-body hidden">
+                  <div class="ap-row"><div><b>Opasitas sidebar</b><p class="muted small">Seberapa kuat warna menutupi desktop di balik sidebar.</p></div><div class="ap-slider"><input type="range" id="ap-slider-side" min="30" max="100" step="1"><span class="ap-pct"></span></div></div>
+                  <div class="ap-row"><div><b>Opasitas konten</b><p class="muted small">Seberapa kuat warna di balik area percakapan. 100% = solid.</p></div><div class="ap-slider"><input type="range" id="ap-slider-content" min="30" max="100" step="1"><span class="ap-pct"></span></div></div>
+                  <div class="ap-row"><div><b>Opasitas permukaan</b><p class="muted small">Kekokohan composer, menu, dan kartu di atas kaca.</p></div><div class="ap-slider"><input type="range" id="ap-slider-surface" min="30" max="100" step="1"><span class="ap-pct"></span></div></div>
+                  <div class="ap-row"><div><b>Backdrop</b><p class="muted small">Mica mewarnai dengan wallpaper; Acrylic juga mengaburkan jendela di baliknya. Khusus aplikasi desktop di Windows 11.</p></div><div class="seg" id="ap-backdrop-seg" role="group" aria-label="Backdrop"><button type="button" data-ap-backdrop="mica">Mica</button><button type="button" data-ap-backdrop="acrylic">Acrylic</button></div></div>
+                </div>
+              </div>
+              <div class="ap-foot"><button type="button" class="link-btn" id="ap-reset">Kembalikan ke bawaan</button></div>
+            </div>
             <div class="set-field">
               <span class="set-field-label">Kepadatan tampilan</span>
               <div class="seg" id="density-seg" role="group" aria-label="Kepadatan tampilan">
@@ -1427,6 +1457,6 @@
 <div id="toast-wrap" class="toast-wrap"></div>
 <script src="/public/pwa.js"></script>
 <script src="/public/qrcode.min.js"></script>
-<script type="module" src="/public/app.js?v=1.6.14"></script>
+<script type="module" src="/public/app.js?v=1.8.1"></script>
 </body>
 </html>
