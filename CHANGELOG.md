@@ -423,6 +423,15 @@ ditunggu, dan apa yang harus bisa dipulihkan setelah gagal.
   `share`, `port-helper` — 424 tes, semuanya lulus.
 
 ## 1.6.14 — 2026-11-17
+- **Bagikan percakapan sebagai tautan baca-saja (REA app ZCode 3.18.2,
+  fitur conversationShare)** — tombol bagikan di header chat membuat tautan
+  publik /share/<id> (pilih berlaku 7/30 hari via dialog), isi dibaca tanpa
+  token dengan halaman gelap yang rapi (markdown, code block, noindex),
+  bisa dicabut kapan saja (halaman langsung mati), satu tautan aktif per
+  thread (perpanjang, bukan menumpuk). Kelola daftar tautan di Info sesi.
+  REA dilakukan dengan membongkar app.asar ZCode (7.653 kunci i18n -> peta
+  fitur); adopsi berikutnya yang tercatat: pairing kode kedaluwarsa untuk
+  akses HP (pengganti token statis) dan sinkronisasi settings antar perangkat.
 - **Model gratis GLM-5.3-Flash benar-benar dipakai (REA kartu Start Plan
   ZCode)** — kuota harian diperbarui sesuai kartu aslinya (300.000.000
   token/hari untuk GLM-5.3-Flash, 1M context, Vision). Tiap baris model di

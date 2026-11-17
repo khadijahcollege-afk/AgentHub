@@ -72,6 +72,7 @@ saris publik Nov 2026; kolom AgentHub = terverifikasi tes/UI di repo ini.
 | Fork/cabang & edit ulang pesan | ✓ | ✓ | ✓ (rewind) | ✕ | ✕ | parsial | ✕ |
 | Bacakan (TTS) balasan | ✓ | ✓ | ✕ | ✕ | ✕ | ✕ | ✓ |
 | Ekspor percakapan (md/json) | ✓ | ✓ | ✓ | ✕ | ✕ | ✕ | ✓ |
+| Bagikan percakapan (tautan baca-saja + kedaluwarsa/cabut) | ✓ | ✓ | ✕ | ✕ | ✕ | ✓ | ✕ |
 | MCP | ✕ (CLI native) | ✓ | ✓ | ✓ | parsial | ✓ | parsial |
 | Buat gambar/video/musik | ✕ | ✓ | parsial | ✕ | ✕ | ✕ | ✓ |
 | Riset web bawaan (tanpa API key) | ✓ | ✓ | ✓ | ✕ | parsial | ✓ | ✓ |
