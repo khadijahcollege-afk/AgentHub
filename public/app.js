@@ -5535,6 +5535,7 @@ window.__ahMachines = {
             <div class="pp-hero-actions">
               <button class="pp-btn light" data-pp-act="claim">Catat promo lokal</button>
               <button class="btn" data-pp-act="use-opencode-free">Pakai model gratis OpenCode</button>
+              <button class="btn" data-pp-act="use-zai-key">Sambungkan key Z.ai Plan</button>
               <button class="btn" data-pp-act="open-free">Lihat model gratis</button>
             </div>
             <p class="muted small">Kuota dan kelayakan promo harus dikonfirmasi pada akun provider.</p>
@@ -5563,6 +5564,7 @@ window.__ahMachines = {
         ${p.dismissed ? '<button class="btn tiny" data-pp-act="restore">Tampilkan kartu promo</button>' : ''}
         <button class="btn tiny" data-pp-act="show-ticket">Lihat tiket</button>
         <button class="btn tiny" data-pp-act="use-opencode-free">Pakai model gratis OpenCode</button>
+        <button class="btn tiny primary" data-pp-act="use-zai-key">Sambungkan key Z.ai Plan</button>
       </div>
 
       <div class="promo-access-notice"><b>Tiket ini tidak mengaktifkan model atau memberi kuota API.</b><p>Angka saldo dan jadwal di bawah merupakan catatan lokal, bukan saldo akun provider. Untuk menggunakan model, buka katalog dan hubungkan akses yang tersedia.</p><button class="btn primary" data-pp-act="open-free">Buka katalog model</button></div>
@@ -5636,7 +5638,8 @@ window.__ahMachines = {
       avail.innerHTML = p.phase === 'pending'
         ? `<b>GLM-5.3-Flash</b> will be available on <b>${ppLongDate(p.startsAt)}</b>.`
         : p.phase === 'active'
-          ? `Klaim tersimpan di aplikasi sampai <b>${ppPlanDate(p.planExpiresAt)}</b>. Akses <b>GLM-5.3-Flash</b> di provider belum diverifikasi. <button class="btn" data-pp-act="use-opencode-free">Pakai model gratis OpenCode</button>`
+          ? `Klaim tersimpan di aplikasi sampai <b>${ppPlanDate(p.planExpiresAt)}</b>. Akses <b>GLM-5.3-Flash</b> di provider belum diverifikasi. <button class="btn" data-pp-act="use-opencode-free">Pakai model gratis OpenCode</button>
+              <button class="btn" data-pp-act="use-zai-key">Sambungkan key Z.ai Plan</button>`
           : `<b>GLM-5.3-Flash</b> quota has ended on <b>${ppPlanDate(p.planExpiresAt)}</b>.`;
     }
     if (avail) avail.innerHTML += '<p class="muted small">Claim mencatat plan lokal; tidak menerbitkan API key atau mengaktifkan kuota provider. Untuk memakai promo ini, hubungkan akun atau API key provider yang memiliki akses. Untuk model gratis bawaan OpenCode, pilih engine Gratis · OpenCode.</p>';
@@ -5717,6 +5720,18 @@ window.__ahMachines = {
       }
       if (act === 'open-plan') { setPromoPane('pass', { silent: true }); go('promo'); setLayer(null); return; }
       if (act === 'open-free') { setPromoPane('free'); return; }
+      if (act === 'use-zai-key') {
+        // REA ZCode: plan = builtin:zai-start-plan di akun z.ai; kuota 300M/hari
+        // GLM-5.3-Flash mengikuti KEY akun (OAuth ZCode terenkripsi di keyring
+        // OS — tidak diekspor). Jalur sah: tempel key dari akun z.ai, preset
+        // 'zai' menunjuk api.z.ai/api/paas/v4.
+        go('keys');
+        const sel = $('#key-preset');
+        if (sel) { sel.value = 'zai'; sel.dispatchEvent(new Event('change')); }
+        $('#key-value')?.focus();
+        toast('Tempel key dari akun Z.ai Anda (z.ai) — model glm-5.3-flash, kuota plan 300M/hari', 6000);
+        return;
+      }
       if (act === 'use-free-engine') {
         // REA ZCode: model list Start Plan (GLM-5.3-Flash dsb.) — setiap model
         // punya engine OpenCode gratis yang cocok (opencode-free-<model>-free),
