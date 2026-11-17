@@ -2,7 +2,7 @@
 // Nol dependency npm — hanya modul bawaan Node.js.
 import http from 'node:http';
 import { discoverSkills, activeSkillIds } from './lib/skills.js';
-import { startTerminal, terminalStatus, stopTerminal } from './lib/terminal.js';
+import { startTerminal, terminalStatus, stopTerminal, closeTerminal, listTerminals, getTerminalTab, createTerminalTab } from './lib/terminal.js';
 import { connectOpenRouter, connectionStatus } from './lib/openrouter-connect.js';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -744,10 +744,31 @@ ${msgs || '<p class="meta">Percakapan kosong.</p>'}
   }
   if (p === '/api/terminal' || p.startsWith('/api/terminal/')) {
     try {
+      if (p === '/api/terminal' && method === 'GET') {
+        // Daftar tab untuk satu workspace, dipakai saat panel dibuka dan setelah
+        // halaman dimuat ulang: perintah yang berjalan di server tetap terlihat.
+        const ws = url.searchParams.get('workspace') || '';
+        return sendJson(res, 200, { ...listTerminals(ws), homeDir: os.homedir() });
+      }
       if (p === '/api/terminal' && method === 'POST') {
         const r = startTerminal(await readBody(req));
         recordFeature('terminal');
+        broadcast('terminal');
         return sendJson(res, 200, r);
+      }
+      // Tab: dibaca lengkap dengan transkrip (itulah yang dipulihkan UI),
+      // ditutup lewat DELETE. Tab dan run sengaja dua rute berbeda: "hentikan
+      // perintah yang berjalan" bukan "lepas sesinya".
+      if (p === '/api/terminal/tabs' && method === 'POST') {
+        return sendJson(res, 200, createTerminalTab(await readBody(req)));
+      }
+      if ((m = p.match(/^\/api\/terminal\/tabs\/([a-f0-9]{32})$/)) && method === 'GET') {
+        return sendJson(res, 200, getTerminalTab(m[1]));
+      }
+      if ((m = p.match(/^\/api\/terminal\/tabs\/([a-f0-9]{32})$/)) && method === 'DELETE') {
+        closeTerminal(m[1]);
+        broadcast('terminal');
+        return sendJson(res, 200, { ok: true, closed: true });
       }
       const terminalMatch = p.match(/^\/api\/terminal\/([a-f0-9]{32})$/);
       if (terminalMatch && method === 'GET') return sendJson(res, 200, terminalStatus(terminalMatch[1]));

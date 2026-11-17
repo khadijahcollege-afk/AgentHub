@@ -133,6 +133,9 @@ Agent yang mengemudikan aplikasi tidak perlu menebak; kontraknya disajikan lewat
 | `GET /api/threads/:id/diff` | file berubah dengan `+/-` dan patch terbatas |
 | `POST /api/threads/:id/revert` | kembalikan file terlacak; file baru hanya dengan izin eksplisit |
 | `POST /api/threads/:id/rules` | tulis satu file aturan yang diizinkan (`AGENTS.md`, `CLAUDE.md`, …) |
+| `GET /api/terminal?workspace=` · `POST /api/terminal` | tab terminal milik satu workspace, dan jalankan perintah di sebuah tab (tanpa `tabId` = tab baru) |
+| `GET/DELETE /api/terminal/tabs/:id` · `POST /api/terminal/tabs` | buka tab lengkap dengan transkrip, tutup tab, atau buat tab kosong |
+| `GET/DELETE /api/terminal/:id` | satu perintah: status + keluaran, atau hentikan prosesnya (tab tetap ada) |
 
 Perpindahan tugas linear ketat: `inbox → todo → running → review → done`. Lompatan
 kolom ditolak `409` dengan body berisi `allowed`, jadi klien bisa mengoreksi diri
@@ -187,6 +190,22 @@ judul & isi pesan thread, judul tugas, judul/isi catatan, serta nama/folder proy
 dalam satu permintaan. Hasil tetap terkelompok dengan cuplikan di sekitar
 kecocokan, jadi Anda bisa langsung menuju percakapan atau catatan yang memutuskan
 sesuatu — tanpa indeks terpisah yang harus dibangun ulang.
+
+**Tab terminal** adalah gagasan yang sama untuk pekerjaan shell. Terminal ini bukan
+PTY: setiap perintah adalah proses baru yang selesai saat perintahnya selesai. Yang
+ditambahkan tab adalah bagian yang membuat terminal layak dipakai berjam-jam. Satu
+tab adalah satu sesi terpisah, jadi tab kedua tidak pernah menimpa keluaran tab
+pertama. Nomornya stabil dan memakai nomor terkecil yang bebas — tab pertama hanya
+nama folder, tab berikutnya `folder 2`, `folder 3`, dan nomor yang dilepas diberikan
+ke tab baru, tanpa pernah menomori ulang tab yang sudah terbuka (tab yang namanya
+berubah adalah tab yang Anda kehilangan jejak). Menutup **panel** hanya
+menyembunyikannya; hanya menutup tab yang mengakhiri sesinya, jadi `npm test` tetap
+berjalan sambil Anda membaca kode dan keluarannya masih ada saat Anda kembali.
+Daftar tab disimpan di server (`GET /api/terminal`), bukan di memori halaman, jadi
+muat ulang atau perpindahan workspace menemukan perintah yang masih berjalan alih-
+alih terminal kosong. Transkrip dibatasi per tab, dan exit code asli perintah
+dipertahankan (`exit $LASTEXITCODE` di PowerShell — tanpanya setiap kegagalan
+dilaporkan sebagai 1, yang tidak berguna justru saat Anda membaca keluaran CI).
 
 Konfirmasi adalah bagian dari aplikasi, bukan browser: setiap aksi berbahaya dan
 input teks memakai satu overlay aksesibel (`role="dialog"`, Esc/Enter, focus trap,

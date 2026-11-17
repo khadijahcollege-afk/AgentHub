@@ -340,6 +340,7 @@ const SSE_SCOPES = {
   promoPass: ['promoPass'],
   config: ['config', 'server'],
   schedules: ['schedules'],
+  terminal: ['terminal'],
   workspace: ['workspace', 'threads'],
   memory: ['memory', 'threads'],
   update: ['update', 'config'],

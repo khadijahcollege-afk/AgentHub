@@ -185,7 +185,11 @@
           <div id="bottom-composer-slot" class="bottom-slot"></div>
         </div>
         <section id="terminal-panel" class="terminal-panel hidden" aria-label="Terminal proyek">
-          <div class="terminal-toolbar"><b>&gt;_ Terminal</b><span id="terminal-status" class="chip">Siap</span><span class="grow"></span><button id="terminal-clear" class="btn tiny" type="button">Bersihkan</button><button id="terminal-stop" class="btn tiny" type="button" disabled>Stop</button><button id="terminal-close" class="btn tiny" type="button" aria-label="Tutup terminal">Tutup</button></div>
+          <div class="terminal-toolbar"><b>&gt;_ Terminal</b><span id="terminal-status" class="chip">Siap</span><span class="grow"></span><button id="terminal-clear" class="btn tiny" type="button">Bersihkan</button><button id="terminal-stop" class="btn tiny" type="button" disabled>Stop</button><button id="terminal-close" class="btn tiny" type="button" aria-label="Tutup panel terminal">Tutup</button></div>
+          <div class="terminal-tabstrip" role="tablist" aria-label="Tab terminal">
+            <div id="terminal-tabs" class="terminal-tabs"></div>
+            <button id="terminal-new-tab" class="terminal-newtab" type="button" aria-label="Tab terminal baru" title="Tab terminal baru"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+          </div>
           <div class="terminal-cwdbar">
             <span class="terminal-cwdlabel">Direktori aktif</span>
             <code id="terminal-cwd" class="terminal-cwd"></code>
@@ -194,7 +198,7 @@
           </div>
           <pre id="terminal-output" tabindex="0" aria-label="Output terminal">Jalankan perintah di folder proyek aktif.</pre>
           <form id="terminal-form"><span aria-hidden="true">&gt;</span><input id="terminal-command" aria-label="Perintah terminal" placeholder="Contoh: npm test" autocomplete="off" spellcheck="false"><button id="terminal-run" class="btn tiny primary">Jalankan</button></form>
-          <p class="terminal-hint">PowerShell di Windows · setiap perintah membuka proses baru · program interaktif belum didukung</p>
+          <p class="terminal-hint">PowerShell di Windows · setiap perintah membuka proses baru · tab tetap hidup saat panel ditutup</p>
         </section>
         <div id="composer" class="composer-pill">
           <div class="pill-context">

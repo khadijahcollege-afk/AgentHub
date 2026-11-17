@@ -1,5 +1,51 @@
 # Changelog
 
+## 1.7.2 — 2026-11-17
+Tab terminal: satu tab satu sesi, dan perintah yang berjalan tidak mati hanya
+karena halaman dimuat ulang.
+
+Terminal AgentHub sejak awal adalah satu kotak perintah: jalankan, baca, lalu
+kotaknya dipakai lagi untuk perintah berikutnya. Untuk `dir` itu cukup. Untuk kerja
+nyata itu berarti setiap perintah baru menghapus keluaran perintah sebelumnya —
+tepat ketika dua hal harus dijalankan berdampingan (uji di satu sisi, server di
+sisi lain). Yang diambil dari ZCode (`docs/ui/terminal-sessions.md`) adalah
+kontrak tab-nya, bukan PTY-nya: terminal ini tetap satu perintah satu proses, dan
+program interaktif belum didukung.
+
+- **Tab = sesi terpisah** — tab kedua tidak menimpa keluaran tab pertama, dan
+  menutup satu tab tidak menyentuh tab lain. Riwayat perintah di dalam satu tab
+  bersifat menumpuk (`MAX_RUNS_PER_TAB = 40`), jadi hasil sebelumnya masih bisa
+  dibaca, bukan hanya perintah terakhir.
+- **Nomor stabil, memakai nomor terkecil yang bebas** — tab pertama tampil tanpa
+  nomor (`nama-folder`), berikutnya `nama-folder 2`, `nama-folder 3`. Nomor yang
+  dilepas diberikan ke tab baru, dan tab yang sudah terbuka **tidak pernah**
+  dinamai ulang: nama yang berubah-ubah membuat pengguna kehilangan jejak tab mana
+  yang sedang ia lihat. `POST /api/terminal/tabs` membuat tab kosong, karena orang
+  menyiapkan tab sebelum mengetik.
+- **Tab disimpan di server** — `GET /api/terminal?workspace=` mengembalikan daftar
+  tab beserta statusnya. Memuat ulang halaman atau berganti workspace menemukan
+  perintah yang masih berjalan, bukan terminal kosong. Tanpa ini, tab hanya hidup
+  di memori tab browser dan `npm test` yang sedang jalan hilang dari pandangan
+  padahal prosesnya masih hidup di server.
+- **Tutup panel ≠ tutup tab** — tombol Tutup hanya menyembunyikan panel; sesi dan
+  perintahnya tetap berjalan. Hanya tombol tutup di tab yang melepas sesinya
+  (`DELETE /api/terminal/tabs/:id`). `DELETE /api/terminal/:id` tetap berarti
+  "hentikan proses ini" dan tabnya masih bisa dibaca.
+- **Satu perintah sekaligus per tab** — perintah kedua di tab yang masih sibuk
+  ditolak `409`, bukan menimpa transkrip perintah yang belum selesai. Batas empat
+  proses bersamaan tetap berlaku lintas tab.
+- **Exit code asli diteruskan** — perbaikan bug yang ditemukan oleh tes ini:
+  `powershell.exe -Command` melaporkan 1 untuk SETIAP kegagalan, jadi perintah yang
+  keluar dengan 3 terlihat seperti 1. Pembungkus sekarang berakhir dengan
+  `exit $LASTEXITCODE` (mundur ke `$?` untuk cmdlet PowerShell), sehingga keluaran
+  CI benar-benar terbaca dari terminal ini.
+- **Tab aktif selalu terlihat** — strip tab bisa menggulung di layar sempit, dan
+  tab yang baru dibuka digulirkan ke pandangan. Tanpa itu, membuka tab di ponsel
+  terasa seperti tidak terjadi apa-apa.
+- Regresi: `terminal` (11) — suite penuh 459 tes, semuanya lulus. Audit UI di
+  1440/1024/390/320 dua bahasa: penomoran, tab aktif, tombol +, tutup panel vs
+  tutup tab, dan pemulihan setelah muat ulang.
+
 ## 1.7.1 — 2026-11-17
 Ringkasan konteks: percakapan panjang berhenti kehilangan awal ceritanya secara
 diam-diam.

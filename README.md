@@ -159,6 +159,9 @@ Agents driving the app do not have to guess. The contract is served over HTTP:
 | `POST /api/threads/:id/fork` | cabang percakapan: salin sampai pesan acuan (include/exclude untuk alur edit) |
 | `GET/POST /api/memory` · `DELETE /api/memory/:id` · `POST /api/memory/clear` | memori jangka panjang: fakta yang disuntikkan otomatis ke setiap prompt |
 | `GET/POST /api/research` | riset web tanpa API key (DuckDuckGo) — balasan membawa `context` siap-suntik |
+| `GET /api/terminal?workspace=` · `POST /api/terminal` | tab terminal milik satu workspace, dan jalankan perintah di sebuah tab (tanpa `tabId` = tab baru) |
+| `GET/DELETE /api/terminal/tabs/:id` · `POST /api/terminal/tabs` | buka tab lengkap dengan transkrip, tutup tab, atau buat tab kosong |
+| `GET/DELETE /api/terminal/:id` | satu perintah: status + keluaran, atau hentikan prosesnya (tab tetap ada) |
 | `GET /api/update` · `POST /api/update/download` · `POST /api/update/install` | auto-update: status versi+unduhan, unduh manual, pasang senyap dari GitHub Releases latest |
 
 Task movement is strictly linear: `inbox → todo → running → review → done`. A skip is
@@ -212,6 +215,21 @@ thread titles and message bodies, task titles, note titles/bodies, and project
 names/folders in one request. Results keep their group and a snippet around the
 match, so you can jump straight to the conversation or note that decided
 something — no separate index to rebuild.
+
+**Terminal tabs** are the same idea applied to shell work. The terminal is not a
+PTY: each command is a new process that ends when it ends. What the tabs add is
+the part that makes a terminal usable for hours. A tab is a separate session, so a
+second tab never overwrites the first one's output. Numbers are stable and reuse
+the smallest free one — the first tab is just the folder name, later tabs are
+`folder 2`, `folder 3`, and a closed number is handed to the next tab, never
+renumbering the ones already open (a tab whose name changes is a tab you lose
+track of). Closing the **panel** only hides it; only closing a tab ends its
+session, so `npm test` keeps running while you read code and its output is still
+there when you come back. The tab list lives in the server (`GET /api/terminal`),
+not in page memory, so a reload or a workspace switch finds the running command
+instead of an empty terminal. Transcripts are capped per tab, and the run's real
+exit code is preserved (`exit $LASTEXITCODE` in PowerShell — without it every
+failure reports 1, which is useless exactly when you are reading CI output).
 
 Promo Pass is a small state machine of its own: `available → pending|active →
 expired`, scheduled around a 22:00 drop, a 10-hour ticket, and a three-day plan

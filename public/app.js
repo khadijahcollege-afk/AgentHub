@@ -1129,18 +1129,32 @@ window.__ahMachines = {
   $('#skills-search').addEventListener('input', renderSkills);
   $('#btn-project-picker-close').addEventListener('click', () => setLayer(null));
 
-  let terminalSession = null;
+  // ---------- terminal: tab per workspace ----------
+  // Satu tab = satu sesi. Tab disimpan di SERVER (`lib/terminal.js`), bukan di
+  // memori halaman, karena alasan yang sama seperti di sana: memuat ulang
+  // halaman atau berganti workspace tidak boleh membuang perintah yang masih
+  // berjalan. Yang lokal hanya tab mana yang sedang dilihat.
+  let termTabs = [];             // daftar tab workspace aktif (bentuk dari server)
+  let termActive = null;         // tabId yang sedang dilihat
+  let termRun = null;            // run terakhir yang dipantau (untuk status)
   let terminalBusy = false;
   let terminalTimer;
-  let terminalTranscript = '';
   let terminalHistory = [];
   let terminalHistoryIndex = 0;
   // Folder kerja terminal. Default: folder proyek aktif → folder kerja bebas →
   // folder pengguna dari server. Dulu terminal menolak jalan tanpa proyek
   // padahal user hanya ingin menjalankan `dir` — sekarang selalu punya direktori.
   let terminalCwd = '';
+
+  // Kunci workspace untuk memisahkan tab. Memakai folder nyata, karena tab
+  // ditampilkan per folder yang sedang dibuka — proyek berbeda tidak berbagi tab.
+  function termWorkspaceKey() {
+    return activeCwd() || terminalCwd || state?.server?.homeDir || '';
+  }
   function terminalDir() {
-    return terminalBusy ? (terminalSession?.cwd || terminalCwd) : (terminalCwd || activeCwd() || state?.server?.homeDir || '');
+    if (terminalBusy && termRun?.cwd) return termRun.cwd;
+    const active = termTabs.find((t) => t.id === termActive);
+    return active?.cwd || terminalCwd || activeCwd() || state?.server?.homeDir || '';
   }
   function paintTerminalCwd() {
     const dir = terminalDir();
@@ -1152,57 +1166,232 @@ window.__ahMachines = {
   function toggleTerminal(open) {
     $('#terminal-panel').classList.toggle('hidden', !open);
     $('#btn-terminal').setAttribute('aria-expanded', String(open));
+    if (open) {
+      // Panel dibuka: tab dipulihkan dari server, bukan dibuat baru. Perintah
+      // yang berjalan selama panel tertutup tetap ada lengkap dengan keluarannya.
+      loadTermTabs();
+      $('#terminal-command').focus();
+    }
     paintTerminalCwd();
-    if (open) $('#terminal-command').focus();
   }
-  async function renderTerminal(session) {
+
+  // Label tab: nomor 1 tidak ditampilkan (tab dasar), nomor lain ditampilkan di
+  // belakang nama folder. Nama tidak pernah berubah setelah dibuat.
+  function tabTitle(t) {
+    return t.label || t.cwd || 'terminal';
+  }
+
+  function renderTermTabs() {
+    const host = $('#terminal-tabs');
+    if (!host) return;
+    host.innerHTML = termTabs.map((t) => {
+      const running = ['running', 'stopping'].includes(t.status);
+      return `
+      <div class="terminal-tab${t.id === termActive ? ' active' : ''}${running ? ' busy' : ''}" role="tab" tabindex="0"
+           data-term-tab="${esc(t.id)}" aria-selected="${t.id === termActive}" title="${esc(t.cwd)}">
+        <span class="terminal-tab-label">${esc(tabTitle(t))}</span>
+        <span class="terminal-tab-dot" aria-hidden="true"></span>
+        <button class="terminal-tab-close" type="button" data-term-tab-close="${esc(t.id)}" aria-label="${esc(tr('Tutup tab'))} ${esc(tabTitle(t))}" title="${esc(tr('Tutup tab'))}">${icon('x')}</button>
+      </div>`;
+    }).join('');
+    // Strip bisa menggulung di layar sempit. Tab aktif harus terlihat: tanpa ini
+    // membuka tab baru di ponsel terasa seperti tidak terjadi apa-apa, karena
+    // tabnya dibuat di luar pandangan dan isinya tidak pernah muncul.
+    const active = host.querySelector('.terminal-tab.active');
+    if (active && typeof active.scrollIntoView === 'function') {
+      try { active.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch { /* bukan hal kritis */ }
+    }
+  }
+
+  async function loadTermTabs() {
+    try {
+      const r = await api(`/api/terminal?workspace=${encodeURIComponent(termWorkspaceKey())}`);
+      termTabs = r.tabs || [];
+      if (!termTabs.some((t) => t.id === termActive)) termActive = termTabs[0]?.id || null;
+      renderTermTabs();
+      await openTermTab(termActive, { quiet: true });
+    } catch (err) { toast(tr('Terminal: ') + err.message); }
+  }
+
+  // Buka tab: ambil transkrip lengkapnya, lalu tampilkan. Ini juga yang
+  // memulihkan tampilan setelah halaman dimuat ulang.
+  async function openTermTab(tabId, { quiet = false } = {}) {
+    clearTimeout(terminalTimer);
+    termActive = tabId || null;
+    renderTermTabs();
+    if (!tabId) {
+      terminalBusy = false;
+      termRun = null;
+      $('#terminal-output').textContent = tr('Belum ada tab. Jalankan perintah untuk membuka tab pertama.');
+      $('#terminal-status').textContent = tr('Siap');
+      $('#terminal-stop').disabled = true;
+      $('#terminal-run').disabled = false;
+      paintTerminalCwd();
+      return;
+    }
+    try {
+      const t = await api(`/api/terminal/tabs/${tabId}`);
+      const idx = termTabs.findIndex((x) => x.id === tabId);
+      if (idx >= 0) termTabs[idx] = { ...termTabs[idx], ...t, transcript: undefined };
+      paintTerminalTab(t, { quiet });
+      // Ada perintah yang masih berjalan di tab ini: lanjutkan pemantauan.
+      if (['running', 'stopping'].includes(t.status) && t.activeRunId) {
+        termRun = { id: t.activeRunId, cwd: t.cwd, tabId };
+        terminalBusy = true;
+        pollTerminal();
+      } else {
+        termRun = null;
+        terminalBusy = false;
+      }
+    } catch (err) {
+      if (!quiet) toast(tr('Terminal: ') + err.message);
+    }
+  }
+
+  function paintTerminalTab(t, { quiet = false } = {}) {
     const output = $('#terminal-output');
+    if (!output) return;
     const atBottom = output.scrollHeight - output.scrollTop - output.clientHeight < 48;
-    const labels = { running: 'Berjalan', stopping: 'Menghentikan…', stopped: 'Dihentikan', done: 'Selesai', error: 'Gagal' };
-    terminalBusy = ['running', 'stopping'].includes(session.status);
-    $('#terminal-status').textContent = labels[session.status] + (session.exitCode != null ? ' · exit ' + session.exitCode : '');
-    $('#terminal-stop').disabled = session.status !== 'running';
-    $('#terminal-run').disabled = terminalBusy;
-    $('#terminal-clear').disabled = terminalBusy;
-    if (session.cwd) terminalCwd = session.cwd;
+    const labels = { running: tr('Berjalan'), stopping: tr('Menghentikan…'), stopped: tr('Dihentikan'), done: tr('Selesai'), error: tr('Gagal'), idle: tr('Siap') };
+    const status = t.status || 'idle';
+    const busy = ['running', 'stopping'].includes(status);
+    terminalBusy = busy;
+    $('#terminal-status').textContent = labels[status] + (t.exitCode != null ? ' · exit ' + t.exitCode : '');
+    $('#terminal-stop').disabled = status !== 'running';
+    $('#terminal-run').disabled = busy;
+    $('#terminal-clear').disabled = busy;
+    if (t.cwd) terminalCwd = t.cwd;
     paintTerminalCwd();
-    output.textContent = terminalTranscript + '$ ' + session.command + '\n' + (session.truncated ? '[Output awal dipangkas]\n' : '') + session.output;
-    if (!terminalBusy) output.textContent += '\n[' + labels[session.status] + (session.exitCode != null ? ' · exit ' + session.exitCode : '') + ']\n\n';
+    output.textContent = (t.truncated ? '[' + tr('Sebagian transkrip lama dipangkas') + ']\n' : '')
+      + (t.transcript || tr('Jalankan perintah untuk memulai.'));
     if (atBottom) output.scrollTop = output.scrollHeight;
+    // Judul dokumen tidak diubah: terminal adalah panel, bukan halaman.
+    if (!quiet) renderTermTabs();
   }
+
   async function pollTerminal() {
     try {
-      terminalSession = await api('/api/terminal/' + terminalSession.id);
-      renderTerminal(terminalSession);
+      const run = await api('/api/terminal/' + termRun.id);
+      // Perintah milik tab lain yang kebetulan terbuka: jangan timpa tampilan.
+      if (termRun?.tabId && run.tabId !== termRun.tabId) return;
+      termRun = { ...termRun, ...run, tabId: run.tabId || termRun?.tabId };
+      const idx = termTabs.findIndex((x) => x.id === run.tabId);
+      if (idx >= 0) termTabs[idx] = { ...termTabs[idx], status: run.status, exitCode: run.exitCode, activeRunId: ['running', 'stopping'].includes(run.status) ? run.id : null };
+      terminalBusy = ['running', 'stopping'].includes(run.status);
+      $('#terminal-status').textContent = ({ running: tr('Berjalan'), stopping: tr('Menghentikan…'), stopped: tr('Dihentikan'), done: tr('Selesai'), error: tr('Gagal') })[run.status] + (run.exitCode != null ? ' · exit ' + run.exitCode : '');
+      $('#terminal-stop').disabled = run.status !== 'running';
+      $('#terminal-run').disabled = terminalBusy;
+      $('#terminal-clear').disabled = terminalBusy;
+      // Keluaran digambar ulang dari transkrip tab supaya perintah sebelumnya
+      // tetap terlihat, bukan hanya perintah yang sedang berjalan.
+      if (termActive === run.tabId) {
+        const t = await api(`/api/terminal/tabs/${run.tabId}`).catch(() => null);
+        if (t) paintTerminalTab(t, { quiet: true });
+      }
+      renderTermTabs();
       if (terminalBusy) terminalTimer = setTimeout(pollTerminal, 500);
+      else {
+        // Selesai: tab diambil sekali lagi agar transkrip memuat baris penutup.
+        if (termActive === run.tabId) openTermTab(run.tabId, { quiet: true });
+        loadTermTabsQuiet();
+      }
     } catch (err) {
-      $('#terminal-status').textContent = 'Koneksi terputus';
-      toast('Terminal: ' + err.message);
+      $('#terminal-status').textContent = tr('Koneksi terputus');
+      toast(tr('Terminal: ') + err.message);
       terminalTimer = setTimeout(pollTerminal, 3000);
     }
   }
+
+  async function loadTermTabsQuiet() {
+    try {
+      const r = await api(`/api/terminal?workspace=${encodeURIComponent(termWorkspaceKey())}`);
+      termTabs = r.tabs || [];
+      if (!termTabs.some((t) => t.id === termActive)) termActive = termTabs[0]?.id || null;
+      renderTermTabs();
+    } catch { /* daftar tab bukan hal kritis */ }
+  }
+
   $('#btn-terminal').addEventListener('click', () => toggleTerminal($('#terminal-panel').classList.contains('hidden')));
+  // Tombol Tutup di toolbar hanya MENYEMBUNYIKAN panel. Tab tetap hidup, dan
+  // perintah yang berjalan terus berjalan — itu yang membuat terminal berguna
+  // untuk `npm test` sambil membaca kode.
   $('#terminal-close').addEventListener('click', () => toggleTerminal(false));
-  $('#terminal-form').addEventListener('submit', async e => {
+
+  $('#terminal-tabs').addEventListener('click', (e) => {
+    const close = e.target.closest('[data-term-tab-close]');
+    if (close) {
+      e.preventDefault();
+      e.stopPropagation();
+      closeTermTab(close.dataset.termTabClose);
+      return;
+    }
+    const tab = e.target.closest('[data-term-tab]');
+    if (tab) openTermTab(tab.dataset.termTab);
+  });
+  $('#terminal-tabs').addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const tab = e.target.closest('[data-term-tab]');
+    if (!tab) return;
+    e.preventDefault();
+    openTermTab(tab.dataset.termTab);
+  });
+
+  async function closeTermTab(tabId) {
+    try {
+      await api(`/api/terminal/tabs/${tabId}`, { method: 'DELETE' });
+      const wasActive = tabId === termActive;
+      termTabs = termTabs.filter((t) => t.id !== tabId);
+      if (wasActive) {
+        // Tab yang ditutup digantikan tetangganya; panel baru ditutup kalau
+        // memang tidak ada tab tersisa.
+        const next = termTabs[0]?.id || null;
+        termActive = next;
+        await openTermTab(next);
+        if (!next) toggleTerminal(false);
+      } else renderTermTabs();
+    } catch (err) { toast(tr('Terminal: ') + err.message); }
+  }
+
+  $('#terminal-new-tab').addEventListener('click', async () => {
+    const dir = terminalDir();
+    if (!dir) { toast(tr('Tentukan folder kerja terminal terlebih dahulu'), 4000); return; }
+    try {
+      const t = await api('/api/terminal/tabs', {
+        method: 'POST',
+        body: JSON.stringify({ cwd: dir, workspaceKey: termWorkspaceKey() }),
+      });
+      termTabs = [...termTabs.filter((x) => x.id !== t.id), t].sort((a, b) => a.tab - b.tab);
+      await openTermTab(t.id);
+      $('#terminal-command').focus();
+    } catch (err) { toast(tr('Terminal: ') + err.message); }
+  });
+
+  $('#terminal-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     if (terminalBusy) return;
     const command = $('#terminal-command').value.trim();
     if (!command) return;
     const dir = terminalDir();
-    if (!dir) { toast('Tentukan folder kerja terminal terlebih dahulu', 4000); return; }
+    if (!dir) { toast(tr('Tentukan folder kerja terminal terlebih dahulu'), 4000); return; }
     terminalBusy = true;
     $('#terminal-run').disabled = true;
     try {
       clearTimeout(terminalTimer);
-      const next = await api('/api/terminal', { method: 'POST', body: JSON.stringify({ command, cwd: dir }) });
-      terminalTranscript = terminalSession ? $('#terminal-output').textContent.slice(-200000) : '';
-      terminalSession = next;
+      const body = { command, cwd: dir };
+      if (termActive) body.tabId = termActive;
+      else body.workspaceKey = termWorkspaceKey();
+      const next = await api('/api/terminal', { method: 'POST', body: JSON.stringify(body) });
       terminalHistory.push(command);
       terminalHistoryIndex = terminalHistory.length;
       $('#terminal-command').value = '';
-      renderTerminal(terminalSession);
+      if (!termActive) termActive = next.tabId;
+      termTabs = termTabs.some((t) => t.id === next.tabId)
+        ? termTabs.map((t) => (t.id === next.tabId ? { ...t, status: next.status, exitCode: null, activeRunId: next.id } : t))
+        : [...termTabs, { id: next.tabId, tab: next.tab, label: next.label, cwd: next.cwd, status: next.status, runCount: 1, activeRunId: next.id }].sort((a, b) => a.tab - b.tab);
+      termRun = { id: next.id, cwd: next.cwd, tabId: next.tabId };
+      renderTermTabs();
       await pollTerminal();
-    } catch (err) { terminalBusy = false; $('#terminal-run').disabled = false; toast('Terminal: ' + err.message); }
+    } catch (err) { terminalBusy = false; $('#terminal-run').disabled = false; toast(tr('Terminal: ') + err.message); }
   });
   // Ganti folder kerja terminal tanpa menyentuh proyek aktif: terminal sering
   // dipakai untuk hal di luar repo (mis. `dir` di C:\), jadi foldernya sendiri.
@@ -1218,23 +1407,26 @@ window.__ahMachines = {
       const r = await api(`/api/workspace/check?cwd=${encodeURIComponent(v.trim())}`);
       terminalCwd = r.cwd;
       paintTerminalCwd();
-      toast('Direktori terminal: ' + terminalCwd, 3200, 'ok');
-    } catch (err) { toast('Folder tidak bisa dipakai: ' + err.message, 4500); }
+      toast(tr('Direktori terminal: ') + terminalCwd, 3200, 'ok');
+    } catch (err) { toast(tr('Folder tidak bisa dipakai: ') + err.message, 4500); }
   });
   $('#terminal-cwd-home').addEventListener('click', () => {
     const home = state?.server?.homeDir;
-    if (!home) { toast('Folder pengguna tidak diketahui', 3000); return; }
+    if (!home) { toast(tr('Folder pengguna tidak diketahui'), 3000); return; }
     terminalCwd = home;
     paintTerminalCwd();
-    toast('Direktori terminal: ' + home, 3000, 'ok');
+    toast(tr('Direktori terminal: ') + home, 3000, 'ok');
   });
   $('#terminal-stop').addEventListener('click', async () => {
-    if (!terminalSession) return;
-    try { await api('/api/terminal/' + terminalSession.id, { method: 'DELETE' }); }
+    if (!termRun?.id) return;
+    try { await api('/api/terminal/' + termRun.id, { method: 'DELETE' }); }
     catch (err) { toast(err.message); }
   });
   $('#terminal-clear').addEventListener('click', () => {
-    terminalTranscript = ''; $('#terminal-output').textContent = ''; $('#terminal-status').textContent = 'Siap';
+    // Membersihkan tampilan saja: transkrip di server tidak dihapus, karena itu
+    // satu-satunya catatan apa yang sudah dijalankan di tab ini.
+    $('#terminal-output').textContent = '';
+    $('#terminal-status').textContent = tr('Siap');
   });
   $('#terminal-command').addEventListener('keydown', e => {
     if (!['ArrowUp', 'ArrowDown'].includes(e.key)) return;

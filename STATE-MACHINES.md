@@ -194,6 +194,33 @@ matters and one cursor that must never lie. Owner: `lib/compact.js`.
 disagree. `POST` returns `409 RUN_IN_PROGRESS`, `400 NOTHING_TO_COMPACT`, or
 `502 COMPACT_FAILED`; the failure path writes nothing.
 
+## Terminal tab lifecycle (server-owned)
+
+A terminal tab is not a state machine, but it owns two invariants that a page
+reload used to break. Owner: `lib/terminal.js`.
+
+```
+(absent) ──POST /api/terminal (no tabId)──> tab 1
+(absent) ──POST /api/terminal/tabs────────> tab N  (empty, idle)
+tab ──POST /api/terminal {tabId}──> running ──exit──> done | error | stopped
+tab ──DELETE /api/terminal/tabs/:id──> (gone)
+```
+
+| Invariant | Why |
+| --- | --- |
+| Tabs live in the server, not in page memory | The command keeps running while the page is closed or reloaded. A client-side list would lose `npm test` mid-run and show an empty terminal. |
+| Numbers are stable and reuse the smallest free one | `folder`, `folder 2`, `folder 3`; closing `folder 2` hands number 2 to the next tab. Renumbering open tabs would make users lose track of which tab they were watching. |
+| Tab 1 never shows a number | The first tab reads as "this project's terminal", not "terminal number one". |
+| A tab is one session; a command is one process | Two tabs never share output. Within a tab, runs are append-only history (`MAX_RUNS_PER_TAB = 40`, transcript capped), so an earlier result is still readable. |
+| One command at a time per tab | A second command in a busy tab is `409` rather than silently overwriting the transcript of the command that is still running. |
+| Closing the panel ≠ closing a tab | The panel button only hides. Only `DELETE /api/terminal/tabs/:id` ends the session — that is what makes the terminal useful beside the editor. |
+| Stop ≠ close | `DELETE /api/terminal/:id` stops the process and keeps the tab and its output. Closing the tab drops the session. |
+| The real exit code survives the shell | `powershell.exe -Command` reports 1 for every failure. The wrapper ends with `exit $LASTEXITCODE`, falling back to `$?` for cmdlets, so CI output is readable. |
+| Max 4 concurrent processes across all tabs | Same ceiling as before; tabs raise history, not parallelism. Unbounded tabs would let a reload-spamming client fork processes forever. |
+
+The UI reads the list from `GET /api/terminal?workspace=` on every panel open, so
+the panel and the server cannot disagree about which tabs exist.
+
 ## Why these are not machines (yet)
 
 Centralising everything costs more than it buys when the state is a single frame of
@@ -284,6 +311,7 @@ Never infer status from a button's disabled state or from `thread.running`. Quer
 | `test/port-helper.test.js` | `pickFreePort` skips ports that are already answering (including the Windows case where a neighbour listens on `::` only, so an IPv4 bind still "succeeds") |
 | `test/compact.test.js` | summary selection: nothing folded below the thresholds, the newest messages stay verbatim, an empty/short/refusal reply is rejected, a dead pool does not advance the cursor, the summary is length-capped at a sentence boundary, and the second pass folds the previous summary (`generations`) |
 | `test/compact-api.test.js` | the same promises over the real server: saved to the thread, `compacted` flag only in the list, the next run really receives the summary and not the folded turns, `DELETE` restores history without deleting messages, `409` during a run, `502` writes nothing, automatic mode via settings |
+| `test/terminal.test.js` | tab contract: numbering (`folder`, `folder 2`, `folder 3`), smallest-free reuse without renaming open tabs, separate transcripts per tab, empty tabs from `+`, per-workspace numbering, close stops and releases the session, second command in a busy tab is `409`, the 4-process ceiling spans tabs, invalid folders rejected, closing line and real exit code in the transcript |
 
 ## Wiring
 
