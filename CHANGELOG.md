@@ -423,6 +423,10 @@ ditunggu, dan apa yang harus bisa dipulihkan setelah gagal.
   `share`, `port-helper` — 424 tes, semuanya lulus.
 
 ## 1.6.14 — 2026-11-17
+- **Statistik & glassy dipoles** — bar grafik, heatmap, legend, dan bar
+  per-fitur kini ikut aksen biru (sebelumnya hijau hardcoded); view Statistik
+  & Skills mendapat padding atas nyaman; kartu statistik, panel, set-card,
+  dan seg filter ikut frosted saat Translucent; radius kartu 14px.
 - **Tema glassy (frosted)** — saat Translucent aktif: composer mengambang
   overlay di dasar chat sehingga pesan ber scroll di balik kacanya
   (backdrop-blur 26px + saturasi), sidebar/rail/topbar memakai blur 14-22px,

@@ -388,7 +388,7 @@ a { color: var(--blue); }
 #view-studio.active { display: flex; overflow: hidden; }
 #view-tasks.active { display: flex; overflow: hidden; }
 #view-notes.active { display: flex; overflow: hidden; }
-#view-promo, #view-keys, #view-gateway, #view-agents, #view-alerts, #view-settings { padding: 24px 30px 64px; }
+#view-promo, #view-keys, #view-gateway, #view-agents, #view-alerts, #view-settings, #view-stats, #view-skills { padding: 24px 30px 64px; }
 .view-head { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
 .view-head h2 { font-size: 18px; font-weight: 600; letter-spacing: -.3px; }
 .sub { color: var(--muted); font-size: 12.5px; margin-top: 3px; line-height: 1.55; }
@@ -2729,10 +2729,10 @@ html[data-density="comfortable"] .kcol-head { padding-bottom: 16px; }
   background: #26262b; display: block;
 }
 .heat-cell.empty { background: transparent; }
-.heat-cell.l1 { background: #1f4d3f; }
-.heat-cell.l2 { background: #2a7a5e; }
-.heat-cell.l3 { background: #35a67b; }
-.heat-cell.l4 { background: #4fd6a1; }
+.heat-cell.l1 { background: #1d2f56; }
+.heat-cell.l2 { background: #24437f; }
+.heat-cell.l3 { background: #3563c4; }
+.heat-cell.l4 { background: #4f8cff; }
 .heat-legend { display: flex; align-items: center; gap: 5px; margin-top: 12px; }
 .heat-legend .heat-cell { flex-shrink: 0; }
 .heat-legend .muted { margin: 0 2px; }
@@ -2755,10 +2755,10 @@ html[data-density="comfortable"] .kcol-head { padding-bottom: 16px; }
 }
 .bar-fill {
   width: 100%; max-width: 26px; border-radius: 3px 3px 0 0;
-  background: linear-gradient(180deg, #4fd6a1, #2a7a5e);
+  background: linear-gradient(180deg, #4f8cff, #24437f);
   min-height: 0; transition: height .2s;
 }
-.bar-col:hover .bar-fill { background: linear-gradient(180deg, #6ee7b7, #35a67b); }
+.bar-col:hover .bar-fill { background: linear-gradient(180deg, #8ab4ff, #3563c4); }
 .bar-label { margin-top: 6px; font-size: 9px; color: var(--muted); font-variant-numeric: tabular-nums; }
 
 /* baris fitur & engine */
@@ -2771,7 +2771,7 @@ html[data-density="comfortable"] .kcol-head { padding-bottom: 16px; }
 .feat-ico svg, .feat-ico .ico { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .feat-name { font-size: 12px; color: #d6d6dc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .feat-bar { height: 6px; border-radius: 99px; background: #26262b; overflow: hidden; }
-.feat-bar i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, #2a7a5e, #4fd6a1); }
+.feat-bar i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, #24437f, #4f8cff); }
 .feat-num { font-size: 12px; font-weight: 560; font-variant-numeric: tabular-nums; text-align: right; }
 .feat-pct { font-size: 10.5px; color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
 .delta-up { color: #4fd6a1; }
@@ -3068,3 +3068,27 @@ html[data-tl="1"] .chat.has-thread .chat-scroll { scroll-padding-bottom: 190px; 
 .set-field input[type="number"] { width: 100%; max-width: 320px; }
 .set-field .switch-row { display: flex; align-items: center; gap: 9px; font-size: 13px; color: #d6d6dc; cursor: pointer; }
 .set-field .switch-row input { width: auto; flex: 0 0 auto; accent-color: var(--accent); }
+
+/* ---------- kaca: kartu & panel (statistik, settings, promo) ---------- */
+html[data-tl="1"] .stat-card {
+  background: rgba(26, 26, 29, .78);
+  backdrop-filter: blur(14px) saturate(130%);
+  border-color: rgba(255, 255, 255, .08);
+  border-radius: 14px;
+}
+html[data-tl="1"] .panel {
+  background: rgba(24, 24, 27, .72);
+  backdrop-filter: blur(14px) saturate(130%);
+  border-color: rgba(255, 255, 255, .08);
+  border-radius: 14px;
+}
+html[data-tl="1"] .set-card, html[data-tl="1"] .ap-block {
+  background: rgba(22, 22, 25, .74);
+  backdrop-filter: blur(14px) saturate(130%);
+  border-color: rgba(255, 255, 255, .08);
+}
+html[data-tl="1"] .view-head .seg {
+  background: rgba(35, 35, 39, .7);
+  backdrop-filter: blur(10px);
+}
+html[data-tl="1"] .heat-cell { border-radius: 2px; }
