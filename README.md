@@ -51,6 +51,7 @@ Free AI API tiers (Groq, Google AI Studio, OpenRouter `:free`, …) are great �
 - <img src="assets/icons/paperclip.svg" width="14" align="absmiddle"> **Message queue** — pressing send while a run is still working queues the message instead of rejecting it. The queue lives on the server (`queue.json`), survives a reload, and starts the next item on its own when the current run ends. Visible right inside the composer, with remove and clear.
 - **Safe retries & small-screen payloads** — every send carries an idempotency id, so a retry after a dropped connection answers from the ledger instead of running twice. On a narrow screen or a data-saver connection the thread is requested with a byte budget: the largest reply comes back as a preview with a **show full message** button, and the composer offers **load earlier messages**. The desktop payload is unchanged.
 - <img src="assets/icons/file.svg" width="14" align="absmiddle"> **Plan mode the agent drives** — the agent can decide a task deserves planning, enter plan mode (read-only), and hand you a written plan to approve. Nothing else is touched until you approve: no writes, no commands. Approving stores the plan in `.agenthub/plans/` and re-opens the write tools for the rest of that run; asking for changes keeps the run in plan mode with your reason attached. Entering never asks, leaving always does — even in full access.
+- <img src="assets/icons/bolt.svg" width="14" align="absmiddle"> **Background commands** — long work no longer has to fit inside one answer. `npm install`, a dev server, or a whole test suite runs as a task that outlives the run, with output written to `.agenthub/tasks/` so it can be read again after the run ends, the tab closes, or the server restarts. The agent gets the tail, a panel shows the list with a stop button per running row, and one id is always one process.
 - <img src="assets/icons/shield.svg" width="14" align="absmiddle"> **Local-first** — the server and data live on your machine. No AgentHub telemetry. Provider requests send your API key and prompt to the provider you select.
 - <img src="assets/icons/refresh.svg" width="14" align="absmiddle"> **Usage statistics & languages** — activity heatmap, 7/30/90-day charts, feature and engine breakdowns, plus separate Indonesian/English interface and agent reply-language settings.
 - <img src="assets/icons/snow.svg" width="14" align="absmiddle"> **Featherweight server** — pure Node.js, **zero npm dependencies** for the server itself; the desktop shell is a thin Electron wrapper (native window + tray, no browser).
@@ -171,6 +172,7 @@ Agents driving the app do not have to guess. The contract is served over HTTP:
 | `GET /api/terminal?workspace=` · `POST /api/terminal` | tab terminal milik satu workspace, dan jalankan perintah di sebuah tab (tanpa `tabId` = tab baru) |
 | `GET/DELETE /api/terminal/tabs/:id` · `POST /api/terminal/tabs` | buka tab lengkap dengan transkrip, tutup tab, atau buat tab kosong |
 | `GET/DELETE /api/terminal/:id` | satu perintah: status + keluaran, atau hentikan prosesnya (tab tetap ada) |
+| `GET /api/background?thread=` · `GET/DELETE /api/background/:id` | perintah latar milik satu thread: daftar + batas yang berlaku, satu tugas dengan `?output=1` untuk isi keluarannya, atau hentikan prosesnya |
 | `GET /api/update` · `POST /api/update/download` · `POST /api/update/install` | auto-update: status versi+unduhan, unduh manual, pasang senyap dari GitHub Releases latest |
 
 Task movement is strictly linear: `inbox → todo → running → review → done`. A skip is
@@ -272,6 +274,30 @@ not in page memory, so a reload or a workspace switch finds the running command
 instead of an empty terminal. Transcripts are capped per tab, and the run's real
 exit code is preserved (`exit $LASTEXITCODE` in PowerShell — without it every
 failure reports 1, which is useless exactly when you are reading CI output).
+
+**Background commands** are the other half of that idea, for the commands that have
+no end. A run answers one prompt and stops, but `npm install`, a dev server, and a
+full test suite do not fit inside it: waiting burns memory, and a timeout kills real
+work. So a background command is a **task, not a run** — the run finishes and the
+command keeps living, with its output going to a file
+(`<cwd>/.agenthub/tasks/<id>.log`) instead of into memory. That is what makes "read
+it again later" possible at all: the output survives the run ending, the tab
+closing, and a server restart. What the agent reads back is the tail — errors live
+at the end — and the result is flagged as truncated so it does not assume it saw
+everything. One id is one process: `done`, `error`, and `stopped` are final, and
+running it again means a new task with a new id, never a reopened one, so an old
+transcript can never be read as a new command's output. Three tasks may run at once
+per conversation (eight in total), a task stops itself after an hour, and records
+are kept for a day — but a running task is never pruned, because dropping the record
+of a live process is what makes it impossible to stop. After a restart the record
+survives while the process cannot: it is shown as `error`, its log is kept, and the
+agent is told what happened instead of waiting for a process that no longer exists.
+
+Permissions follow what the tools do rather than which family they belong to:
+starting a background command asks exactly like `run_command`, checking one only
+reads a file (so it stays available in plan mode), and stopping one is always
+allowed — it only revokes capability, and without it a task started before you
+entered plan could never be stopped from inside plan.
 
 Promo Pass is a small state machine of its own: `available → pending|active →
 expired`, scheduled around a 22:00 drop, a 10-hour ticket, and a three-day plan

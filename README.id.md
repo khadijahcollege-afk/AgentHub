@@ -48,6 +48,7 @@ Screenshot menampilkan v1.6.13 dengan data contoh. Angka statistik hanya ilustra
 - <img src="assets/icons/paperclip.svg" width="14" align="absmiddle"> **Antrean pesan** — menekan kirim saat run masih berjalan memasukkan pesan ke antrean, bukan menolaknya. Antreannya milik server (`queue.json`), bertahan saat halaman dimuat ulang, dan pesan berikutnya dijalankan sendiri begitu run ini selesai. Terlihat langsung di dalam composer, lengkap dengan hapus dan kosongkan.
 - **Kiriman aman diulang & muatan ringkas di HP** — setiap kiriman membawa id idempotensi, jadi percobaan ulang setelah koneksi putus menjawab dari catatan alih-alih menjalankan dua kali. Di layar sempit atau koneksi hemat data, thread diminta dengan anggaran byte: balasan terpanjang datang sebagai pratinjau dengan tombol **lihat pesan lengkap**, dan composer menawarkan **muat pesan sebelumnya**. Muatan desktop tidak berubah.
 - <img src="assets/icons/file.svg" width="14" align="absmiddle"> **Plan mode yang dipimpin agent** — agent bisa memutuskan sebuah tugas perlu direncanakan, masuk plan mode (hanya baca), lalu menyerahkan rencana tertulis untuk Anda setujui. Selama belum disetujui tidak ada yang disentuh: tidak ada tulisan, tidak ada perintah. Menyetujui menyimpan rencananya di `.agenthub/plans/` dan membuka kembali tool tulis untuk sisa run itu; meminta revisi menahan run di plan mode beserta alasan Anda. Masuk plan tidak pernah bertanya, keluar selalu bertanya — termasuk di akses penuh.
+- <img src="assets/icons/bolt.svg" width="14" align="absmiddle"> **Perintah latar** — pekerjaan panjang tidak lagi harus muat di dalam satu jawaban. `npm install`, dev server, atau seluruh suite tes berjalan sebagai tugas yang hidup lebih lama daripada run, dengan keluarannya ditulis ke `.agenthub/tasks/` sehingga bisa dibaca lagi setelah run selesai, tab ditutup, atau server dimulai ulang. Agent menerima ekor keluarannya, panel menampilkan daftar dengan tombol hentikan per baris yang berjalan, dan satu id selalu satu proses.
 - <img src="assets/icons/shield.svg" width="14" align="absmiddle"> **Lokal dulu** — server dan data berada di komputer Anda. Tanpa telemetri AgentHub. Permintaan ke provider mengirim API key dan prompt ke provider pilihan Anda.
 - <img src="assets/icons/refresh.svg" width="14" align="absmiddle"> **Statistik & bahasa** — heatmap aktivitas, grafik 7/30/90 hari, rincian fitur dan engine, serta pengaturan bahasa antarmuka Indonesia/Inggris yang terpisah dari bahasa balasan agent.
 - <img src="assets/icons/snow.svg" width="14" align="absmiddle"> **Server ringan** — Node.js murni, **nol dependency npm**; shell desktop-nya Electron tipis (jendela native + tray, tanpa browser).
@@ -141,6 +142,7 @@ Agent yang mengemudikan aplikasi tidak perlu menebak; kontraknya disajikan lewat
 | `GET /api/terminal?workspace=` · `POST /api/terminal` | tab terminal milik satu workspace, dan jalankan perintah di sebuah tab (tanpa `tabId` = tab baru) |
 | `GET/DELETE /api/terminal/tabs/:id` · `POST /api/terminal/tabs` | buka tab lengkap dengan transkrip, tutup tab, atau buat tab kosong |
 | `GET/DELETE /api/terminal/:id` | satu perintah: status + keluaran, atau hentikan prosesnya (tab tetap ada) |
+| `GET /api/background?thread=` · `GET/DELETE /api/background/:id` | perintah latar milik satu thread: daftar + batas yang berlaku, satu tugas dengan `?output=1` untuk isi keluarannya, atau hentikan prosesnya |
 | `GET/POST /api/threads/:id/queue` | antrean pesan: daftar item yang menunggu, atau masukkan satu (FIFO, maksimal 20 per thread) |
 | `POST /api/threads/:id/queue/(reserve\|release\|commit)` | ambil item paling depan, kembalikan bila start gagal, atau hapus setelah run-nya dimulai |
 | `DELETE /api/threads/:id/queue/:itemId` | hapus satu item yang masih menunggu (item yang sedang dijalankan ditolak) |
@@ -248,6 +250,32 @@ muat ulang atau perpindahan workspace menemukan perintah yang masih berjalan ali
 alih terminal kosong. Transkrip dibatasi per tab, dan exit code asli perintah
 dipertahankan (`exit $LASTEXITCODE` di PowerShell — tanpanya setiap kegagalan
 dilaporkan sebagai 1, yang tidak berguna justru saat Anda membaca keluaran CI).
+
+**Perintah latar** adalah separuh lain dari gagasan itu, untuk perintah yang tidak
+punya akhir. Satu run menjawab satu pesan lalu berhenti, sedangkan `npm install`,
+dev server, dan seluruh suite tes tidak muat di dalamnya: menunggu menghabiskan
+memori, dan timeout membunuh pekerjaan yang sah. Karena itu perintah latar adalah
+**tugas, bukan run** — run selesai dan perintahnya tetap hidup, dengan keluarannya
+masuk ke berkas (`<cwd>/.agenthub/tasks/<id>.log`) alih-alih ke memori. Itulah yang
+membuat "baca lagi nanti" mungkin: keluarannya bertahan saat run berakhir, tab
+ditutup, dan server dimulai ulang. Yang dibaca agent adalah ekornya — galat ada di
+akhir — dan hasilnya ditandai terpotong supaya ia tidak mengira sudah membaca
+semuanya. Satu id adalah satu proses: `done`, `error`, dan `stopped` bersifat akhir,
+dan menjalankannya lagi berarti tugas baru dengan id baru, tidak pernah menghidupkan
+yang lama, sehingga transkrip lama tidak mungkin terbaca sebagai keluaran perintah
+baru. Tiga tugas boleh berjalan sekaligus per percakapan (delapan total), sebuah
+tugas menghentikan dirinya setelah satu jam, dan catatannya disimpan satu hari —
+tetapi tugas yang masih berjalan tidak pernah dibuang, karena membuang catatan
+proses hidup justru membuatnya tidak bisa dihentikan. Setelah restart catatannya
+bertahan sementara prosesnya tidak: ia tampil sebagai `error`, berkasnya
+dipertahankan, dan agent diberi tahu apa yang terjadi alih-alih menunggu proses yang
+sudah tidak ada.
+
+Izin mengikuti apa yang tool lakukan, bukan nama keluarganya: memulai perintah latar
+bertanya persis seperti `run_command`, memeriksanya hanya membaca berkas (jadi tetap
+tersedia di plan mode), dan menghentikannya selalu boleh — ia hanya mencabut izin,
+dan tanpanya tugas yang dimulai sebelum masuk plan tidak akan pernah bisa dihentikan
+dari dalam plan.
 
 Konfirmasi adalah bagian dari aplikasi, bukan browser: setiap aksi berbahaya dan
 input teks memakai satu overlay aksesibel (`role="dialog"`, Esc/Enter, focus trap,
