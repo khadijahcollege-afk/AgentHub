@@ -97,7 +97,9 @@ test('mode plan menyembunyikan tool tulis dari model', async () => {
   calls = 0; mode = 'tool';
   await runAgentLoop({ prompt: 'Apa isi folder?', cwd: work, mode: 'plan' });
   const names = lastBody.tools.map((t) => t.function.name);
-  assert.deepEqual(names.sort(), ['grep_files', 'list_files', 'read_file']);
+  // `Agent` tetap ditawarkan di plan mode: ia sendiri tidak menulis apa pun,
+  // dan anaknya mewarisi mode plan sehingga tool tulisnya juga tidak ada.
+  assert.deepEqual(names.sort(), ['Agent', 'grep_files', 'list_files', 'read_file']);
   assert.equal(names.includes('write_file'), false);
 });
 

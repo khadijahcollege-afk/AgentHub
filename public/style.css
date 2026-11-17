@@ -332,6 +332,49 @@ a { color: var(--blue); }
 .chat-messages { flex: 1; padding: 8px 24px 26px; display: flex; flex-direction: column; gap: 22px; }
 .bottom-slot { flex-shrink: 0; }
 
+/* ---------- subagent berjalan ----------
+   Kartu tipis di atas composer: satu baris per anak. Sengaja tidak di dalam
+   .chat-messages karena isinya bocor ke riwayat setelah run selesai; ini status
+   hidup, bukan pesan. Tinggi dibatasi agar beberapa anak tidak mendorong
+   composer keluar layar. */
+.chat-subs {
+  flex-shrink: 0;
+  display: flex; flex-direction: column; gap: 3px;
+  padding: 0 20px 6px;
+  max-width: 800px; width: 100%; margin: 0 auto;
+  max-height: 148px; overflow-y: auto;
+}
+.chat-subs.hidden { display: none; }
+.sub-row {
+  display: flex; align-items: center; gap: 7px;
+  padding: 4px 8px;
+  border: 1px solid rgba(255, 255, 255, .06);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .022);
+  font-size: 11px; color: #b3b3ba;
+  min-width: 0;
+}
+.sub-row.sub-err { border-color: rgba(255, 107, 129, .3); color: var(--err); }
+.sub-ico { color: var(--blue); display: inline-flex; flex-shrink: 0; }
+.sub-ico svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.sub-row b { font-weight: 550; color: #e2e2e6; flex-shrink: 0; max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sub-desc { color: #8a8a91; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1 1 0; }
+.sub-detail { color: #7b7b83; font-family: ui-monospace, Consolas, monospace; font-size: 10.2px; flex-shrink: 0; max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sub-stat { color: #8f8f96; flex-shrink: 0; white-space: nowrap; }
+/* Lebar sempit: deskripsi turun baris? Tidak — satu baris tetap, tapi yang
+   paling mudah dipotong dibuang dulu. Menjaga tinggi kartu tetap 25px penting:
+   beberapa subagent sekaligus tidak boleh mendorong composer keluar layar. */
+@media (max-width: 560px) {
+  .chat-subs { padding: 0 12px 6px; max-height: 120px; }
+  .sub-detail { display: none; }
+  .sub-row b { max-width: 74px; }
+}
+@media (max-width: 420px) {
+  .sub-desc { display: none; }
+  .sub-row b { max-width: none; flex: 1 1 auto; min-width: 0; }
+  .sub-stat { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+}
+
 .msg { max-width: 720px; width: 100%; margin: 0 auto; }
 .msg.user { display: flex; justify-content: flex-end; }
 .msg.user .bubble {

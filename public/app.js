@@ -155,6 +155,10 @@ window.__ahMachines = {
   let pendingAttachments = [];
   const MAX_ATTACH_CLIENT = 5;
   const attachObjectUrls = new Map();
+  // Subagent yang berjalan pada run aktif. Dipisah dari `curThread.messages`
+  // karena ia hidup selama satu run saja: setelah selesai, ringkasannya masuk
+  // ke jejak tool pesan assistant dan kartu ini hilang.
+  let runSubs = [];
 
   // --- mesin: run & koneksi ---
   // runStatus: idle | running | done | error | stopped (RUN_MACHINE)
@@ -191,6 +195,9 @@ window.__ahMachines = {
     // setelah selesai membuat status run terlihat menggantung.
     const toolChip = $('#chat-tool');
     if (toolChip && next !== 'running') { toolChip.classList.add('hidden'); toolChip.textContent = ''; }
+    // Kartu subagent hanya milik run aktif: menyisakannya setelah run selesai
+    // membuat baris "bekerja" terus berdetak padahal tidak ada yang berjalan.
+    if (next !== 'running') clearRunSubs();
   }
 
   // Server adalah sumber kebenaran untuk run yang sedang berjalan. Saat thread
@@ -2625,6 +2632,68 @@ window.__ahMachines = {
   // preserveStream: jangan sentuh DOM pesan saat stream sedang menulis ke sana
   // (SSE `threads` bisa datang di tengah run; render ulang akan menghapus kursor
   // dan teks yang sedang tumbuh).
+  // ---------- subagent pada run aktif ----------
+  // Satu baris per subagent: tipe, tugas, tool yang sedang dipanggil, dan waktu.
+  // Tanpa ini run yang mendelegasikan pekerjaan hanya terlihat "Working" selama
+  // puluhan detik — pengguna tidak tahu ada agent kedua yang bekerja.
+  function upsertRunSub(ev) {
+    if (!ev?.agentId) return;
+    let row = runSubs.find((s) => s.agentId === ev.agentId);
+    if (!row) {
+      if (runSubs.length >= 12) return;
+      row = { agentId: ev.agentId, start: Date.now() };
+      runSubs.push(row);
+    }
+    row.type = ev.agentType || row.type || 'subagent';
+    row.description = ev.description || row.description || '';
+    if (ev.phase === 'start') row.status = 'working';
+    else if (ev.phase === 'end') {
+      row.status = ev.ok ? 'done' : 'error';
+      row.ms = ev.ms || (Date.now() - row.start);
+      row.tokens = ev.tokens || 0;
+      row.toolUses = ev.toolUses || 0;
+      if (ev.error) row.error = ev.error;
+      row.tool = null;
+    }
+    renderRunSubs();
+  }
+
+  function setRunSubTool(agentId, toolName) {
+    const row = runSubs.find((s) => s.agentId === agentId);
+    if (!row) return;
+    row.tool = toolName;
+    renderRunSubs();
+  }
+
+  function renderRunSubs() {
+    const host = $('#chat-subs');
+    if (!host) return;
+    if (!runSubs.length) { host.classList.add('hidden'); host.innerHTML = ''; return; }
+    const secs = (ms) => `${Math.round(ms / 100) / 10}s`;
+    host.classList.remove('hidden');
+    host.innerHTML = runSubs.map((s) => {
+      const st = s.status || 'working';
+      const stat = st === 'working' ? tr('bekerja') : st === 'error' ? tr('gagal') : tr('selesai');
+      const ms = st === 'working' ? Date.now() - s.start : (s.ms || 0);
+      const detail = st === 'working'
+        ? (s.tool || '')
+        : `${s.toolUses || 0} tool · ${s.tokens || 0} tok`;
+      return `<div class="sub-row ${st === 'error' ? 'sub-err' : ''}" title="${esc(s.error || s.description || '')}">
+        <span class="sub-ico">${svgIco('<circle cx="9" cy="8" r="3"/><path d="M3.5 19c0-3 2.5-5 5.5-5s5.5 2 5.5 5"/><circle cx="17" cy="9" r="2.2"/><path d="M16 14c2.6 0 4.5 1.6 4.5 4"/>')}</span>
+        <b>${esc(s.type)}</b>
+        <span class="sub-desc">${esc(s.description || '')}</span>
+        ${detail ? `<span class="sub-detail">${esc(detail)}</span>` : ''}
+        <span class="sub-stat">${esc(stat)} · ${secs(ms)}</span>
+      </div>`;
+    }).join('');
+  }
+
+  function clearRunSubs() {
+    runSubs = [];
+    renderRunSubs();
+  }
+  setInterval(() => { if (runSubs.some((s) => (s.status || 'working') === 'working')) renderRunSubs(); }, 1000);
+
   function renderChat({ preserveStream = false } = {}) {
     const empty = !curThread || !curThread.messages?.length;
     $('#chat-title').textContent = curThread ? curThread.title : '';
@@ -2962,17 +3031,25 @@ window.__ahMachines = {
           // petunjuk apa pun selama puluhan detik.
           const chip = $('#chat-tool');
           if (!chip) return;
+          // Tool milik subagent diberi awalan nama agent: tanpa itu pengguna
+          // melihat "read_file" dan mengira agent utama yang membacanya.
+          const who = ev.subagent ? `${ev.subagent} › ` : '';
           if (ev.phase === 'start') {
             chip.classList.remove('hidden', 'tool-err');
             if (ev.decision !== 'allow') chip.classList.add('tool-err');
             const hint = ev.reason ? ` — ${ev.reason}` : '';
-            chip.textContent = `${ev.name} · ${ev.decision === 'allow' ? 'jalan' : ev.decision}${hint}`;
+            chip.textContent = `${who}${ev.name} · ${ev.decision === 'allow' ? 'jalan' : ev.decision}${hint}`;
             chip.title = ev.reason || ev.name;
+            if (ev.agentId) setRunSubTool(ev.agentId, ev.name);
           } else if (ev.phase === 'result') {
-            chip.textContent = `${ev.name} · ${ev.ok ? 'selesai' : 'gagal'}${ev.ms ? ` (${(ev.ms / 1000).toFixed(1)}s)` : ''}`;
+            chip.textContent = `${who}${ev.name} · ${ev.ok ? 'selesai' : 'gagal'}${ev.ms ? ` (${(ev.ms / 1000).toFixed(1)}s)` : ''}`;
             chip.title = ev.preview || '';
             chip.classList.toggle('tool-err', !ev.ok);
           }
+        } else if (ev.type === 'subagent') {
+          // Subagent punya kartu sendiri: ia berjalan lama dan bisa lebih dari
+          // satu, jadi menaruhnya di chip tool akan menutupi status agent utama.
+          upsertRunSub(ev);
         } else if (ev.type === 'done') {
           const meta = curThread.messages[curThread.messages.length - 1];
           meta.content = acc; meta.ms = ev.ms; meta.servedBy = ev.servedBy; meta.status = 'done';
@@ -5586,6 +5663,8 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
     PermissionRequest: 'PermissionRequest — permintaan izin',
     PostToolUse: 'PostToolUse — tool berhasil',
     PostToolUseFailure: 'PostToolUseFailure — tool gagal',
+    SubagentStart: 'SubagentStart — subagent dimulai',
+    SubagentStop: 'SubagentStop — subagent selesai',
     Stop: 'Stop — run selesai',
   };
 

@@ -787,6 +787,8 @@ export const EN = {
   '{n} fakta baru': '{n} new facts',
   ', {n} dilewati': ', {n} skipped',
   'gagal': 'failed',
+  'bekerja': 'working',
+  'selesai': 'done',
   '{n} percakapan tercatat': '{n} conversations tracked',
   '{n} fakta baru disimpan ke memori': '{n} new facts saved to memory',
   'tidak diketahui': 'unknown',

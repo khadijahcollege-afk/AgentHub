@@ -144,17 +144,43 @@ process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: e.hoo
 
 test('definisi tool menyesuaikan mode', async () => {
   const plan = await tools.toolDefinitions({ cwd: work, mode: 'plan', includeMcp: false });
-  assert.deepEqual(plan.map((d) => d.function.name).sort(), ['grep_files', 'list_files', 'read_file']);
+  assert.deepEqual(plan.map((d) => d.function.name).sort(), ['Agent', 'grep_files', 'list_files', 'read_file']);
   const edit = await tools.toolDefinitions({ cwd: work, mode: 'edit', includeMcp: false });
   assert.equal(edit.some((d) => d.function.name === 'run_command'), false, 'mode edit menyembunyikan perintah');
   const yolo = await tools.toolDefinitions({ cwd: work, mode: 'yolo', includeMcp: false });
-  assert.equal(yolo.length, 6);
+  assert.equal(yolo.length, 7);
   for (const d of yolo) assert.equal(d.type, 'function');
+});
+
+test('subagent tidak ditawarkan ke child, dan profil boleh mempersempit', async () => {
+  const child = await tools.toolDefinitions({
+    cwd: work, mode: 'yolo', includeMcp: false, allowSubagents: false,
+  });
+  assert.equal(child.some((d) => d.function.name === 'Agent'), false, 'rekursi harus tertutup');
+
+  const explore = await tools.toolDefinitions({
+    cwd: work, mode: 'yolo', includeMcp: false,
+    toolPolicy: { tools: ['read_file', 'grep_files'], disallowedTools: [] },
+  });
+  assert.deepEqual(explore.map((d) => d.function.name).sort(), ['grep_files', 'read_file']);
+  // `Agent` dibuang juga bila profil menuliskannya di `tools`.
+  const sneaky = await tools.toolDefinitions({
+    cwd: work, mode: 'yolo', includeMcp: false,
+    toolPolicy: { tools: ['read_file', 'Agent'], disallowedTools: [] },
+  });
+  assert.deepEqual(sneaky.map((d) => d.function.name), ['read_file']);
+});
+
+test('Agent adalah tool orkestrasi: boleh di plan, tanpa cwd tidak ditawarkan', async () => {
+  assert.equal(tools.decide('Agent', {}, 'plan').allow, true);
+  const noCwd = await tools.toolDefinitions({ cwd: null, mode: 'yolo', includeMcp: false });
+  assert.deepEqual(noCwd, [], 'tanpa folder kerja tidak ada yang bisa dikerjakan subagent');
 });
 
 test('ringkasan tool melaporkan mode dan jumlahnya', async () => {
   const s = await tools.toolSummary({ cwd: work, mode: 'yolo' });
   assert.equal(s.mode, 'yolo');
-  assert.equal(s.builtin.length, 6);
-  assert.equal(s.total >= 6, true);
+  assert.equal(s.builtin.length, 7);
+  assert.equal(s.builtin.includes('Agent'), true);
+  assert.equal(s.total >= 7, true);
 });

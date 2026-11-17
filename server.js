@@ -1740,9 +1740,25 @@ ${msgs || '<p class="meta">Percakapan kosong.</p>'}
         // Event tool diteruskan apa adanya ke UI: pengguna harus bisa melihat
         // tool apa yang dipanggil dan apakah ditolak, bukan hanya "Working".
         onEvent: (evt) => {
-          if (evt?.type === 'tools') send({ type: 'tools', names: evt.names });
-          else if (evt?.type === 'tool_start') send({ type: 'tool', phase: 'start', name: evt.name, decision: evt.decision, reason: evt.reason, input: summarizeToolInput(evt.input) });
-          else if (evt?.type === 'tool_result') send({ type: 'tool', phase: 'result', name: evt.name, ok: evt.ok, ms: evt.ms, preview: String(evt.text || '').slice(0, 400) });
+          // Event milik subagent ikut ditandai `subagent`/`agentId`: UI
+          // menampilkannya di baris anak, bukan mencampurnya dengan tool induk.
+          const child = evt?.subagent ? { subagent: evt.subagent, agentId: evt.agentId } : {};
+          if (evt?.type === 'tools') send({ type: 'tools', names: evt.names, ...child });
+          else if (evt?.type === 'subagent') {
+            send({
+              type: 'subagent',
+              phase: evt.phase,
+              agentType: evt.subagent,
+              agentId: evt.agentId,
+              description: String(evt.description || '').slice(0, 120),
+              ok: evt.ok,
+              ms: evt.durationMs,
+              tokens: evt.tokens,
+              toolUses: evt.toolUses,
+              error: evt.error ? String(evt.error).slice(0, 200) : null,
+            });
+          } else if (evt?.type === 'tool_start') send({ type: 'tool', phase: 'start', name: evt.name, decision: evt.decision, reason: evt.reason, input: summarizeToolInput(evt.input), ...child });
+          else if (evt?.type === 'tool_result') send({ type: 'tool', phase: 'result', name: evt.name, ok: evt.ok, ms: evt.ms, preview: String(evt.text || '').slice(0, 400), ...child });
         },
         onDelta: (chunk) => {
           acc += chunk;

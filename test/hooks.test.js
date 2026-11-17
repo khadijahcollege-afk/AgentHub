@@ -192,5 +192,5 @@ test('ringkasan menghitung hook user dan proyek', () => {
   assert.equal(s.enabled, true);
   assert.equal(s.userHooks, 1);
   assert.equal(s.project.present, false);
-  assert.equal(s.events.length, 7);
+  assert.equal(s.events.length, 9);
 });
