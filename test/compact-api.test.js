@@ -84,6 +84,9 @@ test.before(async () => {
   fs.writeFileSync(path.join(dataDir, 'config.json'), JSON.stringify({
     port: PORT, token: TOKEN, notify: false, refreshHours: 168,
     agentCheckMinutes: 1440, keyCheckHours: 168, baselined: true, createdAt: Date.now(),
+    // Fallback publik mati di sini: tes ini menguji kontrak gagal-502 pool
+    // (deterministik, tanpa menyentuh endpoint publik internet).
+    publicFallback: false,
     // Mulai mati: tes pertama menguji ringkasan manual. Menyalakannya di tengah
     // juga membuktikan setelan itu benar-benar berpengaruh pada run berikutnya.
     compactAuto: false,

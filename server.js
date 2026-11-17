@@ -42,6 +42,7 @@ import * as memory from './lib/memory.js';
 import * as memoryExtract from './lib/memory-extract.js';
 import * as share from './lib/share.js';
 import { searchWeb, researchContext, ResearchError } from './lib/research.js';
+import * as freerot from './lib/freerot.js';
 import { listModelChoices, activateModel, isMaskedKey } from './lib/models.js';
 import { tunnelStatus, startTunnel, stopTunnel } from './lib/tunnel.js';
 import {
@@ -859,7 +860,7 @@ async function handleSend(threadId, b, res, { onStarted = null } = {}) {
       } catch { /* bukan repo git / git tidak ada: lanjut tanpa snapshot */ }
     }
 
-    const r = await runEngine(engineId, modelPrompt, {
+    const runOpts = {
       cwd: workspace,
       model: b.model,
       history,
@@ -914,7 +915,41 @@ async function handleSend(threadId, b, res, { onStarted = null } = {}) {
         acc += chunk;
         if (acc.length < 200000) send({ type: 'delta', text: chunk });
       },
-    });
+    };
+    let r;
+    if (engineId === 'free-auto') {
+      // Free Auto: tangga semua model gratis CLI. Model kena limit/error ->
+      // ditandai cooldown (freerot) dan permintaan pindah OTOMATIS ke model
+      // gratis berikutnya, maksimal 3 percobaan per permintaan.
+      const engines = await listEngines(true);
+      const { ok: ladder } = freerot.ladder(engines);
+      const tries = ladder.slice(0, 3);
+      if (!tries.length) throw new Error('Semua model gratis sedang cooldown — coba lagi beberapa menit lagi.');
+      r = null;
+      let lastError = null;
+      for (const eng of tries) {
+        if (engineType(eng.id) === null) continue; // fixture tidak dikenal
+        try {
+          const rr = await runEngine(eng.id, modelPrompt, runOpts);
+          if (freerot.looksLimited(rr.text)) {
+            freerot.markFail(eng.id, 'limit terdeteksi di jawaban');
+            send({ type: 'rotate', note: `${eng.label} kena limit — otomatis coba model lain` });
+            lastError = new Error(String(rr.text || '').slice(0, 200));
+            continue;
+          }
+          freerot.markOk(eng.id);
+          r = { ...rr, rotationEngine: eng.id };
+          break;
+        } catch (e) {
+          freerot.markFail(eng.id, e.message);
+          send({ type: 'rotate', note: `${eng.label} gagal (${String(e.message || '').slice(0, 60)}) — otomatis coba model lain` });
+          lastError = e;
+        }
+      }
+      if (!r) throw lastError || new Error('Tidak ada model gratis yang bisa dijalankan.');
+    } else {
+      r = await runEngine(engineId, modelPrompt, runOpts);
+    }
     if (!acc.trim()) { acc = r.text; send({ type: 'delta', text: r.text }); }
     // Mode akhir run disimpan ke thread sebagai catatan yang tahan lama. UI
     // yang sedang terbuka sudah mengikuti event `mode` di atas; nilai ini untuk
@@ -928,7 +963,8 @@ async function handleSend(threadId, b, res, { onStarted = null } = {}) {
     }
     threads.appendMessage(threadId, {
       role: 'assistant',
-      engine: engineId,
+      // engine asli hasil rotasi — label footer jujur, bukan 'free-auto'
+      engine: r.rotationEngine || engineId,
       content: acc.slice(0, 200000),
       ms: r.ms,
       servedBy: r.servedBy,
@@ -2906,6 +2942,7 @@ ${msgs || '<p class="meta">Percakapan kosong.</p>'}
     if (typeof b.notify === 'boolean') config.notify = b.notify;
     if (typeof b.autoPool === 'boolean') config.autoPool = b.autoPool;
     if (typeof b.memoryEnabled === 'boolean') config.memoryEnabled = b.memoryEnabled;
+    if (typeof b.publicFallback === 'boolean') config.publicFallback = b.publicFallback;
     if (typeof b.memoryAutoExtract === 'boolean') config.memoryAutoExtract = b.memoryAutoExtract;
     if (typeof b.compactAuto === 'boolean') config.compactAuto = b.compactAuto;
     if (typeof b.autoUpdate === 'boolean') config.autoUpdate = b.autoUpdate;

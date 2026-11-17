@@ -6079,6 +6079,8 @@ window.__ahMachines = {
 
   // ---------- gateway ----------
   function renderGateway() {
+    const gp = document.querySelector('#gw-public');
+    if (gp) gp.checked = (state.config?.publicFallback !== false);
     const pool = state.pool || { members: [], active: 0, total: 0 };
     const members = pool.members || [];
     const totalReq = members.reduce((a, k) => a + (k.stats?.req || 0), 0);
@@ -8654,6 +8656,17 @@ Jangan mengarang — bila data tidak ada di folder, katakan tidak ada.`;
   });
   $('#btn-copy-gw').addEventListener('click', () => navigator.clipboard?.writeText($('#gw-url').textContent).then(() => toast('Endpoint gateway disalin')));
   $('#btn-copy-gwkey').addEventListener('click', () => navigator.clipboard?.writeText($('#gw-key').textContent).then(() => toast('API key gateway disalin')));
+  // Fallback publik tanpa key: toggle tersimpan via /api/settings
+  const gwPublic = document.querySelector('#gw-public');
+  if (gwPublic) {
+    gwPublic.addEventListener('change', async () => {
+      try {
+        await api('/api/settings', { method: 'POST', body: JSON.stringify({ publicFallback: gwPublic.checked }) });
+        state.config.publicFallback = gwPublic.checked;
+        toast(gwPublic.checked ? 'Fallback publik menyala — limit otomatis pindah ke model gratis lain' : 'Fallback publik dimatikan');
+      } catch (e) { toast('Gagal: ' + e.message); gwPublic.checked = !gwPublic.checked; }
+    });
+  }
   $('#btn-copy-env').addEventListener('click', () => navigator.clipboard?.writeText(gatewayEnvText()).then(() => toast('Env agent disalin')));
   $('#btn-promo-gateway').addEventListener('click', () => go('gateway'));
   $('#btn-copy-token').addEventListener('click', () => navigator.clipboard?.writeText(state?.token || '').then(() => toast('Token disalin')));

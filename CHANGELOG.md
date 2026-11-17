@@ -423,6 +423,20 @@ ditunggu, dan apa yang harus bisa dipulihkan setelah gagal.
   `share`, `port-helper` — 424 tes, semuanya lulus.
 
 ## 1.6.14 — 2026-11-17
+- **Free Auto: rotasi model gratis otomatis** — engine virtual baru di daftar
+  engine: memutar SELURUH model gratis opencode-free-* satu per satu; model
+  kena limit/429/gagal ditandai cooldown 10 menit (freerot.json) dan
+  permintaan pindah OTOMATIS ke model gratis berikutnya, maksimal 3
+  percobaan; jawaban terdeteksi "kena limit" walau exit 0 (pola rate
+  limit/quota/kuota/dll). Engine asli tercatat jujur di pesan.
+- **Fallback publik tanpa key di Gateway** — pool kosong atau semua key
+  kena 429: gateway otomatis memakai endpoint publik TANPA API key (Kilo
+  Auto Free / Nemotron Lightning, LLM7 DeepSeek-V4-Flash; cooldown publik
+  10 menit). Toggle di pane Gateway (config publicFallback, bawaan nyala).
+  Header auth dilewati untuk endpoint tanpa key.
+- **Katalog**: OVHcloud ditandai expired (endpoint kini menolak akses
+  anonim — dicoba langsung). Riset live: Kilo 21 model :free tanpa key,
+  LLM7 84 model anonim berbatas.
 - **Statistik & glassy dipoles** — bar grafik, heatmap, legend, dan bar
   per-fitur kini ikut aksen biru (sebelumnya hijau hardcoded); view Statistik
   & Skills mendapat padding atas nyaman; kartu statistik, panel, set-card,
