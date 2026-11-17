@@ -37,6 +37,7 @@ import {
 } from './lib/uploads.js';
 import * as environments from './lib/environments.js';
 import * as memory from './lib/memory.js';
+import * as memoryExtract from './lib/memory-extract.js';
 import * as share from './lib/share.js';
 import { searchWeb, researchContext, ResearchError } from './lib/research.js';
 import { listModelChoices, activateModel, isMaskedKey } from './lib/models.js';
@@ -403,9 +404,11 @@ function appState() {
       cloudflaredPath: config.cloudflaredPath || '',
       replyLang: config.replyLang || 'auto',
       memoryEnabled: config.memoryEnabled !== false,
+      memoryAutoExtract: config.memoryAutoExtract === true,
       autoUpdate: config.autoUpdate !== false,
     },
     memory: memory.listMemory(),
+    memoryExtract: memoryExtract.extractStatus(),
     update: updatePublic(),
     token: config.token,
     keys: listKeys(),
@@ -1769,6 +1772,28 @@ ${msgs || '<p class="meta">Percakapan kosong.</p>'}
       }
       runs.finish(m[1], 'done');
       broadcast('threads');
+      // Ekstraksi memori otomatis: hanya bila diaktifkan, hanya setelah run
+      // sukses, dan tidak ditunggu — pengguna sudah menerima jawabannya.
+      if (config.memoryEnabled !== false && config.memoryAutoExtract === true) {
+        try {
+          const full = threads.getThread(m[1]);
+          const cursor = memoryExtract.extractStatus(m[1])?.cursor || null;
+          memoryExtract.schedule({
+            threadId: m[1],
+            thread: full,
+            enabled: true,
+            cursor,
+            runStatus: 'done',
+            model: b.model || 'auto',
+            onDone: (rec) => {
+              if (rec?.added) {
+                broadcast('memory');
+                toast('Memori diperbarui', `${rec.added} fakta baru dari percakapan ini`);
+              }
+            },
+          });
+        } catch { /* ekstraksi tidak boleh menyentuh run yang sudah selesai */ }
+      }
       // run panjang selesai → beri tahu lewat notifikasi Windows
       if (r.ms > 15000) {
         const t = threads.getThread(m[1]);
@@ -2227,6 +2252,51 @@ ${msgs || '<p class="meta">Percakapan kosong.</p>'}
     return sendJson(res, 200, { ok: true });
   }
 
+  // ---- ekstraksi memori otomatis ----
+  // Diaktifkan eksplisit: satu panggilan model tambahan per percakapan adalah
+  // biaya nyata, jadi tidak boleh menyala diam-diam.
+  if (p === '/api/memory/extract' && method === 'GET') {
+    // Peta per-thread diratakan ke `threads`, bukan `threads.threads`: klien
+    // membaca `threads[id]`, dan bentuk bersarang hanya menambah satu lapis
+    // yang mudah salah dibaca.
+    const overview = memoryExtract.extractOverview();
+    return sendJson(res, 200, {
+      enabled: config.memoryAutoExtract === true,
+      running: memoryExtract.isRunning(),
+      last: overview.last,
+      tracked: overview.tracked,
+      threads: overview.threads,
+    });
+  }
+  if (p === '/api/memory/extract' && method === 'POST') {
+    // Ekstraksi manual untuk satu thread — berguna untuk mencoba sebelum
+    // menyalakan otomatis, dan untuk mengejar percakapan lama.
+    try {
+      const b = await readBody(req);
+      const id = String(b.threadId || '');
+      const t = threads.getThread(id);
+      if (!t) return sendJson(res, 404, { error: 'Thread tidak ditemukan', code: 'THREAD_MISSING' });
+      const cursor = typeof b.threadId === 'string' ? (memoryExtract.extractStatus(id)?.cursor || null) : null;
+      const r = memoryExtract.schedule({
+        threadId: id,
+        thread: t,
+        enabled: true,
+        cursor: b.all === true ? null : cursor,
+        runStatus: null,
+        model: b.model || 'auto',
+        onDone: (rec) => {
+          if (rec?.added) { broadcast('memory'); toast('Memori diperbarui', `${rec.added} fakta baru`); }
+        },
+      });
+      return sendJson(res, 200, { ...r, threadId: id });
+    } catch (error) { return sendJson(res, error.statusCode || 500, { error: error.message, code: error.code }); }
+  }
+  if (p === '/api/memory/extract/reset' && method === 'POST') {
+    const b = await readBody(req);
+    memoryExtract.resetThread(typeof b.threadId === 'string' ? b.threadId : null);
+    return sendJson(res, 200, { ok: true });
+  }
+
   // ---- settings ----
   if (p === '/api/settings' && method === 'POST') {
     const b = await readBody(req);
@@ -2234,6 +2304,7 @@ ${msgs || '<p class="meta">Percakapan kosong.</p>'}
     if (typeof b.notify === 'boolean') config.notify = b.notify;
     if (typeof b.autoPool === 'boolean') config.autoPool = b.autoPool;
     if (typeof b.memoryEnabled === 'boolean') config.memoryEnabled = b.memoryEnabled;
+    if (typeof b.memoryAutoExtract === 'boolean') config.memoryAutoExtract = b.memoryAutoExtract;
     if (typeof b.autoUpdate === 'boolean') config.autoUpdate = b.autoUpdate;
     if (typeof b.replyLang === 'string') config.replyLang = normalizeReplyLang(b.replyLang);
     config.refreshHours = num(b.refreshHours, 1, 168) ?? config.refreshHours;

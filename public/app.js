@@ -5103,24 +5103,71 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
     ).join('') + '</fieldset>').join('') || '<p class="muted small">Tidak ada engine CLI terdeteksi. Pasang Claude Code/Codex/OpenCode/Gemini CLI.</p>';
   }
   // ---------- memori agent (jangka panjang) ----------
+  // Alasan ekstraksi bisa dilewati — dipakai tombol "Ekstrak sekarang" supaya
+  // pengguna tahu mengapa tidak ada fakta baru, bukan toast kosong.
+  const EXTRACT_SKIP = {
+    off: 'Ekstraksi memori dimatikan dulu',
+    'no-thread': 'Buka percakapan dulu',
+    'nothing-new': 'Belum ada pesan baru sejak ekstraksi terakhir',
+    'no-user-prose': 'Belum ada pesan pengguna yang cukup panjang untuk diekstrak',
+    busy: 'Ekstraksi lain sedang berjalan — coba lagi sebentar',
+  };
+
   function renderMemory() {
     // pane bisa diaktifkan saat boot (localStorage) sebelum state dari server
     if (!state) return;
     const host = $('#mem-list');
     const tgl = $('#set-memory-on');
     if (tgl) tgl.checked = state.config?.memoryEnabled !== false;
+    const auto = $('#set-mem-auto');
+    if (auto) auto.checked = state.config?.memoryAutoExtract === true;
+    renderExtractSummary();
     if (!host) return;
     const facts = state.memory || [];
     if (!facts.length) {
       host.innerHTML = '<p class="muted small">Belum ada fakta. Tambahkan preferensi atau konteks tetap — agent otomatis "tahu" saat chat dimulai, di thread mana pun.</p>';
       return;
     }
+    // Tiga sumber berbeda, tiga label berbeda: "manual" untuk fakta yang
+    // ditambahkan sendiri, "dari chat" untuk tombol Ingat di percakapan, dan
+    // "otomatis" untuk hasil ekstraksi. Menyamakan ketiganya menyembunyikan
+    // fakta bahwa sebuah mesin, bukan pengguna, yang menulis entri itu.
+    const SRC_LABEL = { auto: 'otomatis', chat: 'dari chat', manual: 'manual' };
     host.innerHTML = facts.map((f) => `
       <div class="mem-row">
         <span class="mem-text">${esc(f.text)}</span>
-        <span class="muted small mem-src">${f.source === 'chat' ? 'dari chat' : 'manual'}</span>
+        <span class="muted small mem-src">${SRC_LABEL[f.source] || 'manual'}</span>
         <button class="icon-btn" data-mem-del="${esc(f.id)}" title="Lupakan fakta ini">${icon('x')}</button>
       </div>`).join('');
+  }
+
+  // Ringkasan ekstraksi terakhir. Tanpa ini pengguna hanya punya tombol tanpa
+  // cara memeriksa apakah ekstraksi benar-benar berjalan, kapan, dan hasilnya.
+  // Kalimatnya dirakit dari pola yang bisa diterjemahkan: teks dinamis tidak
+  // pernah ada di kamus, jadi menerjemahkan hasil akhirnya tidak akan berbuat
+  // apa pun dan panel akan tetap berbahasa Indonesia di antarmuka Inggris.
+  function renderExtractSummary() {
+    const host = $('#mem-extract-last');
+    if (!host) return;
+    const st = state?.memoryExtract || null;
+    const last = st?.last || null;
+    if (!last) {
+      host.textContent = st?.tracked
+        ? tr('{n} percakapan tercatat').replace('{n}', String(st.tracked))
+        : tr('Belum pernah mengekstrak.');
+      return;
+    }
+    const when = new Date(last.at).toLocaleString(currentLang() === 'en' ? 'en-GB' : 'id-ID', {
+      day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
+    });
+    let what;
+    if (last.status === 'error') {
+      what = tr('gagal') + (last.error ? `: ${last.error}` : '');
+    } else {
+      what = tr('{n} fakta baru').replace('{n}', String(last.added ?? 0));
+      if (last.skipped) what += tr(', {n} dilewati').replace('{n}', String(last.skipped));
+    }
+    host.textContent = tr('Terakhir {when} — {what}.').replace('{when}', when).replace('{what}', what);
   }
   $('#set-memory-on').addEventListener('change', async (e) => {
     try {
@@ -5142,6 +5189,62 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
     } catch (err) { toast('Gagal: ' + err.message); }
   });
   $('#mem-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#mem-add').click(); });
+
+  $('#set-mem-auto')?.addEventListener('change', async (e) => {
+    try {
+      await api('/api/settings', { method: 'POST', body: JSON.stringify({ memoryAutoExtract: e.target.checked }) });
+      state.config.memoryAutoExtract = e.target.checked;
+      toast(e.target.checked
+        ? 'Ekstraksi otomatis aktif — fakta disimpan setelah run berhasil'
+        : 'Ekstraksi otomatis dimatikan');
+    } catch (err) { toast('Gagal: ' + err.message); e.target.checked = !e.target.checked; }
+  });
+
+  // Ekstrak manual: berguna untuk mencoba sebelum menyalakan otomatis, dan untuk
+  // mengejar percakapan yang terjadi sebelum fitur ini aktif.
+  $('#mem-extract')?.addEventListener('click', async () => {
+    if (!curThread) { toast('Buka percakapan dulu'); return; }
+    const btn = $('#mem-extract');
+    const st = $('#mem-extract-status');
+    btn.disabled = true;
+    if (st) st.textContent = 'Mengekstrak…';
+    try {
+      const r = await api('/api/memory/extract', {
+        method: 'POST',
+        body: JSON.stringify({ threadId: curThread.id, all: true }),
+      });
+      if (r.scheduled === false) {
+        if (st) st.textContent = '';
+        toast(EXTRACT_SKIP[r.reason] || `Tidak diekstrak (${r.reason})`);
+        return;
+      }
+      // Tunggu hasilnya lewat polling ringan: server mengerjakannya di latar
+      // belakang, jadi tombol tidak boleh menggantung.
+      for (let i = 0; i < 60; i++) {
+        await new Promise((res) => setTimeout(res, 500));
+        const s = await api('/api/memory/extract');
+        if (!s.running) {
+          const rec = s.threads?.[curThread.id];
+          if (st) st.textContent = '';
+          if (rec?.added) toast(tr('{n} fakta baru disimpan ke memori').replace('{n}', String(rec.added)));
+          else if (rec?.status === 'error') toast(tr('Ekstraksi gagal: ') + (rec.error || tr('tidak diketahui')));
+          else toast('Tidak ada fakta baru yang layak disimpan');
+          state.memory = await api('/api/memory');
+          // Ringkasan "terakhir …" ikut diperbarui: tanpa ini panel menampilkan
+          // hasil ekstraksi sebelumnya walau yang baru saja selesai.
+          state.memoryExtract = { last: s.last || null, tracked: s.tracked || 0, threads: s.threads || {} };
+          renderMemory();
+          return;
+        }
+      }
+      if (st) st.textContent = 'Masih berjalan…';
+    } catch (err) {
+      if (st) st.textContent = '';
+      toast('Gagal mengekstrak: ' + err.message);
+    } finally {
+      btn.disabled = false;
+    }
+  });
 
   // ---------- instruksi tetap ----------
   // Tiga sumber instruksi dikirim berurutan (pengguna → proyek → thread), jadi

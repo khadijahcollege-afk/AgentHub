@@ -696,11 +696,18 @@
             <h3>Memori agent</h3>
             <p class="muted small">Fakta tetap yang otomatis disuntikkan ke setiap prompt — ala Memory di ChatGPT atau CLAUDE.md di Claude Code. Semua tersimpan lokal (memory.json); isi prompt dikirim hanya ke provider yang sedang dipakai.</p>
             <label class="mem-toggle"><input type="checkbox" id="set-memory-on"><span>Suntikkan memori ke semua percakapan</span></label>
+            <label class="mem-toggle"><input type="checkbox" id="set-mem-auto"><span>Ekstrak fakta otomatis setelah percakapan selesai</span></label>
+            <p class="muted small mem-hint">Satu panggilan model tambahan per percakapan, hanya setelah run berhasil. Fakta berbentuk perintah, prompt-marker, atau kredensial selalu dibuang. Maksimal tiga fakta per run. Tombol Ekstrak sekarang membaca seluruh percakapan yang sedang dibuka, jadi ia juga mengejar fakta dari sebelum fitur ini dinyalakan.</p>
             <div class="mem-add">
               <input id="mem-input" placeholder="Tambah fakta, mis. Bahasa favorit: Indonesia">
               <button class="btn primary" id="mem-add">Ingat</button>
             </div>
             <div id="mem-list" class="mem-list"></div>
+            <div class="mem-extract">
+              <button class="btn" type="button" id="mem-extract">Ekstrak sekarang</button>
+              <span class="muted small" id="mem-extract-status"></span>
+            </div>
+            <p class="muted small" id="mem-extract-last"></p>
           </div>
 
           <div class="settings-pane" data-pane="instructions">
