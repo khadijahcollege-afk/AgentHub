@@ -354,7 +354,7 @@ window.__ahMachines = {
   // Palet proyek yang tenang (bukan hue acak): oranye, biru, hijau, violet.
   const PROJECT_HUES = [24, 208, 152, 266, 40, 190];
   const projectColor = (p) => (!p || p === 'default'
-    ? '#ef7d45'
+    ? '#4f8cff'
     : `hsl(${PROJECT_HUES[hueOf(p) % PROJECT_HUES.length]} 42% 60%)`);
   const projectInitials = (p) => {
     const parts = String(p || 'AH').replace(/[^a-zA-Z0-9]+/g, ' ').trim().split(/\s+/).filter(Boolean);
@@ -6546,11 +6546,11 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
   applyDensity();
   applyChatWidth();
   const ACCENTS = [
-    ['#ef7d45', 'Oranye (bawaan)'],
-    ['#4f8cff', 'Biru'],
+    ['#4f8cff', 'Biru (bawaan)'],
     ['#3ecf8e', 'Hijau'],
     ['#a78bfa', 'Ungu'],
     ['#f5567b', 'Merah'],
+    ['#ef7d45', 'Oranye'],
   ];
   function applyAccent(color) {
     if (color) document.documentElement.style.setProperty('--accent', color);
@@ -7927,7 +7927,7 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
     localStorage.setItem('ah_accent', b.dataset.accent);
     applyAccent(b.dataset.accent);
   }));
-  applyAccent(localStorage.getItem('ah_accent') || '');
+  applyAccent(localStorage.getItem('ah_accent') || ACCENTS[0][0]);
 
   // notifikasi: toggle langsung simpan + tes toast
   $('#set-notify').addEventListener('change', async (e) => {
@@ -8197,7 +8197,7 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
       localStorage.setItem('ah_zoom', String(z));
       applyZoom(z);
     }));
-    applyAccent(localStorage.getItem('ah_accent') || '');
+    applyAccent(localStorage.getItem('ah_accent') || ACCENTS[0][0]);
     applyZoom(current);
   }
   $('#sb-account').addEventListener('click', () => {
