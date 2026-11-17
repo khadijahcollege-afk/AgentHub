@@ -10,7 +10,7 @@
 <link rel="apple-touch-icon" href="/public/icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="stylesheet" href="/public/style.css?v=1.8.4">
+<link rel="stylesheet" href="/public/style.css?v=1.8.5">
 <link rel="stylesheet" href="/public/workspace.css?v=20261116">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%23f2905c'/%3E%3Cstop offset='100%25' stop-color='%23e46a30'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='100' height='100' rx='22' fill='url(%23g)'/%3E%3Ccircle cx='50' cy='38' r='16' fill='white'/%3E%3Crect x='30' y='62' width='40' height='10' rx='5' fill='white'/%3E%3C/svg%3E">
 </head>
@@ -227,12 +227,12 @@
           <p class="terminal-hint">Perintah latar hidup lebih lama dari run — keluarannya tersimpan di .agenthub/tasks</p>
         </section>
         <div id="composer" class="composer-pill">
+          <div class="pill-main">
           <div class="pill-context">
             <button class="mini-chip" id="composer-cwd" title="Folder kerja agent CLI"><svg viewBox="0 0 24 24"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H9l2 2h7.5A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5z"/></svg> <span id="cwd-name">This PC</span> <span class="caret">▾</span></button>
             <button class="mini-chip" id="composer-branch" title="Info git folder aktif"><svg viewBox="0 0 24 24"><circle cx="7" cy="5.5" r="2"/><circle cx="7" cy="18.5" r="2"/><circle cx="17" cy="9" r="2"/><path d="M7 7.5v9M17 11c0 4-6 3.5-8.5 5.5"/></svg> <span id="cwd-branch">main</span> <span class="caret">▾</span></button>
             <span id="composer-skills" class="composer-skills hidden" title="Skill yang aktif otomatis untuk permintaan ini"></span>
           </div>
-          <div class="pill-main">
             <div id="composer-queue" class="composer-queue hidden" aria-label="Antrean pesan"></div>
             <div id="composer-attachments" class="composer-attachments hidden"></div>
             <textarea id="composer-input" rows="1" placeholder="Ask anything, @ untuk file, / untuk perintah, Ctrl+K palet"></textarea>
@@ -1457,6 +1457,6 @@
 <div id="toast-wrap" class="toast-wrap"></div>
 <script src="/public/pwa.js"></script>
 <script src="/public/qrcode.min.js"></script>
-<script type="module" src="/public/app.js?v=1.8.4"></script>
+<script type="module" src="/public/app.js?v=1.8.5"></script>
 </body>
 </html>
