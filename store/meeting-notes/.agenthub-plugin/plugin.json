@@ -1,0 +1,7 @@
+{
+  "name": "meeting-notes",
+  "version": "1.0.0",
+  "description": "Mengubah transkrip/catatan mentah rapat menjadi notulen rapi dengan daftar tindakan.",
+  "author": "AgentHub Store",
+  "skills": "skills"
+}

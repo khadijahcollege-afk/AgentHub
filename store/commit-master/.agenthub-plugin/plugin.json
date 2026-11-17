@@ -1,0 +1,7 @@
+{
+  "name": "commit-master",
+  "version": "1.0.0",
+  "description": "Menulis pesan commit konvensional dari diff — bahasa Indonesia, format Conventional Commits.",
+  "author": "AgentHub Store",
+  "skills": "skills"
+}

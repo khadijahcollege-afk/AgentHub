@@ -3124,3 +3124,28 @@ html[data-theme="oled"] .toast { background: #0a0a0b; }
 .theme-prev.oled { background: #000; border-color: #222226; }
 .theme-prev.oled i { background: #232327; }
 .theme-prev.oled u { background: #141417; }
+
+/* ---------- toko plugin (ala halaman Plugins Claude) ---------- */
+.store-head { margin-top: 8px; padding-top: 8px; border-top: 1px solid #222227; }
+.store-toolbar { display: flex; gap: 8px; margin: 10px 0 12px; flex-wrap: wrap; }
+.store-toolbar .search { flex: 1 1 180px; }
+.store-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }
+.store-card {
+  display: flex; flex-direction: column; gap: 6px;
+  background: #17171a; border: 1px solid #26262b; border-radius: 14px;
+  padding: 13px 14px; transition: border-color .14s;
+}
+.store-card:hover { border-color: #3a3a42; }
+.store-card-top { display: flex; align-items: center; gap: 9px; }
+.store-ico {
+  width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0;
+  display: grid; place-items: center; font-weight: 700; font-size: 13px;
+  color: #fff; background: linear-gradient(135deg, var(--accent), #2563eb);
+}
+.store-name { font-size: 13px; font-weight: 600; color: #f0f0f3; }
+.store-desc { font-size: 11.5px; color: #a9a9b1; line-height: 1.5; }
+.store-meta { font-size: 10.5px; color: #7c7c84; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.store-type { border: 1px solid #333338; border-radius: 4px; padding: 0 5px; font-size: 9.5px; color: #98989f; }
+.store-card .btn.tiny { align-self: flex-start; margin-top: 2px; border-radius: 9px; }
+.store-card .btn.tiny.primary { background: var(--accent); border-color: transparent; color: #fff; }
+.store-empty { color: #8d8d94; font-size: 12px; padding: 12px 2px; }

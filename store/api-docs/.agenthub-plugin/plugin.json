@@ -1,0 +1,7 @@
+{
+  "name": "api-docs",
+  "version": "1.0.0",
+  "description": "Dokumentasi endpoint dari kode — rute, parameter, respons, dan contoh curl.",
+  "author": "AgentHub Store",
+  "skills": "skills"
+}

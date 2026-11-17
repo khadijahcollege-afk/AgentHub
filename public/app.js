@@ -7052,6 +7052,68 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
   // Yang ditonjolkan adalah status kepercayaan: plugin yang belum disetujui
   // tetap boleh memasang skill (teks), tetapi hook dan MCP-nya diam sampai
   // pengguna menyetujui digest-nya.
+  // ---------- toko plugin: katalog kurasi, satu klik pasang ----------
+  let storeData = null;
+  let storeFilter = 'all';
+  let storeQuery = '';
+  function storeIcon(name) {
+    const letter = String(name || '?').trim().charAt(0).toUpperCase();
+    return `<span class="store-ico">${esc(letter)}</span>`;
+  }
+  function renderStore(data) {
+    const grid = document.querySelector('#store-grid');
+    if (!grid) return;
+    const avail = (data.available || [])
+      .filter((x) => (storeFilter === 'all' ? true : x.type === storeFilter || (x.tags || []).includes(storeFilter)));
+    const rows = avail
+      .filter((x) => !storeQuery || (x.name + ' ' + (x.description || '') + ' ' + (x.author || '')).toLowerCase().includes(storeQuery))
+      .map((x) => `
+        <div class="store-card" data-store-name="${esc(x.name)}">
+          <div class="store-card-top">${storeIcon(x.name)}
+            <span class="store-name">${esc(x.name)}</span>
+            <span class="grow"></span>
+            ${x.installed ? '<span class="chip">Terpasang</span>' : ''}
+          </div>
+          <div class="store-desc">${esc(x.description || '')}</div>
+          <div class="store-meta"><span class="store-type">Skill</span><span>oleh ${esc(x.author || 'AgentHub Store')}</span></div>
+          ${x.installed
+            ? '<button class="btn tiny" data-store-open disabled>Terpasang — aktif sebagai skill</button>'
+            : '<button class="btn tiny primary" data-store-install="' + esc(x.name) + '" data-store-market="' + esc(x.marketplace || '') + '">Pasang</button>'}
+        </div>`).join('');
+    grid.innerHTML = rows || '<p class="store-empty">Tidak ada plugin yang cocok.</p>';
+  }
+  async function loadStore() {
+    try {
+      const data = await api('/api/plugins');
+      storeData = data;
+      renderStore(data);
+    } catch (e) {
+      const grid = document.querySelector('#store-grid');
+      if (grid) grid.innerHTML = '<p class="store-empty">Gagal memuat toko: ' + esc(e.message) + '</p>';
+    }
+  }
+  document.addEventListener('input', (e) => {
+    if (e.target?.id === 'store-search') { storeQuery = e.target.value.trim().toLowerCase(); renderStore(storeData); }
+  });
+  document.addEventListener('click', async (e) => {
+    const seg = e.target.closest('[data-store-filter]');
+    if (seg) {
+      storeFilter = seg.dataset.storeFilter;
+      document.querySelectorAll('#store-seg .seg-btn').forEach((b) => b.classList.toggle('active', b === seg));
+      renderStore(storeData);
+      return;
+    }
+    const btn = e.target.closest('[data-store-install]');
+    if (!btn) return;
+    btn.disabled = true;
+    try {
+      await api('/api/plugins/install', { method: 'POST', body: JSON.stringify({ name: btn.dataset.storeInstall, marketplace: btn.dataset.storeMarket }) });
+      toast('Plugin ${String(btn.dataset.storeInstall)} terpasang — skill aktif otomatis');
+      await loadStore();
+      await renderPlugins();
+    } catch (err) { toast('Gagal memasang: ' + err.message); btn.disabled = false; }
+  });
+
   async function renderPlugins() {
     const host = $('#plug-list');
     if (!host) return;

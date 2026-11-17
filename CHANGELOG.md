@@ -423,6 +423,13 @@ ditunggu, dan apa yang harus bisa dipulihkan setelah gagal.
   `share`, `port-helper` — 424 tes, semuanya lulus.
 
 ## 1.6.14 — 2026-11-17
+- **Toko Plugin bawaan (ala halaman Plugins Claude)** — folder store/ berisi
+  10 plugin skill kurasi yang BENAR-BENAR BISA DIPASANG (Commit Master,
+  Error Hunter, Weekly Report, PPT Outline, Web Research, Meeting Notes,
+  SQL Helper, Regex Tamer, Translator ID, API Docs): marketplace bawaan
+  terdaftar otomatis saat boot, kartu di pane Plugin dengan pencarian +
+  filter, satu klik Pasang → skill aktif otomatis (tanpa izin tambahan —
+  semua berkas teks). Install/uninstall nyata lewat pipeline plugin lama.
 - **Rotasi juga menyapu model lambat** — di Free Auto, engine yang tidak
   mengeluarkan output sama sekali dalam 30 detik dianggap macet: dibunuh dan
   permintaan pindah otomatis ke model berikutnya (output yang sudah mengalir

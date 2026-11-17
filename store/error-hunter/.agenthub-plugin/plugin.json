@@ -1,0 +1,7 @@
+{
+  "name": "error-hunter",
+  "version": "1.0.0",
+  "description": "Berburu akar masalah error di folder kerja — baca log/stack, telusuri kode, usul perbaikan terkecil.",
+  "author": "AgentHub Store",
+  "skills": "skills"
+}

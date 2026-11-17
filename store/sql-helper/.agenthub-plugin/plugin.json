@@ -1,0 +1,7 @@
+{
+  "name": "sql-helper",
+  "version": "1.0.0",
+  "description": "Menyusun dan menjelaskan SQL — skema, indeks, dan cara baca query-nya.",
+  "author": "AgentHub Store",
+  "skills": "skills"
+}

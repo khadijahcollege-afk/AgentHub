@@ -1,0 +1,65 @@
+{
+  "name": "agenthub-store",
+  "plugins": [
+    {
+      "name": "commit-master",
+      "path": "commit-master",
+      "version": "1.0.0",
+      "description": "Menulis pesan commit konvensional dari diff — bahasa Indonesia, format Conventional Commits."
+    },
+    {
+      "name": "error-hunter",
+      "path": "error-hunter",
+      "version": "1.0.0",
+      "description": "Berburu akar masalah error di folder kerja — baca log/stack, telusuri kode, usul perbaikan terkecil."
+    },
+    {
+      "name": "weekly-report",
+      "path": "weekly-report",
+      "version": "1.0.0",
+      "description": "Ringkasan aktivitas mingguan dari thread, tugas, dan statistik AgentHub — siap dikirim ke tim."
+    },
+    {
+      "name": "ppt-outline",
+      "path": "ppt-outline",
+      "version": "1.0.0",
+      "description": "Menyusun kerangka presentasi slide per slide — judul, poin, catatan pembicara."
+    },
+    {
+      "name": "web-research",
+      "path": "web-research",
+      "version": "1.0.0",
+      "description": "Riset web terstruktur: kumpulkan sumber, bandingkan, ringkas dengan sitasi."
+    },
+    {
+      "name": "meeting-notes",
+      "path": "meeting-notes",
+      "version": "1.0.0",
+      "description": "Mengubah transkrip/catatan mentah rapat menjadi notulen rapi dengan daftar tindakan."
+    },
+    {
+      "name": "sql-helper",
+      "path": "sql-helper",
+      "version": "1.0.0",
+      "description": "Menyusun dan menjelaskan SQL — skema, indeks, dan cara baca query-nya."
+    },
+    {
+      "name": "regex-tamer",
+      "path": "regex-tamer",
+      "version": "1.0.0",
+      "description": "Membuat dan menjelaskan regex — dengan contoh match/non-match dan versi aman."
+    },
+    {
+      "name": "translate-id",
+      "path": "translate-id",
+      "version": "1.0.0",
+      "description": "Terjemahan Indonesia ⇄ Inggris bergaya natural — bukan terjemahan kata per kata."
+    },
+    {
+      "name": "api-docs",
+      "path": "api-docs",
+      "version": "1.0.0",
+      "description": "Dokumentasi endpoint dari kode — rute, parameter, respons, dan contoh curl."
+    }
+  ]
+}

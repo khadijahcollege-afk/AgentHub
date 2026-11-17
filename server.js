@@ -55,6 +55,13 @@ import * as checkpoints from './lib/checkpoints.js';
 import * as compactLib from './lib/compact.js';
 import * as instructionsLib from './lib/instructions.js';
 import * as pluginsLib from './lib/plugins.js';
+
+// Toko plugin bawaan: folder store/ di dalam aplikasi berisi katalog kurasi
+// (skill siap pakai). Daftarkan sebagai marketplace sekali di boot — gagal
+// diam bila sudah terdaftar (409) atau folder tidak ada (instalasi portable).
+try {
+  pluginsLib.addMarketplace(path.join(ROOT, 'store'));
+} catch { /* sudah terdaftar / folder store tidak ada */ }
 import * as approvals from './lib/approvals.js';
 import * as queue from './lib/queue.js';
 import * as inputs from './lib/inputs.js';
