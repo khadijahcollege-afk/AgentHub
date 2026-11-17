@@ -927,10 +927,21 @@ async function handleSend(threadId, b, res, { onStarted = null } = {}) {
       if (!tries.length) throw new Error('Semua model gratis sedang cooldown — coba lagi beberapa menit lagi.');
       r = null;
       let lastError = null;
+      // Rotasi juga menangani "respons lama": bila engine tidak mengeluarkan
+      // output sama sekali dalam batas waktu (bawaan 30 detik), ia dianggap
+      // macet dan permintaan pindah ke model berikutnya. Output yang sudah
+      // mulai mengalir tidak pernah dibunuh.
+      const FIRST_MS = Number(process.env.AGENTHUB_FREE_FIRST_TIMEOUT_MS) || 30000;
       for (const eng of tries) {
         if (engineType(eng.id) === null) continue; // fixture tidak dikenal
+        const attemptCtrl = new AbortController();
+        let gotFirst = false;
+        const killTimer = setTimeout(() => { if (!gotFirst) attemptCtrl.abort(); }, FIRST_MS);
+        const wrappedDelta = (chunk) => { gotFirst = true; clearTimeout(killTimer); runOpts.onDelta(chunk); };
+        const combinedSignal = AbortSignal.any([ctrl.signal, attemptCtrl.signal]);
         try {
-          const rr = await runEngine(eng.id, modelPrompt, runOpts);
+          const rr = await runEngine(eng.id, modelPrompt, { ...runOpts, signal: combinedSignal, onDelta: wrappedDelta });
+          clearTimeout(killTimer);
           if (freerot.looksLimited(rr.text)) {
             freerot.markFail(eng.id, 'limit terdeteksi di jawaban');
             send({ type: 'rotate', note: `${eng.label} kena limit — otomatis coba model lain` });
@@ -941,8 +952,10 @@ async function handleSend(threadId, b, res, { onStarted = null } = {}) {
           r = { ...rr, rotationEngine: eng.id };
           break;
         } catch (e) {
-          freerot.markFail(eng.id, e.message);
-          send({ type: 'rotate', note: `${eng.label} gagal (${String(e.message || '').slice(0, 60)}) — otomatis coba model lain` });
+          clearTimeout(killTimer);
+          const lambat = !gotFirst && !ctrl.signal.aborted && attemptCtrl.signal.aborted;
+          freerot.markFail(eng.id, lambat ? `lambat: tanpa output ${Math.round(FIRST_MS / 1000)} detik` : e.message);
+          send({ type: 'rotate', note: `${eng.label} ${lambat ? 'terlalu lama tanpa jawaban' : 'gagal (' + String(e.message || '').slice(0, 60) + ')'} — otomatis coba model lain` });
           lastError = e;
         }
       }

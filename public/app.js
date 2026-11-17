@@ -1040,7 +1040,12 @@ window.__ahMachines = {
     if (saved && engines.some((e) => e.id === saved && e.available)) {
       currentEngine = saved;
     } else if (!engines.some((e) => e.id === currentEngine && e.available)) {
-      currentEngine = engines.find((e) => e.available)?.id || currentEngine;
+      // Pool kosong & belum ada pilihan tersimpan -> Free Auto langsung jadi
+      // bawaan: chat baru bisa dipakai gratis tanpa pilih-pilih model.
+      const poolEmpty = !(window.state?.pool?.total > 0) && !(typeof state !== 'undefined' && state?.pool?.total > 0);
+      const fa = engines.find((e) => e.id === 'free-auto' && e.available);
+      if (poolEmpty && fa) currentEngine = 'free-auto';
+      else currentEngine = engines.find((e) => e.available)?.id || currentEngine;
     }
     applyEngine();
     renderDelegationEngines();

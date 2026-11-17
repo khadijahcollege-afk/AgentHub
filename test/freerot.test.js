@@ -68,14 +68,20 @@ test.before(async () => {
     port: PORT, token: TOKEN, notify: false, refreshHours: 168,
     agentCheckMinutes: 1440, keyCheckHours: 168, baselined: true, createdAt: Date.now(),
   }));
-  // Dua engine gratis palsu: AA selalu "kena limit", BB jawab sukses.
+  // Engine gratis palsu: SLOW menggantung 45 detik (melewati batas 3 detik),
+  // BB jawab cepat — rotasi harus pindah otomatis tanpa menunggu.
   fs.writeFileSync(path.join(dataDir, 'harnesses.json'), JSON.stringify([
-    { id: 'opencode-free-aa-free', label: 'AA (limit)', type: 'cli', cmd: 'cmd', args: ['/c', 'echo', 'rate limit exceeded for this key'] },
+    { id: 'opencode-free-slow-free', label: 'SLOW (menggantung)', type: 'cli', cmd: 'cmd', args: ['/c', 'powershell', '-NoProfile', '-Command', 'Start-Sleep -Seconds 45'] },
     { id: 'opencode-free-bb-free', label: 'BB (oke)', type: 'cli', cmd: 'cmd', args: ['/c', 'echo', 'jawaban dari BB'] },
   ]));
   child = spawn(process.execPath, ['server.js'], {
     cwd: ROOT,
-    env: { ...process.env, AGENTHUB_DATA: dataDir, AGENTHUB_NO_TOAST: '1' },
+    env: {
+      ...process.env,
+      AGENTHUB_DATA: dataDir,
+      AGENTHUB_NO_TOAST: '1',
+      AGENTHUB_FREE_FIRST_TIMEOUT_MS: '3000', // batas tanpa-output dipendekkan untuk tes
+    },
     stdio: 'ignore',
     windowsHide: true,
   });
@@ -87,7 +93,7 @@ test.after(() => {
   try { fs.rmSync(dataDir, { recursive: true, force: true }); } catch { /* noop */ }
 });
 
-test('free-auto: AA kena limit -> otomatis pindah ke BB', async () => {
+test('free-auto: SLOW menggantung -> otomatis pindah ke BB', async () => {
   // engine virtual terdaftar di /api/engines
   const engines = await (await api('/api/engines')).json();
   const fa = engines.find((e) => e.id === 'free-auto');
@@ -108,7 +114,7 @@ test('free-auto: AA kena limit -> otomatis pindah ke BB', async () => {
   const replies = th.messages.filter((x) => x.role === 'assistant');
   assert.ok(replies.length >= 1, 'ada balasan');
   const last = replies[replies.length - 1];
-  assert.match(last.content || '', /jawaban dari BB/, 'jawaban datang dari engine BB (bukan AA)');
+  assert.match(last.content || '', /jawaban dari BB/, 'jawaban datang dari engine BB (bukan SLOW)');
   assert.equal(last.engine, 'opencode-free-bb-free', 'engine asli tercatat jujur');
   assert.equal(th.runState, 'done', 'run selesai');
 });

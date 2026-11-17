@@ -423,6 +423,13 @@ ditunggu, dan apa yang harus bisa dipulihkan setelah gagal.
   `share`, `port-helper` — 424 tes, semuanya lulus.
 
 ## 1.6.14 — 2026-11-17
+- **Rotasi juga menyapu model lambat** — di Free Auto, engine yang tidak
+  mengeluarkan output sama sekali dalam 30 detik dianggap macet: dibunuh dan
+  permintaan pindah otomatis ke model berikutnya (output yang sudah mengalir
+  tidak pernah dibunuh). Batas bisa diatur lewat env
+  AGENTHUB_FREE_FIRST_TIMEOUT_MS. Chat baru kini bawaan Free Auto saat
+  Gateway pool kosong — sekali kirim, sistem carikan model gratis yang
+  merespons.
 - **Free Auto: rotasi model gratis otomatis** — engine virtual baru di daftar
   engine: memutar SELURUH model gratis opencode-free-* satu per satu; model
   kena limit/429/gagal ditandai cooldown 10 menit (freerot.json) dan
