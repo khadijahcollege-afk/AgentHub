@@ -483,7 +483,11 @@ window.__ahMachines = {
         if (slices.includes('tasks') && view === 'tasks') renderTasks();
         if (slices.includes('notes') && view === 'notes') renderNotes();
         if (slices.includes('memory') && view === 'settings' && settingsPane === 'memory') renderMemory();
-    if (slices.includes('config') && view === 'settings' && settingsPane === 'mcp') renderMcp();
+        if (slices.includes('config') && view === 'settings' && settingsPane === 'mcp') renderMcp();
+        // Instruksi bisa berubah karena thread berganti folder kerja, jadi ikut
+        // disegarkan saat state berubah — bukan hanya saat panel dibuka.
+        if (view === 'settings' && settingsPane === 'instructions'
+          && (slices.includes('config') || slices.includes('threads'))) renderInstructions();
         return;
       }
       if (!deepLinkDone) {
@@ -4510,6 +4514,7 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
     ['notifications', 'Notifikasi', '<path d="M6 9a6 6 0 1 1 12 0c0 5 2 6 2 6H4s2-1 2-6"/><path d="M10 20a2.2 2.2 0 0 0 4 0"/>'],
     ['privacy', 'Privasi', '<path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/><path d="M9.5 12l1.8 1.8 3.2-3.6"/>'],
     ['memory', 'Memori', '<path d="M8 4h8a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3h-2v3l-3-3H8a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3z"/><path d="M8.5 9h7M8.5 12h5"/>'],
+  ['instructions', 'Instruksi', '<path d="M6 3.5h9l4 4V20a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1z"/><path d="M14.5 3.5V8h4.5"/><path d="M8.5 12.5h7M8.5 16h4.5"/>'],
     ['mcp', 'Server MCP', '<path d="M4 7h6l2 3h8"/><path d="M4 17h5"/><circle cx="17.5" cy="17" r="2.5"/><circle cx="7" cy="7" r="2.5"/><circle cx="6.5" cy="17" r="2.5"/>'],
     ['hooks', 'Hook', '<path d="M9 4v6a3 3 0 0 0 3 3h8"/><path d="M17 10l3 3-3 3"/><circle cx="6" cy="4" r="2"/><path d="M6 6v14"/>'],
     ['shortcuts', 'Pintasan', '<rect x="2.5" y="6" width="19" height="12" rx="2.5"/><path d="M6.5 10h.01M10 10h.01M13.5 10h.01M17 10h.01M7.5 14h9"/>'],
@@ -4524,7 +4529,7 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
   // Kelompok nav ala halaman settings Kybern: Pribadi / Agent / Sistem.
   const SETTINGS_GROUPS = [
     ['Pribadi', ['preferences', 'language', 'appearance', 'notifications', 'privacy', 'memory', 'shortcuts']],
-    ['Agent', ['providers', 'models', 'engines', 'mcp', 'hooks', 'connectors', 'projects', 'billing', 'schedules', 'orchestra']],
+    ['Agent', ['providers', 'models', 'engines', 'instructions', 'mcp', 'hooks', 'connectors', 'projects', 'billing', 'schedules', 'orchestra']],
     ['Sistem', ['phone', 'server', 'desktop', 'about']],
   ];
 
@@ -4734,6 +4739,7 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
     if (id === 'desktop') checkUpdates(true);
     if (id === 'orchestra') { renderOrchestra(); renderOrchestraEngines(); }
     if (id === 'memory') renderMemory();
+    if (id === 'instructions') renderInstructions();
     if (id === 'mcp') { renderMcp(); syncMcpTransport(); }
     if (id === 'hooks') renderHooks();
   }
@@ -5113,6 +5119,105 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
     } catch (err) { toast('Gagal: ' + err.message); }
   });
   $('#mem-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#mem-add').click(); });
+
+  // ---------- instruksi tetap ----------
+  // Tiga sumber instruksi dikirim berurutan (pengguna → proyek → thread), jadi
+  // panel ini menampilkan sumber mana yang aktif untuk thread yang sedang
+  // dibuka. Isinya tidak pernah ditampilkan di sini — hanya nama berkas dan
+  // ukurannya: instruksi proyek bisa panjang dan bukan milik pengguna.
+  async function renderInstructions() {
+    const area = $('#instr-text');
+    const status = $('#instr-status');
+    const host = $('#instr-summary');
+    if (!area) return;
+    const q = new URLSearchParams();
+    if (curThread?.cwd) q.set('cwd', curThread.cwd);
+    if (curThread?.id) q.set('thread', curThread.id);
+    let data;
+    try {
+      data = await api(`/api/instructions${q.toString() ? `?${q}` : ''}`);
+    } catch (err) {
+      if (status) status.textContent = `Gagal memuat: ${err.message}`;
+      return;
+    }
+    const global = data.global || {};
+    if (status && !status.textContent) status.textContent = '';
+    // Jangan timpa ketikan pengguna yang belum disimpan saat SSE memicu render.
+    if (document.activeElement !== area) area.value = global.text || '';
+    const pathEl = $('#instr-path');
+    if (pathEl) {
+      // Path lengkap, bukan "data/AGENTS.md": pengguna perlu tahu berkas mana
+      // yang dibaca, dan folder data bisa berada di %APPDATA% saat terinstall.
+      // Di layar sempit path penuh memakan dua baris, jadi bagian tengahnya
+      // diringkas — nama berkas tetap terlihat, lengkapnya ada di tooltip.
+      const full = data.summary?.userFile || global.file || 'AGENTS.md';
+      const short = full.length > 44
+        ? `${full.slice(0, 2)}…${full.slice(full.length - 38)}`
+        : full;
+      pathEl.textContent = short;
+      pathEl.title = full;
+    }
+
+    const s = data.summary || {};
+    const rows = [];
+    // Label dari server berbentuk "Aturan proyek (AGENTS.md, CLAUDE.md)"; untuk
+    // baris ringkas cukup nama berkasnya saja, karena judul baris sudah
+    // menyebut sumbernya.
+    const projectFiles = (s.sources || [])
+      .filter((x) => x.source === 'project')
+      .flatMap((x) => (String(x.label).match(/\(([^)]+)\)/)?.[1] || '').split(',').map((f) => f.trim()))
+      .filter(Boolean);
+    rows.push(`<div class="instr-src ${s.userPresent ? 'on' : ''}">
+      <b>Pengguna</b>
+      <span class="muted small">${s.userPresent
+        ? `${(global.text || '').length} karakter — berlaku di semua percakapan`
+        : 'belum diisi — hanya aturan proyek dan thread yang dikirim'}</span>
+    </div>`);
+    rows.push(`<div class="instr-src ${s.projectPresent ? 'on' : ''}">
+      <b>Proyek</b>
+      <span class="muted small">${s.projectPresent
+        ? esc(projectFiles.join(', ') || 'aturan proyek aktif')
+        : (curThread?.cwd ? 'tidak ada AGENTS.md / CLAUDE.md di folder kerja' : 'pilih folder kerja untuk memuat aturan proyek')}</span>
+    </div>`);
+    rows.push(`<div class="instr-src ${s.threadPresent ? 'on' : ''}">
+      <b>Thread ini</b>
+      <span class="muted small">${s.threadPresent
+        ? 'instruksi khusus thread aktif'
+        : 'belum ada — atur lewat System prompt di panel sesi thread'}</span>
+    </div>`);
+    const truncated = (s.sources || []).filter((x) => x.truncated);
+    if (truncated.length) {
+      rows.push(`<p class="instr-warn">${esc(truncated.map((x) => x.label).join(', '))} dipotong karena melebihi batas ukuran — bagian akhirnya tidak dikirim ke model.</p>`);
+    }
+    if (host) host.innerHTML = rows.join('');
+  }
+
+  $('#instr-save')?.addEventListener('click', async () => {
+    const area = $('#instr-text');
+    const status = $('#instr-status');
+    const btn = $('#instr-save');
+    if (!area || !btn) return;
+    btn.disabled = true;
+    if (status) status.textContent = 'Menyimpan…';
+    try {
+      await api('/api/instructions/global', { method: 'PUT', body: JSON.stringify({ content: area.value }) });
+      if (status) status.textContent = `Tersimpan (${area.value.length} karakter)`;
+      toast('Instruksi tersimpan — berlaku di semua percakapan');
+      await renderInstructions();
+    } catch (err) {
+      if (status) status.textContent = `Gagal: ${err.message}`;
+      toast('Gagal menyimpan: ' + err.message);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  $('#instr-reload')?.addEventListener('click', async () => {
+    const status = $('#instr-status');
+    if (status) status.textContent = '';
+    await renderInstructions();
+    toast('Instruksi dimuat ulang dari berkas');
+  });
 
   // ---------- MCP & hooks (REA ZCode) ----------
   // Dua panel ini mengelola konfigurasi yang dipakai server saat run: server MCP

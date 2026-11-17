@@ -703,6 +703,19 @@
             <div id="mem-list" class="mem-list"></div>
           </div>
 
+          <div class="settings-pane" data-pane="instructions">
+            <h3>Instruksi tetap</h3>
+            <p class="muted small">Teks di bawah dikirim ke model sebelum pesan Anda, di setiap percakapan. Berguna untuk preferensi gaya kerja yang berlaku terus-menerus. Urutan yang dikirim: instruksi pengguna ini, lalu aturan proyek (<code>AGENTS.md</code>/<code>CLAUDE.md</code> di folder kerja), lalu instruksi khusus thread.</p>
+            <p class="muted small instr-path-line">Berkas: <code id="instr-path">AGENTS.md</code></p>
+            <textarea id="instr-text" rows="12" placeholder="Tulis instruksi yang berlaku untuk semua percakapan di komputer ini…"></textarea>
+            <div class="form-actions cd-rules-actions">
+              <button class="btn primary" id="instr-save">Simpan instruksi</button>
+              <button class="btn" id="instr-reload">Muat ulang</button>
+              <span class="muted small" id="instr-status"></span>
+            </div>
+            <div id="instr-summary" class="instr-summary"></div>
+          </div>
+
           <div class="settings-pane" data-pane="mcp">
             <h3>Server MCP</h3>
             <p class="muted small">Model Context Protocol memberi agent tool dari luar AgentHub — GitHub, database, browser, apa pun yang menyediakan server MCP. Tool-nya muncul untuk model dengan nama <code>mcp__&lt;server&gt;__&lt;tool&gt;</code>. Kredensial (header/env) tidak pernah ditampilkan kembali oleh API.</p>

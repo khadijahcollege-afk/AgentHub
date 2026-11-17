@@ -48,6 +48,7 @@ import * as runs from './lib/runs.js';
 import * as mcp from './lib/mcp.js';
 import * as hooks from './lib/hooks.js';
 import * as checkpoints from './lib/checkpoints.js';
+import * as instructionsLib from './lib/instructions.js';
 import { toolSummary, PERMISSION_MODES, normalizeMode } from './lib/tools.js';
 
 // Nilai `permission` yang diterima dari UI. Nama lama (ask/edits/full) tetap sah
@@ -430,6 +431,7 @@ function appState() {
     // Tool MCP & hook: daftar konfigurasi (rahasia tetap tertutup) + ringkasan.
     mcp: mcp.status(),
     hooks: hooks.summary(),
+    instructions: instructionsLib.instructionsSummary(),
     permissionModes: PERMISSION_MODES,
     // kontrak state machine — UI memakainya untuk tombol/label yang sah,
     // agent memakainya untuk tahu transisi apa yang diizinkan tanpa menebak.
@@ -797,6 +799,33 @@ ${msgs || '<p class="meta">Percakapan kosong.</p>'}
         return sendJson(res, 200, r);
       }
       return sendJson(res, 404, { error: 'Rute hook tidak dikenal' });
+    } catch (error) { return sendJson(res, error.statusCode || 500, { error: error.message }); }
+  }
+
+  // ---- instruksi tetap: AGENTS.md level user + ringkasan aturan proyek ----
+  // Endpoint terpisah dari aturan proyek karena cakupannya berbeda: berkas ini
+  // berlaku untuk semua thread di komputer ini, bukan untuk satu repo.
+  if (p === '/api/instructions' || p === '/api/instructions/global') {
+    try {
+      if (method === 'GET') {
+        const cwd = url.searchParams.get('cwd');
+        let dir = null;
+        if (cwd) { try { dir = resolveWorkspace(cwd); } catch { dir = null; } }
+        const systemPrompt = url.searchParams.get('thread')
+          ? threads.getThread(url.searchParams.get('thread'))?.systemPrompt || null
+          : null;
+        return sendJson(res, 200, {
+          global: instructionsLib.readUserInstructions(),
+          summary: instructionsLib.instructionsSummary({ cwd: dir, systemPrompt }),
+        });
+      }
+      if (method === 'PUT' && p === '/api/instructions/global') {
+        const b = await readBody(req);
+        const r = instructionsLib.writeUserInstructions(b.content);
+        broadcast('config');
+        return sendJson(res, 200, r);
+      }
+      return sendJson(res, 405, { error: 'Metode tidak didukung' });
     } catch (error) { return sendJson(res, error.statusCode || 500, { error: error.message }); }
   }
   if (p === '/api/openrouter/connect' && method === 'POST') {
@@ -1519,6 +1548,30 @@ ${msgs || '<p class="meta">Percakapan kosong.</p>'}
       const mem = memory.memoryContext();
       if (mem) modelPrompt = mem + '\n\n---\n\n' + modelPrompt;
     }
+
+    // Instruksi tetap: AGENTS.md level user, aturan proyek, lalu instruksi
+    // thread. Ketiganya dulu tersimpan tetapi tidak pernah sampai ke model.
+    const instructions = instructionsLib.buildInstructions({ cwd: workspace, systemPrompt: t.systemPrompt });
+    if (instructions.text) modelPrompt = `${instructions.text}\n\n---\n\n${modelPrompt}`;
+
+    // UserPromptSubmit: kesempatan terakhir mengubah atau menolak prompt sebelum
+    // model melihatnya. Ditolak berarti run tidak dimulai dan pesan user tidak
+    // ditulis — supaya percakapan tidak menyimpan pertanyaan yang tak pernah dijawab.
+    let promptHook = null;
+    try {
+      promptHook = await hooks.runEvent('UserPromptSubmit', {
+        prompt: modelPrompt, raw_prompt: rawPrompt, cwd: workspace,
+      }, { cwd: workspace });
+    } catch { promptHook = null; }
+    if (promptHook?.denied) {
+      runs.finish(m[1], 'stopped');
+      return sendJson(res, 403, {
+        error: `Prompt ditolak hook: ${promptHook.reason || 'tanpa alasan'}`,
+        code: 'PROMPT_BLOCKED',
+      });
+    }
+    if (promptHook?.updatedInput?.prompt) modelPrompt = String(promptHook.updatedInput.prompt);
+    if (promptHook?.additionalContext) modelPrompt += `\n\n[konteks tambahan dari hook]\n${promptHook.additionalContext}`;
 
     const userMsg = threads.appendMessage(m[1], {
       role: 'user',
