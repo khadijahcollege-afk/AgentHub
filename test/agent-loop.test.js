@@ -125,8 +125,17 @@ test('pembatalan menghentikan loop di tengah', async () => {
   calls = 0; mode = 'spin';
   const ctrl = new AbortController();
   const p = runAgentLoop({ prompt: 'Batal', cwd: work, mode: 'yolo', signal: ctrl.signal, maxTurns: 50 });
-  setTimeout(() => ctrl.abort(), 120);
+  // Batalkan setelah loop benar-benar berjalan, bukan setelah timer tetap:
+  // provider lokal bisa menyelesaikan puluhan putaran lebih cepat dari 120 ms di
+  // runner CI, sehingga abort datang setelah run selesai dan tes gagal dengan
+  // "Missing expected rejection" — padahal pembatalan bekerja.
+  const cancelling = (async () => {
+    const t0 = Date.now();
+    while (calls < 3 && Date.now() - t0 < 5000) await new Promise((r) => setTimeout(r, 5));
+    ctrl.abort();
+  })();
   await assert.rejects(() => p, (e) => e.name === 'AbortError');
+  await cancelling;
 });
 
 test('mode build menawarkan tool tulis/perintah, tetapi keputusannya ask', async () => {

@@ -162,6 +162,37 @@ test('folder bukan repo ditolak sebagai 409, bukan 500', { skip: !GIT }, async (
   }
 });
 
+test('folder kerja lewat jalan lain ke repo yang sama tetap dianggap root', { skip: !GIT }, async () => {
+  // Regresi nyata di runner Windows: `git rev-parse --show-toplevel` menjawab
+  // dengan path pendek 8.3 (RUNNER~1) sementara folder kerja datang sebagai
+  // path panjang. Keduanya folder yang sama, tetapi `path.relative` antara
+  // keduanya menghasilkan "../../.." sehingga setiap perintah git menolaknya:
+  // "is outside repository", dan API menjawab 500.
+  //
+  // Nama 8.3 tidak bisa dipaksa hidup di semua mesin, jadi kasus yang sama
+  // dibuat dengan junction: satu folder, dua path. Bila platform menolak
+  // membuat junction, tes ini dilewati — bukan gagal.
+  const link = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'agenthub-cp-link-')), 'pintu');
+  try {
+    fs.symlinkSync(repo, link, 'junction');
+  } catch {
+    return; // platform tanpa junction: tidak ada dua path untuk diuji
+  }
+  try {
+    assert.notEqual(link, repo, 'path junction harus berbeda dari path aslinya');
+    const entry = await cp.createCheckpoint(THREAD, link, { label: 'lewat junction' });
+    assert.equal(entry.scope, '', 'folder itu root repo, bukan subfolder di luar repo');
+    assert.equal(entry.commit.length, 40);
+    assert.equal(entry.files >= 1, true);
+
+    // Scope subfolder juga harus dihitung dari root yang sudah dikanonikkan.
+    const sub = await cp.createCheckpoint(THREAD, path.join(link, 'src'), { label: 'sub lewat junction' });
+    assert.equal(sub.scope, 'src');
+  } finally {
+    try { fs.rmSync(link, { recursive: false, force: true }); } catch { /* noop */ }
+  }
+});
+
 test('hapus checkpoint menghapus ref dan entri', { skip: !GIT }, async () => {
   const list = cp.listCheckpoints(THREAD);
   assert.equal(list.length > 0, true);
