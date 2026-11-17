@@ -6501,7 +6501,7 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
   }
   function applyTheme() {
     const pref = localStorage.getItem('ah_theme') || 'dark';
-    const eff = pref === 'system' ? (sysLight() ? 'light' : 'dark') : (pref === 'glass' || pref === 'oled' ? 'dark' : pref);
+    const eff = pref === 'system' ? (sysLight() ? 'light' : 'dark') : (pref === 'glass' ? 'dark' : pref);
     document.documentElement.dataset.theme = eff;
     // Kaca = gelap + translucensi dipaksa menyala; beralih tema lain ->
     // kembalikan kendali translucensi ke preferensi pengguna.
@@ -6514,8 +6514,8 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
     } else if (localStorage.getItem('ah_theme') !== 'glass') {
       apApply();
     }
-    $('#theme-cards .theme-card').forEach((c) => c.classList.toggle('active', c.dataset.theme === pref));
-    $('#acct-theme-label').forEach((el) => {
+    $$('#theme-cards .theme-card').forEach((c) => c.classList.toggle('active', c.dataset.theme === pref));
+    $$('#acct-theme-label').forEach((el) => {
       el.textContent = pref === 'system' ? 'Sistem' : pref === 'light' ? 'Terang'
         : pref === 'glass' ? 'Kaca' : pref === 'oled' ? 'OLED' : 'Gelap';
     });
@@ -8885,4 +8885,4 @@ Jangan mengarang — bila data tidak ada di folder, katakan tidak ada.`;
 })();
 
 
-// 1794934352424
+// canary2-1794934352424
