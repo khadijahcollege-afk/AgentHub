@@ -1,5 +1,64 @@
 # Changelog
 
+## 1.8.0 — 2026-11-17
+Perintah yang berjalan lebih lama daripada run-nya sendiri, dengan keluarannya
+tersimpan sebagai berkas sehingga bisa dibaca lagi kapan pun.
+
+Sampai 1.7.5 setiap perintah berjalan di dalam satu run: `run_command` menunggu
+sampai selesai, lalu membawa seluruh keluarannya ke konteks model. Itu bekerja
+untuk `git status`, tetapi gagal untuk hal yang justru paling sering dikerjakan
+agent: `npm install` yang mencetak puluhan ribu baris, `npm run dev` yang tidak
+pernah selesai, dan seluruh suite tes yang butuh menit. Menahan semuanya di memori
+berarti satu perintah bisa menghabiskan memori server yang dipakai semua thread;
+membatasinya dengan timeout berarti pekerjaan yang sah dipotong di tengah jalan.
+Yang diambil dari ZCode (`docs/background-command.md`,
+`contracts/src/tools/background-command.ts`,
+`core/src/tools/background-task-manager.ts`) adalah aturannya; yang tidak diambil
+adalah kanal chat pihak ketiga yang ada di dokumen yang sama.
+
+- **Tugas latar adalah TUGAS, bukan run** (`lib/background.js`,
+  `lib/bg-runner.js`) — run boleh selesai sementara perintahnya masih hidup.
+  Mengikat umur tugas ke umur run akan membunuh tepat perintah yang membuat fitur
+  ini ada. Karena itu `lib/machines.js` mendapat mesin keempat yang berdiri
+  sendiri: `running → done/error/stopped`, tanpa jalur balik.
+- **Keluaran ditulis ke berkas, bukan ditahan di memori** — di
+  `<cwd>/.agenthub/tasks/<id>.log`. Berkas bertahan saat run selesai, tab ditutup,
+  bahkan server dimulai ulang. Yang dibaca kembali adalah EKOR berkas, dan
+  `truncated` dilaporkan supaya model tidak mengira ia sudah membaca semuanya.
+- **Satu id = satu proses; menjalankan ulang berarti id baru** — id lama tidak
+  pernah dihidupkan kembali, sehingga transkrip lama tidak bisa terbaca sebagai
+  keluaran perintah baru. `stopped` dan `done` adalah state akhir.
+- **Batas yang menjaga mesin, bukan hanya percakapan** — 3 tugas aktif per thread,
+  8 total, umur maksimum 1 jam, retensi 24 jam, 20 catatan per thread. Tugas yang
+  masih berjalan TIDAK PERNAH dibuang oleh pembersihan: membuang catatan proses
+  hidup membuatnya tidak bisa dihentikan lagi.
+- **Catatan tugas disimpan, prosesnya tidak bisa dipulihkan** — setelah restart,
+  tugas yang tercatat `running` diturunkan menjadi `error` dengan `recovered: true`
+  dan berkas keluarannya tetap utuh. Tanpa catatan, yang tersisa hanya berkas
+  `.log` tanpa nama perintah, dan agent akan mengulang `npm install` dari nol tanpa
+  tahu instalasi sebelumnya sudah separuh jalan.
+- **Tiga tool dengan pembagian yang tegas** — `start_background_command`,
+  `check_background_command`, `stop_background_command`. Tidak ada tool "tunggu"
+  keempat: menunggu adalah parameter `waitMs` pada `start`, karena tool tersendiri
+  hanya akan dipakai model untuk berdiam lebih lama daripada yang dibutuhkan.
+- **Izin mengikuti apa yang sebenarnya dilakukan** — `start` diperlakukan persis
+  seperti `run_command` (`ask` di build/edit, pemeriksaan berbahaya di guarded,
+  ditolak di plan); `check` masuk kelompok baca sehingga tetap tersedia di plan;
+  `stop` mendapat kategori baru `bgctl` yang SELALU boleh, termasuk di plan, karena
+  ia hanya mencabut izin yang sudah diberikan — tanpa itu perintah latar yang
+  dimulai sebelum masuk plan tidak bisa dihentikan dari dalam plan.
+- **Subagent mewarisi `threadId` induk** — tugas yang dimulai anak dicatat di
+  percakapan induk, tempat ia akan dibaca dan dihentikan. Kalau dicatat atas nama
+  anak, tugasnya hilang begitu anaknya selesai.
+- **Panel perintah latar** (`#bg-panel`, tombol toolbar dengan lencana jumlah yang
+  berjalan) — daftar di kiri, keluaran di kanan, tombol hentikan per baris. Dibaca
+  dari rute yang sama dengan yang dipakai model, jadi yang dilihat pengguna dan
+  yang dilihat agent tidak bisa berbeda. Panel memantau dirinya sendiri selama ada
+  tugas berjalan, dan SSE `background` memberi tahu tab lain.
+- **Rute HTTP** — `GET /api/background?thread=`, `GET /api/background/:id`
+  (`?output=1` untuk isi), `DELETE /api/background/:id`. Batas yang berlaku
+  dilaporkan server supaya panel tidak menebak angkanya sendiri.
+
 ## 1.7.5 — 2026-11-17
 Agent yang berhenti untuk menyusun rencana, meminta persetujuan atas dokumennya,
 lalu baru mengubah berkas.

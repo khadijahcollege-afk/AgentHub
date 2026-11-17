@@ -24,6 +24,7 @@ transition changes; the tests and the generated browser copy follow it.
 | `run` | idle → running → done/error/stopped → idle | `lib/runs.js` | thread fields `runState`, `runStartedAt`, `runEndedAt`, `runError` | `POST /api/threads/:id/send` → `409 RUN_IN_PROGRESS`; `/stop` is idempotent |
 | `queueItem` | waiting ⇄ reserved → (gone) | `lib/queue.js` | `data/queue.json` | `POST …/queue/reserve` → `409 QUEUE_RESERVED`; item removed only after its run starts |
 | `planMode` | outside ⇄ plan → (approved, back to the pre-plan mode) | `lib/tools.js#executeTool` (writes `planRuntime`) | none per run; the durable trace is `<cwd>/.agenthub/plans/plan-<id>.md` | `ExitPlanMode` denies with `NOT_IN_PLAN_MODE` outside plan; approval requires a human, even in `yolo` |
+| `backgroundTask` | running → done/error/stopped | `lib/bg-runner.js` | thread fields in `data/background-tasks.json`, output in `<cwd>/.agenthub/tasks/<id>.log` | `start` refuses past the active limits; terminal states are sinks (no re-run, one id = one process) |
 | `step` | working → done/error/stopped | `server.js` (delegate), `lib/threads.js#updateSubrun` | message `status` on subrun messages | written only through `updateSubrun` |
 | `delegation` | idle → starting → running → done/error/stopped | `public/app.js` | none (client session) | button lock + `Hentikan`/`Batal` switch, server run outcome is the source of truth |
 | `noteEditor` | closed → editing ⇄ dirty → saving | `public/app.js` | none (draft in DOM) | close is confirmed while `dirty` |
@@ -332,6 +333,51 @@ never be committed by accident. `STATE-MACHINES` treats this as a lifecycle, not
 a machine: it is per-run, never persisted as a thread field, and the only durable
 trace is the plan file.
 
+## Background command lifecycle (the task that outlives the run)
+
+A run answers one prompt and then ends. `npm install`, a dev server, or a full
+test suite do not fit that shape: they take minutes or never finish, and forcing
+them into `run_command` means either a timeout that kills real work or a run that
+hangs. Owner: `lib/background.js` (pure rules — limits, wording, when a task is
+finished) plus `lib/bg-runner.js` (processes, output files, the persisted
+registry). The split is what makes the rules testable without spawning anything.
+
+```
+        ┌──────────── done        (exit 0)
+running ├──────────── error       (non-zero exit, spawn failure, or recovered after restart)
+        └──────────── stopped     (user, thread delete, lifetime cap, or shutdown)
+```
+
+Terminal states are sinks. There is deliberately no `idle`: a finished task stays
+around as data, and "run it again" means a **new task with a new id**, never a
+reopened one.
+
+Three tools, one shape: `start_background_command`, `check_background_command`,
+`stop_background_command`. There is no fourth "wait" tool — waiting is a parameter
+of `start`, because a separate wait tool is exactly what a model would use to sit
+still longer than it needs to.
+
+| Invariant | Why |
+| --- | --- |
+| Output goes to a **file**, never memory | `npm install` prints tens of thousands of lines. Holding them in memory until the task ends spends the server's memory for one command, and the output must survive the run ending, the tab closing, and a restart. |
+| What the model reads is the **tail**, with `truncated` reported | Errors and summaries live at the end. Returning the head would show progress bars and hide the failure. Reporting `truncated` stops the model from believing it read everything. |
+| A task is **not a run** | The run may finish while the command keeps living. Tying task lifetime to run lifetime would kill exactly the commands the feature exists for. |
+| One id = one process; restart = new id | Reusing an id after stop would let an old transcript be read as the new command's output. A new id keeps every record honest. |
+| `MAX_ACTIVE_PER_THREAD = 3`, `MAX_ACTIVE_TOTAL = 8` | Every active task is a real process. The per-thread cap stops one conversation from starving the rest; the total cap protects the machine. Both numbers are reported to the UI so the panel never promises more than the server allows. |
+| `MAX_LIFETIME_MS` = 1 hour | A command that never ends still has to end. Without a cap, `npm run dev` left behind holds its port forever. |
+| `RETENTION_MS` = 24 hours, `MAX_TASKS_PER_THREAD` = 20 | Records are cheap but not free, and the log files sit in the user's repo. Pruning keeps the newest, and a running task is **never** pruned — dropping the record of a live process makes it impossible to stop. |
+| The registry is written at birth and at stop, not per output chunk | The output already lives in its own file. Rewriting JSON on every printed line makes the disk busier than the command. |
+| A task recorded `running` is recovered as `error`, with the file kept | After a restart there is no process to wait for. Leaving it `running` makes the agent wait forever. The log file is the only trace of where the command stopped, so it is never deleted. |
+| `waitMs` missing/empty → default, negative → 0 | A garbled value from the model must not extend a run; "wait zero" must still be expressible. |
+| `start_` is `exec`, `check_` is `read`, `stop_` is `bgctl` | Starting runs a command, so it is gated exactly like `run_command` (`ask` in build/edit, dangerous-check in guarded, denied in plan). Reading output is reading a file. Stopping only *revokes* capability, so it is allowed everywhere — including plan mode, where a task started earlier must still be stoppable. |
+| Subagents inherit `threadId` | A task started by a child belongs to the parent conversation: that is where it will be read, and where its id must be stoppable. Recording it under the child's own id would lose it when the child ends. |
+| Deleting a thread prunes its records but does not kill its processes | Deleting a conversation is not an instruction to kill work. Killing a live process only because its thread was removed would be a surprise nobody asked for. |
+
+Output lives at `<cwd>/.agenthub/tasks/<id>.log`, inside the user's workspace but
+outside the tracked tree (same reasoning as plan files). The UI panel
+(`#bg-panel`) reads the same routes the model uses, so what the agent sees and
+what the user sees cannot diverge.
+
 ## Why these are not machines (yet)
 
 Centralising everything costs more than it buys when the state is a single frame of
@@ -432,6 +478,9 @@ Never infer status from a button's disabled state or from `thread.running`. Quer
 | `test/queue-api.test.js` | the same promises over the real server: a send during a run lands in the queue instead of `409`, the queued item really executes after the previous run ends (including from the `stopped` path), two items run in FIFO order, `reserve` refused with `RUN_IN_PROGRESS`, delete and clear, unknown attachments refused before queueing, and a repeated `clientCommandId` not stacking items |
 | `test/send-replay.test.js` | `/send` idempotency and the snapshot routes over HTTP: the same `clientCommandId` answering `duplicate: true` without a second user message or a second model call, the same id in another thread treated as new, a malformed id ignored rather than rejected, a large thread requested small and its full body fetched back with a matching hash, and `messageLimit` reporting `truncatedMessages` |
 | `test/plan.test.js` | plan mode contract: `sanitizeName` cannot escape the plan folder, empty/oversize plans rejected, `EnterPlanMode` never asks while `ExitPlanMode` always does (and is `NOT_IN_PLAN_MODE` outside plan), the pre-plan mode is remembered, the plan file is atomic and its header names thread and folder, the reminder only appears when a file exists, approval writes the file and *then* allows `write_file` in the same run, rejection keeps plan mode and still denies writes, no client is `NO_CLIENT` rather than a hang, and the tool list swaps between plan and out-of-plan |
+| `test/background.test.js` | pure background rules: tool names, `sanitizeTaskId` unable to escape the folder, output path inside `.agenthub/tasks`, empty/oversize commands refused, `waitMs` odd values falling back to the default while negatives become 0, label trimming, tail selection reporting `truncated`, the two active limits, exit code → status mapping, the notices the model reads, and pruning (expired, per-thread cap, running never dropped) |
+| `test/bg-runner.test.js` | the same promises against **real processes**: output really lands in the file with a real byte count, non-zero exit becomes `error`, a large output read as a tail, `stop` killing the process and being idempotent, `stopThread` scoped to one thread, active counts split per thread, recovery turning a `running` record into `error` with its log kept, and prune never touching a live task |
+| `test/background-api.test.js` | routes over a real server: list needs `thread`, a task from the *previous* process still listed as `error` with `recovered: true` and its output readable, `output=1` required for the body, another thread seeing nothing, unknown ids 404 on read and delete, and stopping an already-finished task answering `already: true` instead of failing |
 
 ## Wiring
 

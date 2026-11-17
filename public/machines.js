@@ -163,6 +163,37 @@ function noteEditorCanLeave(state) {
   return state === 'closed' || state === 'saving';
 }
 
+// ---------- BACKGROUND COMMAND ----------
+// running → (done | error | stopped).
+//
+// Kenapa ini mesin sendiri, bukan nilai `run`: sebuah run boleh BERAKHIR
+// sementara perintahnya masih hidup, dan itu justru intinya. `npm install` yang
+// memakan empat menit tidak boleh menahan jawaban agent, tetapi juga tidak boleh
+// dibunuh hanya karena run-nya selesai. Menyatukannya dengan `run` memaksa dua
+// siklus hidup yang berbeda memakai satu himpunan state, dan salah satunya pasti
+// berbohong.
+//
+// Tidak ada state `idle`: perintah latar yang selesai tetap ada sebagai data
+// (keluarannya bisa dibaca), tetapi ia tidak "kembali ke awal" — task yang
+// dijalankan ulang adalah task baru dengan id baru, sehingga pembaca lama tidak
+// pernah melihat keluaran task lain di bawah id yang sama.
+const BACKGROUND_TASK_MACHINE = {
+  id: 'backgroundTask',
+  initial: 'running',
+  terminal: ['done', 'error', 'stopped'],
+  states: { running: 'Berjalan', done: 'Selesai', error: 'Gagal', stopped: 'Dihentikan' },
+  transitions: {
+    running: ['done', 'error', 'stopped'],
+    done: [],
+    error: [],
+    stopped: [],
+  },
+};
+
+function backgroundTaskIsTerminal(status) {
+  return BACKGROUND_TASK_MACHINE.terminal.includes(status || 'running');
+}
+
 // ---------- WORKSPACE / PERUBAHAN FILE ----------
 // Status perubahan file berasal dari `git status`. Dideklarasikan di sini karena
 // UI (drawer Perubahan), server (revert), dan agent (kontrak) harus memakai
@@ -341,6 +372,7 @@ const SSE_SCOPES = {
   config: ['config', 'server'],
   schedules: ['schedules'],
   terminal: ['terminal'],
+  background: ['background'],
   workspace: ['workspace', 'threads'],
   memory: ['memory', 'threads'],
   update: ['update', 'config'],
@@ -351,4 +383,4 @@ function scopeSlices(scope) {
 }
 
 // ekspor eksplisit agar tetap bekerja sebagai ESM di browser
-export { MACHINE_VERSION, canTransition, allowedNext, transitionError, TASK_STATUSES, TASK_LABELS, TASK_MACHINE, taskCanMove, taskNext, RUN_MACHINE, runIsTerminal, RUN_STATES, runCanTransition, STEP_MACHINE, stepIsTerminal, DELEGATION_MACHINE, NOTE_EDITOR_MACHINE, noteEditorCanLeave, CHANGE_STATUSES, RULE_FILES, KEY_MACHINE, KEY_POOL_CANDIDATE, KEY_POOL_ACTIVE, KEY_MODEL_VISIBLE, KEY_POOL_ELIGIBLE, keyPoolCandidate, keyPoolActive, keyModelVisible, AGENT_MACHINE, CONNECTION_MACHINE, PROMO_MACHINE, PROMO_PASS_MACHINE, UI_LAYERS, UI_MACHINE, VIEWS, VIEW_MACHINE, SSE_SCOPES, scopeSlices };
+export { MACHINE_VERSION, canTransition, allowedNext, transitionError, TASK_STATUSES, TASK_LABELS, TASK_MACHINE, taskCanMove, taskNext, RUN_MACHINE, runIsTerminal, RUN_STATES, runCanTransition, STEP_MACHINE, stepIsTerminal, DELEGATION_MACHINE, NOTE_EDITOR_MACHINE, noteEditorCanLeave, BACKGROUND_TASK_MACHINE, backgroundTaskIsTerminal, CHANGE_STATUSES, RULE_FILES, KEY_MACHINE, KEY_POOL_CANDIDATE, KEY_POOL_ACTIVE, KEY_MODEL_VISIBLE, KEY_POOL_ELIGIBLE, keyPoolCandidate, keyPoolActive, keyModelVisible, AGENT_MACHINE, CONNECTION_MACHINE, PROMO_MACHINE, PROMO_PASS_MACHINE, UI_LAYERS, UI_MACHINE, VIEWS, VIEW_MACHINE, SSE_SCOPES, scopeSlices };

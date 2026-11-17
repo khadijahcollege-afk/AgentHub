@@ -1505,6 +1505,175 @@ window.__ahMachines = {
   document.addEventListener('keydown', e => {
     if (e.ctrlKey && e.code === 'Backquote') { e.preventDefault(); toggleTerminal($('#terminal-panel').classList.contains('hidden')); }
   });
+
+  // ---------- perintah latar: panel tugas ----------
+  // Panel ini menampilkan tugas yang dimulai AGENT (`start_background_command`)
+  // dan yang dimulai dari sini. Sumbernya server, bukan event: tugas hidup lebih
+  // lama dari run, jadi daftarnya harus bisa dipulihkan setelah halaman dimuat
+  // ulang. Yang lokal hanya pilihan baris dan isi keluaran yang sedang dibaca.
+  let bgTasks = [];
+  let bgActive = null;
+  let bgLimits = { perThread: 3, total: 8 };
+  let bgTimer = null;
+  // Nomor urut: daftar dan detail masing-masing bisa tiba tidak berurutan.
+  // Tanpa ini, jawaban lama yang datang terlambat bisa menimpa yang baru.
+  let bgSeq = 0;
+  let bgListSeq = 0;
+
+  function bgThreadId() {
+    return curThread?.id || null;
+  }
+
+  function bgStatusLabel(status) {
+    return ({ running: tr('Berjalan'), done: tr('Selesai'), error: tr('Gagal'), stopped: tr('Dihentikan') })[status] || status;
+  }
+
+  function bgMetaLine(t) {
+    const bits = [bgStatusLabel(t.status)];
+    if (t.exitCode != null) bits.push('exit ' + t.exitCode);
+    if (t.bytes) bits.push(Math.max(1, Math.round(t.bytes / 1024)) + ' KB');
+    if (t.endedAt && t.startedAt) bits.push(Math.max(0, Math.round((t.endedAt - t.startedAt) / 1000)) + 's');
+    return bits.join(' · ');
+  }
+
+  function renderBgList() {
+    const host = $('#bg-list');
+    const badge = $('#bg-badge');
+    const running = bgTasks.filter((t) => t.status === 'running').length;
+    if (badge) {
+      badge.textContent = String(running);
+      badge.classList.toggle('hidden', running === 0);
+    }
+    if (!host) return;
+    if (!bgTasks.length) {
+      host.innerHTML = `<p class="bg-empty">${esc(tr('Belum ada perintah latar. Agent memakainya untuk perintah yang berjalan lama, seperti npm install atau dev server.'))}</p>`;
+      $('#bg-status').textContent = tr('Tidak ada');
+      return;
+    }
+    $('#bg-status').textContent = running ? `${running} ${tr('berjalan')}` : tr('Tidak ada yang berjalan');
+    host.innerHTML = bgTasks.map((t) => `
+      <div class="bg-row ${esc(t.status)}${t.id === bgActive ? ' active' : ''}" role="listitem">
+        <button class="bg-row-btn" type="button" data-bg-task="${esc(t.id)}" title="${esc(t.command)}"
+                aria-label="${esc(t.label || t.command)}">
+          <span class="bg-dot" aria-hidden="true"></span>
+          <span class="bg-row-main">
+            <span class="bg-row-cmd">${esc(t.label || t.command)}</span>
+            <span class="bg-row-meta">${esc(bgMetaLine(t))}</span>
+          </span>
+        </button>
+        ${t.status === 'running' ? `<button class="bg-row-stop" type="button" data-bg-stop="${esc(t.id)}"
+          title="${esc(tr('Hentikan'))}" aria-label="${esc(tr('Hentikan'))} ${esc(t.label || t.command)}">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2"/></svg>
+        </button>` : ''}
+      </div>`).join('');
+  }
+
+  async function stopBgTask(id) {
+    try {
+      await api(`/api/background/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      await loadBgTasks({ quiet: true });
+    } catch (err) { toast(tr('Perintah latar: ') + err.message); }
+  }
+
+  async function loadBgTasks({ quiet = false } = {}) {
+    const id = bgThreadId();
+    // Daftar dan detail diminta bersama: penyegaran otomatis tidak boleh
+    // menimpa pilihan yang lebih baru dengan jawaban yang lebih lama.
+    const seq = ++bgListSeq;
+    if (!id) { bgTasks = []; renderBgList(); return; }
+    try {
+      const r = await api(`/api/background?thread=${encodeURIComponent(id)}`);
+      if (seq !== bgListSeq) return;
+      bgTasks = r.tasks || [];
+      if (r.limits) bgLimits = r.limits;
+      if (bgActive && !bgTasks.some((t) => t.id === bgActive)) {
+        bgActive = null;
+        $('#bg-output').textContent = tr('Belum ada perintah yang dipilih.');
+        $('#bg-detail-title').textContent = tr('Pilih satu perintah untuk membaca keluarannya.');
+      }
+      renderBgList();
+      if (bgActive) await openBgTask(bgActive, { quiet: true });
+    } catch (err) {
+      if (seq !== bgListSeq) return;
+      if (!quiet) toast(tr('Perintah latar: ') + err.message);
+    }
+  }
+
+  async function openBgTask(id, { quiet = false } = {}) {
+    // Nomor urut permintaan: jawaban yang datang terlambat (pilihan sudah
+    // berganti, atau penyegaran otomatis menimpanya) tidak boleh menulis ke
+    // panel. Tanpa ini, mengeklik baris dua kali cepat-cepat bisa berakhir
+    // dengan keluaran baris pertama di bawah judul baris kedua.
+    const seq = ++bgSeq;
+    bgActive = id;
+    renderBgList();
+    const task = bgTasks.find((t) => t.id === id);
+    $('#bg-detail-title').textContent = task ? task.command : id;
+    $('#bg-detail-title').title = task?.command || '';
+    const out = $('#bg-output');
+    // Keadaan memuat ditulis eksplisit: kotak yang tetap berbunyi "belum ada
+    // perintah yang dipilih" padahal barisnya sudah aktif terlihat seperti
+    // klik yang tidak bekerja, bukan permintaan yang masih berjalan.
+    if (!quiet) out.textContent = tr('Memuat keluaran…');
+    try {
+      const r = await api(`/api/background/${encodeURIComponent(id)}?output=1&tail=20000`);
+      if (seq !== bgSeq) return;
+      const atBottom = out.scrollHeight - out.scrollTop - out.clientHeight < 40;
+      const head = r.outputTruncated ? `[${tr('hanya ekor keluaran')} — ${r.totalChars} ${tr('karakter')}]\n` : '';
+      out.textContent = head + (r.output || tr('(belum ada keluaran)'));
+      if (atBottom) out.scrollTop = out.scrollHeight;
+    } catch (err) {
+      if (seq !== bgSeq) return;
+      out.textContent = tr('Gagal membaca keluaran: ') + err.message;
+      if (!quiet) toast(err.message);
+    }
+  }
+
+  function toggleBg(open) {
+    $('#bg-panel').classList.toggle('hidden', !open);
+    $('#btn-bg').setAttribute('aria-expanded', String(open));
+    if (open) {
+      bgPaintIdle();
+      loadBgTasks();
+    }
+    scheduleBgPoll();
+  }
+
+  // Teks kosong panel ditulis lewat `tr()` dan BUKAN lewat DOM: keduanya tinggal
+  // di dalam <code>/<pre>, yang sengaja dilewati penerjemah karena biasanya
+  // berisi keluaran perintah. Menaruhnya di HTML berarti mode English
+  // menampilkan kalimat Indonesia sampai ada tugas yang dipilih.
+  function bgPaintIdle() {
+    if (bgActive) return;
+    $('#bg-detail-title').textContent = tr('Pilih satu perintah untuk membaca keluarannya.');
+    $('#bg-output').textContent = tr('Belum ada perintah yang dipilih.');
+  }
+
+  // Panel yang terbuka memantau dirinya sendiri selama ada tugas berjalan.
+  // Memakai interval, bukan SSE saja: SSE memberi tahu bahwa SESUATU berubah,
+  // tetapi keluaran berubah terus menerus dan tidak setiap baris disiarkan.
+  function scheduleBgPoll() {
+    clearTimeout(bgTimer);
+    if ($('#bg-panel').classList.contains('hidden')) return;
+    if (!bgTasks.some((t) => t.status === 'running')) return;
+    bgTimer = setTimeout(async () => {
+      await loadBgTasks({ quiet: true });
+      scheduleBgPoll();
+    }, 2500);
+  }
+
+  $('#btn-bg').addEventListener('click', () => toggleBg($('#bg-panel').classList.contains('hidden')));
+  $('#bg-close').addEventListener('click', () => toggleBg(false));
+  $('#bg-refresh').addEventListener('click', () => loadBgTasks());
+  $('#bg-list').addEventListener('click', (e) => {
+    // Tombol hentikan ditangani lebih dulu: ia SAUDARA dari tombol pilih, tetapi
+    // menanganinya dulu membuat niatnya jelas dan tidak bergantung pada
+    // `closest` yang bisa saja naik ke baris induk di kemudian hari.
+    const stop = e.target.closest('[data-bg-stop]');
+    if (stop) { stopBgTask(stop.dataset.bgStop); return; }
+    const row = e.target.closest('[data-bg-task]');
+    if (row) openBgTask(row.dataset.bgTask);
+  });
   const activeLabel = () => (activeProject ? activeProject.name : cwdBase());
 
   function updateProjectChips() {
@@ -3035,6 +3204,11 @@ window.__ahMachines = {
       // Antrean thread ini milik server: tab yang baru dibuka harus melihat
       // pesan yang menunggu, bukan antrean kosong.
       loadQueue(curThread.id);
+      // Tugas latar milik thread ini juga milik server: perintah yang dimulai
+      // agent di tab lain harus terlihat di sini, beserta lencana jumlah yang
+      // masih berjalan.
+      bgActive = null;
+      loadBgTasks({ quiet: true });
       // Thread yang dibuka mungkin sedang menunggu jawaban (mis. halaman baru
       // dimuat ulang di tengah run). Kartunya harus kembali sebelum pengguna
       // menyimpulkan agent-nya hang.
@@ -4299,6 +4473,12 @@ window.__ahMachines = {
             renderHeroContext();
             toast(ev.planActive ? tr('Agent masuk plan mode') : tr('Rencana disetujui — agent boleh mengubah berkas'));
           }
+        } else if (ev.type === 'task') {
+          // Perintah latar dimulai. Barisnya muncul di panel tanpa menunggu
+          // run selesai: justru saat run masih berjalan pengguna perlu tahu ada
+          // proses lain yang ikut bekerja.
+          loadBgTasks({ quiet: true });
+          renderBgList();
         } else if (ev.type === 'done') {
           const meta = curThread.messages[curThread.messages.length - 1];
           meta.content = acc; meta.ms = ev.ms; meta.servedBy = ev.servedBy; meta.status = 'done';
@@ -8400,6 +8580,10 @@ Jangan mengarang — bila data tidak ada di folder, katakan tidak ada.`;
     // dihapus setelah run-nya mulai). Tanpa penyegaran ini baris "menunggu"
     // tertinggal di layar padahal sudah dijalankan.
     if (scopes.includes('threads') && curThread) loadQueue(curThread.id);
+    // Perintah latar berubah (mulai/selesai/dihentikan). Panel yang terbuka
+    // menyegarkan daftarnya; panel yang tertutup hanya perlu jumlahnya untuk
+    // lencana, dan itu tetap diambil supaya pengguna tahu ada yang selesai.
+    if (scopes.includes('background')) loadBgTasks({ quiet: true });
   }
 
   function onScope(scope) {

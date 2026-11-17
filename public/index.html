@@ -146,6 +146,7 @@
           <span id="chat-tool" class="chip tool hidden"></span>
           <span class="grow"></span>
           <button id="btn-terminal" class="btn tiny" aria-controls="terminal-panel" aria-expanded="false" title="Terminal (Ctrl+`)">&gt;_ Terminal</button>
+          <button id="btn-bg" class="icon-btn" aria-controls="bg-panel" aria-expanded="false" title="Perintah latar (background)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2.5 4.5 13.5H11l-1 8L18.5 10H12z"/></svg><span id="bg-badge" class="icon-badge hidden">0</span></button>
           <div id="find-bar" class="find-bar hidden">
             <input id="find-input" class="search small" placeholder="Cari di thread…" type="search">
             <span id="find-count" class="muted small"></span>
@@ -199,6 +200,25 @@
           <pre id="terminal-output" tabindex="0" aria-label="Output terminal">Jalankan perintah di folder proyek aktif.</pre>
           <form id="terminal-form"><span aria-hidden="true">&gt;</span><input id="terminal-command" aria-label="Perintah terminal" placeholder="Contoh: npm test" autocomplete="off" spellcheck="false"><button id="terminal-run" class="btn tiny primary">Jalankan</button></form>
           <p class="terminal-hint">PowerShell di Windows · setiap perintah membuka proses baru · tab tetap hidup saat panel ditutup</p>
+        </section>
+        <section id="bg-panel" class="bg-panel hidden" aria-label="Perintah latar">
+          <div class="terminal-toolbar">
+            <b class="bg-title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2.5 4.5 13.5H11l-1 8L18.5 10H12z"/></svg>Perintah latar</b>
+            <span id="bg-status" class="chip">Tidak ada</span>
+            <span class="grow"></span>
+            <button id="bg-refresh" class="btn tiny" type="button" title="Muat ulang daftar">Muat ulang</button>
+            <button id="bg-close" class="btn tiny" type="button" aria-label="Tutup panel perintah latar">Tutup</button>
+          </div>
+          <div class="bg-body">
+            <div id="bg-list" class="bg-list" role="list" aria-label="Daftar perintah latar"></div>
+            <div class="bg-detail">
+              <div class="bg-detail-head">
+                <code id="bg-detail-title" class="bg-command">Pilih satu perintah untuk membaca keluarannya.</code>
+              </div>
+              <pre id="bg-output" tabindex="0" aria-label="Keluaran perintah latar">Belum ada perintah yang dipilih.</pre>
+            </div>
+          </div>
+          <p class="terminal-hint">Perintah latar hidup lebih lama dari run — keluarannya tersimpan di .agenthub/tasks</p>
         </section>
         <div id="composer" class="composer-pill">
           <div class="pill-context">

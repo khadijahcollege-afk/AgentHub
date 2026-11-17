@@ -8,6 +8,7 @@ import {
   RUN_MACHINE, CONNECTION_MACHINE, KEY_MACHINE, AGENT_MACHINE,
   PROMO_MACHINE, PROMO_PASS_MACHINE, VIEWS, UI_LAYERS, UI_MACHINE, SSE_SCOPES, scopeSlices,
   STEP_MACHINE, DELEGATION_MACHINE, NOTE_EDITOR_MACHINE,
+  BACKGROUND_TASK_MACHINE, backgroundTaskIsTerminal,
   canTransition, allowedNext, transitionError, MACHINE_VERSION,
   KEY_POOL_CANDIDATE, KEY_POOL_ACTIVE, KEY_MODEL_VISIBLE,
   keyPoolCandidate, keyPoolActive, keyModelVisible, noteEditorCanLeave,
@@ -55,6 +56,7 @@ test('semua mesin: transisi hanya menunjuk state yang dikenal', () => {
     key: KEY_MACHINE, agent: AGENT_MACHINE, promo: PROMO_MACHINE,
     promoPass: PROMO_PASS_MACHINE,
     step: STEP_MACHINE, delegation: DELEGATION_MACHINE, noteEditor: NOTE_EDITOR_MACHINE,
+    backgroundTask: BACKGROUND_TASK_MACHINE,
   };
   for (const [name, m] of Object.entries(machines)) {
     const states = new Set(Object.keys(m.states));
@@ -138,6 +140,25 @@ test('note editor: dirty tidak boleh ditutup diam-diam', () => {
   assert.equal(noteEditorCanLeave('closed'), true);
   assert.equal(canTransition(NOTE_EDITOR_MACHINE, 'editing', 'dirty'), true);
   assert.equal(canTransition(NOTE_EDITOR_MACHINE, 'dirty', 'saving'), true);
+});
+
+test('background task: hanya satu arah keluar, tanpa state idle', () => {
+  assert.equal(BACKGROUND_TASK_MACHINE.initial, 'running');
+  assert.deepEqual(Object.keys(BACKGROUND_TASK_MACHINE.states).sort(), ['done', 'error', 'running', 'stopped']);
+  // Tidak ada `idle`: tugas yang selesai tetap ada sebagai data, dan menjalankan
+  // ulang berarti tugas baru dengan id baru.
+  assert.equal('idle' in BACKGROUND_TASK_MACHINE.states, false);
+  for (const t of BACKGROUND_TASK_MACHINE.terminal) {
+    assert.deepEqual(BACKGROUND_TASK_MACHINE.transitions[t], [], `${t} adalah sink`);
+    assert.equal(canTransition(BACKGROUND_TASK_MACHINE, 'running', t), true, t);
+    assert.equal(backgroundTaskIsTerminal(t), true, t);
+  }
+  // Terminal tidak bisa dijalankan ulang: satu id satu proses.
+  assert.equal(canTransition(BACKGROUND_TASK_MACHINE, 'done', 'running'), false);
+  assert.equal(backgroundTaskIsTerminal('running'), false);
+  // Status yang tidak dikenal diperlakukan sebagai masih berjalan: lebih aman
+  // menganggap proses mungkin hidup daripada menutup catatannya.
+  assert.equal(backgroundTaskIsTerminal(undefined), false);
 });
 
 test('promo pass: tersedia bisa langsung aktif atau menunggu jadwal, lalu final', () => {

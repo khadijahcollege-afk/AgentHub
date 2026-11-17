@@ -58,6 +58,26 @@ test('guarded: perintah berbahaya minta persetujuan, perintah biasa lolos', () =
   assert.equal(tools.decide('run_command', { command: 'rm -rf /' }, 'yolo').allow, true);
 });
 
+test('decide: perintah latar mengikuti aturan perintah, menghentikan selalu boleh', () => {
+  // Memulai perintah latar adalah MENJALANKAN perintah: ia tidak boleh lebih
+  // longgar dari `run_command` hanya karena ia tidak menunggu.
+  assert.equal(tools.decide('start_background_command', { command: 'npm install' }, 'build').decision, 'ask');
+  assert.equal(tools.decide('start_background_command', { command: 'npm install' }, 'edit').decision, 'ask');
+  assert.equal(tools.decide('start_background_command', { command: 'npm install' }, 'guarded').allow, true);
+  assert.equal(tools.decide('start_background_command', { command: 'rm -rf /' }, 'guarded').decision, 'ask');
+  assert.equal(tools.decide('start_background_command', { command: 'npm install' }, 'yolo').allow, true);
+  assert.equal(tools.decide('start_background_command', { command: 'npm install' }, 'plan').decision, 'deny');
+
+  // Membaca keluaran = membaca berkas.
+  assert.equal(tools.decide('check_background_command', { id: 'abc' }, 'plan').allow, true);
+
+  // Menghentikan tidak pernah butuh izin, termasuk di plan mode: ia hanya
+  // mencabut izin yang sudah diberikan.
+  assert.equal(tools.decide('stop_background_command', { id: 'abc' }, 'plan').allow, true);
+  assert.equal(tools.decide('stop_background_command', { id: 'abc' }, 'build').allow, true);
+  assert.equal(tools.decide('stop_background_command', { id: 'abc' }, 'yolo').allow, true);
+});
+
 test('tool baca/tulis/edit/list/grep bekerja di folder kerja', async () => {
   const read = await tools.executeTool('read_file', { path: 'a.txt' }, { cwd: work, mode: 'yolo' });
   assert.equal(read.ok, true);
@@ -109,6 +129,93 @@ test('perintah dijalankan di folder kerja dan keluarannya terbaca', async () => 
   assert.match(r.text, /halo-tool/);
 });
 
+test('perintah latar: mulai, baca, dan hentikan lewat tool', async () => {
+  const win = process.platform === 'win32';
+  // Perintah yang tetap hidup: tes ini butuh tugas yang MASIH berjalan saat
+  // `start` menjawab, karena itulah perbedaan satu-satunya dengan run_command.
+  const long = win ? 'Start-Sleep -Milliseconds 30000' : 'sleep 30';
+
+  const started = await tools.executeTool(
+    'start_background_command',
+    { command: long, waitMs: 0, label: 'tidur' },
+    { cwd: work, mode: 'yolo', threadId: 'thread-bg' },
+  );
+  assert.equal(started.ok, true, started.text);
+  assert.match(started.text, /Perintah latar dimulai/);
+  assert.match(started.text, /Masih berjalan/);
+  assert.match(started.text, /\.agenthub\/tasks\//);
+  const id = started.meta?.task?.id;
+  assert.ok(id, 'id tugas harus dilaporkan supaya model bisa memeriksanya');
+  assert.equal(started.meta.task.status, 'running');
+
+  // Daftar tanpa id.
+  const list = await tools.executeTool('check_background_command', {}, { cwd: work, mode: 'yolo', threadId: 'thread-bg' });
+  assert.equal(list.ok, true);
+  assert.match(list.text, new RegExp(id));
+
+  // Satu tugas, dengan keluaran (kosong karena hanya tidur).
+  const one = await tools.executeTool('check_background_command', { id }, { cwd: work, mode: 'yolo', threadId: 'thread-bg' });
+  assert.equal(one.ok, true);
+  assert.match(one.text, /masih berjalan/);
+  assert.match(one.text, /menunggu masukan/);
+
+  const stopped = await tools.executeTool('stop_background_command', { id }, { cwd: work, mode: 'yolo', threadId: 'thread-bg' });
+  assert.equal(stopped.ok, true, stopped.text);
+  assert.match(stopped.text, /dihentikan/);
+
+  // Menghentikan dua kali bukan galat: UI dan model sama-sama boleh menekan.
+  const again = await tools.executeTool('stop_background_command', { id }, { cwd: work, mode: 'yolo', threadId: 'thread-bg' });
+  assert.equal(again.ok, true);
+  assert.match(again.text, /sudah berhenti/);
+});
+
+test('perintah latar pendek selesai di tempat dan mengembalikan keluarannya', async () => {
+  const r = await tools.executeTool(
+    'start_background_command',
+    { command: 'echo cepat-latar', waitMs: 20000 },
+    { cwd: work, mode: 'yolo', threadId: 'thread-bg' },
+  );
+  assert.equal(r.ok, true, r.text);
+  assert.match(r.text, /selesai \(id: .+\) dengan kode keluar 0/);
+  assert.match(r.text, /cepat-latar/);
+  assert.equal(r.meta.task.status, 'done');
+});
+
+test('perintah latar menolak perintah kosong dan id yang tidak dikenal', async () => {
+  const empty = await tools.executeTool('start_background_command', { command: '   ' }, { cwd: work, mode: 'yolo', threadId: 'thread-bg' });
+  assert.equal(empty.ok, false);
+  assert.equal(empty.error, 'SCHEMA');
+
+  const missing = await tools.executeTool('check_background_command', { id: 'tidakada' }, { cwd: work, mode: 'yolo', threadId: 'thread-bg' });
+  assert.equal(missing.ok, false);
+  assert.equal(missing.error, 'NOT_FOUND');
+  // Pesannya menunjuk jalan keluar, bukan hanya mengeluh.
+  assert.match(missing.text, /tanpa id/);
+
+  const stopMissing = await tools.executeTool('stop_background_command', { id: 'tidakada' }, { cwd: work, mode: 'yolo', threadId: 'thread-bg' });
+  assert.equal(stopMissing.ok, false);
+  assert.equal(stopMissing.error, 'NOT_FOUND');
+});
+
+test('perintah latar milik thread lain tidak bisa dibaca atau dihentikan', async () => {
+  const r = await tools.executeTool(
+    'start_background_command',
+    { command: 'echo rahasia', waitMs: 20000 },
+    { cwd: work, mode: 'yolo', threadId: 'pemilik' },
+  );
+  assert.equal(r.ok, true, r.text);
+  const id = r.meta.task.id;
+
+  const peek = await tools.executeTool('check_background_command', { id }, { cwd: work, mode: 'yolo', threadId: 'penyusup' });
+  assert.equal(peek.ok, false);
+  assert.equal(peek.error, 'FORBIDDEN');
+  assert.match(peek.text, /thread lain/);
+
+  const kill = await tools.executeTool('stop_background_command', { id }, { cwd: work, mode: 'yolo', threadId: 'penyusup' });
+  assert.equal(kill.ok, false);
+  assert.equal(kill.error, 'FORBIDDEN');
+});
+
 test('hook PreToolUse bisa memblokir sebelum izin diperiksa', async () => {
   const script = path.join(dir, 'deny.mjs');
   fs.writeFileSync(script, `
@@ -148,7 +255,8 @@ test('definisi tool menyesuaikan mode', async () => {
   // agent yang masuk plan tidak punya jalan keluar selain menunggu pengguna
   // mengganti chip akses sendiri.
   assert.deepEqual(plan.map((d) => d.function.name).sort(), [
-    'Agent', 'AskUserQuestion', 'EnterPlanMode', 'ExitPlanMode', 'grep_files', 'list_files', 'read_file',
+    'Agent', 'AskUserQuestion', 'EnterPlanMode', 'ExitPlanMode',
+    'check_background_command', 'grep_files', 'list_files', 'read_file', 'stop_background_command',
   ]);
   // Build & edit tidak lagi menyembunyikan tool: `ask` sekarang benar-benar
   // bertanya, jadi menyembunyikan tool berarti agent tidak bisa meminta izin.
@@ -161,7 +269,7 @@ test('definisi tool menyesuaikan mode', async () => {
   // merencanakan dulu), tetapi `ExitPlanMode` tidak: panggilan itu pasti ditolak.
   assert.equal(yolo.some((d) => d.function.name === 'EnterPlanMode'), true);
   assert.equal(yolo.some((d) => d.function.name === 'ExitPlanMode'), false);
-  assert.equal(yolo.length, 9);
+  assert.equal(yolo.length, 12);
   for (const d of yolo) assert.equal(d.type, 'function');
 });
 
@@ -198,8 +306,13 @@ test('Agent adalah tool orkestrasi: boleh di plan, tanpa cwd tidak ditawarkan', 
 test('ringkasan tool melaporkan mode dan jumlahnya', async () => {
   const s = await tools.toolSummary({ cwd: work, mode: 'yolo' });
   assert.equal(s.mode, 'yolo');
-  assert.equal(s.builtin.length, 9);
+  assert.equal(s.builtin.length, 12);
   assert.equal(s.builtin.includes('Agent'), true);
   assert.equal(s.builtin.includes('AskUserQuestion'), true);
+  // Tiga tool perintah latar adalah satu keluarga, dan ketiganya harus terlihat
+  // oleh model di mode yang mengizinkan perintah.
+  for (const n of ['start_background_command', 'check_background_command', 'stop_background_command']) {
+    assert.equal(s.builtin.includes(n), true, n);
+  }
   assert.equal(s.total >= 8, true);
 });

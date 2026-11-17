@@ -115,8 +115,16 @@ test('mode plan menyembunyikan tool tulis dari model', async () => {
   // dan anaknya mewarisi mode plan sehingga tool tulisnya juga tidak ada.
   // `AskUserQuestion` juga tetap ada: menyusun rencana justru saat pengguna
   // perlu ikut memilih arah, sebelum ada yang diubah.
-  assert.deepEqual(names.sort(), ['Agent', 'AskUserQuestion', 'EnterPlanMode', 'ExitPlanMode', 'grep_files', 'list_files', 'read_file']);
+  // `check_background_command` membaca berkas keluaran, dan
+  // `stop_background_command` hanya mencabut izin — keduanya tidak memperluas
+  // apa pun, dan tanpa yang kedua perintah latar yang dimulai sebelum masuk plan
+  // tidak bisa dihentikan dari dalam plan.
+  assert.deepEqual(names.sort(), [
+    'Agent', 'AskUserQuestion', 'EnterPlanMode', 'ExitPlanMode',
+    'check_background_command', 'grep_files', 'list_files', 'read_file', 'stop_background_command',
+  ]);
   assert.equal(names.includes('write_file'), false);
+  assert.equal(names.includes('start_background_command'), false, 'memulai perintah bukan tindakan baca-saja');
 });
 
 test('tanpa folder kerja, hanya AskUserQuestion yang ditawarkan', async () => {

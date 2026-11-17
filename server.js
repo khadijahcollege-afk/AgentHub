@@ -3,6 +3,8 @@
 import http from 'node:http';
 import { discoverSkills, activeSkillIds } from './lib/skills.js';
 import { startTerminal, terminalStatus, stopTerminal, closeTerminal, listTerminals, getTerminalTab, createTerminalTab } from './lib/terminal.js';
+import * as bgRunner from './lib/bg-runner.js';
+import * as bg from './lib/background.js';
 import { connectOpenRouter, connectionStatus } from './lib/openrouter-connect.js';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -185,6 +187,24 @@ function broadcast(scope) {
     try { res.write(`data: ${JSON.stringify({ scope, ts: Date.now() })}\n\n`); } catch { /* klien putus */ }
   }
 }
+
+// Batas yang benar-benar berlaku, dikirim ke UI supaya panel tidak menebak:
+// angka di UI dan angka di penolakan server harus sama, kalau tidak pengguna
+// melihat "maksimal 3" dari UI lalu ditolak pada tugas ke-2.
+function bgLimits() {
+  return {
+    perThread: bg.MAX_ACTIVE_PER_THREAD,
+    total: bg.MAX_ACTIVE_TOTAL,
+    maxTail: bg.MAX_TAIL,
+    maxWaitMs: bg.MAX_WAIT_MS,
+    maxLifetimeMs: bg.MAX_LIFETIME_MS,
+  };
+}
+
+// Tugas latar selesai kapan saja, termasuk setelah run-nya berakhir. Satu
+// pendengar di sini membuat semua tab tahu tanpa bergantung pada run yang
+// mungkin sudah tidak ada.
+bgRunner.onChange(() => broadcast('background'));
 
 // ---------- eksekusi jadwal (scheduled runs) ----------
 // Sama seperti /send: satu run per thread, pesan user+asisten nyata, usage
@@ -885,6 +905,10 @@ async function handleSend(threadId, b, res, { onStarted = null } = {}) {
         // akses harus ikut berubah: menampilkan "Plan mode" padahal run sudah
         // boleh menulis membuat pengguna mengira agent melanggar batasnya.
         else if (evt?.type === 'mode') send({ type: 'mode', mode: evt.mode, planActive: !!evt.planActive });
+        // Tugas latar memakai kanal sendiri, bukan `tool`: run boleh selesai
+        // sementara tugasnya masih hidup, dan event "task" harus tetap sampai
+        // setelah tidak ada run yang menunggu.
+        else if (evt?.type === 'task_start') send({ type: 'task', phase: 'start', id: evt.id, command: evt.command, label: evt.label });
       },
       onDelta: (chunk) => {
         acc += chunk;
@@ -1253,6 +1277,39 @@ ${msgs || '<p class="meta">Percakapan kosong.</p>'}
       if (terminalMatch && method === 'GET') return sendJson(res, 200, terminalStatus(terminalMatch[1]));
       if (terminalMatch && method === 'DELETE') { stopTerminal(terminalMatch[1]); return sendJson(res, 200, { ok: true }); }
       return sendJson(res, 404, { error: 'Sesi terminal tidak ditemukan' });
+    } catch (error) { return sendJson(res, error.statusCode || 500, { error: error.message }); }
+  }
+
+  // ---- perintah latar (background tasks) ----
+  // Bentuk rutenya sengaja mengikuti terminal: daftar, satu tugas, dan
+  // "hentikan". Bedanya, tugas di sini tidak punya tab dan tidak dimiliki
+  // workspace — ia milik thread yang memulainya, karena yang membacanya
+  // (agent) bekerja per percakapan.
+  if (p === '/api/background' || p.startsWith('/api/background/')) {
+    try {
+      if (p === '/api/background' && method === 'GET') {
+        const threadId = url.searchParams.get('thread') || '';
+        if (!threadId) return sendJson(res, 400, { error: 'Parameter `thread` wajib diisi' });
+        return sendJson(res, 200, { tasks: bgRunner.listViews(threadId), limits: bgLimits() });
+      }
+      if ((m = p.match(/^\/api\/background\/([A-Za-z0-9._-]+)$/)) && method === 'GET') {
+        const task = bgRunner.getTask(m[1]);
+        if (!task) return sendJson(res, 404, { error: 'Perintah latar tidak ditemukan' });
+        // `output` ikut dikirim hanya bila diminta: daftar tugas tidak perlu
+        // memuat keluaran `npm install` yang panjang.
+        const want = url.searchParams.get('output') === '1';
+        const view = bgRunner.taskView(m[1]);
+        if (!want) return sendJson(res, 200, view);
+        const out = bgRunner.readOutput(task, Math.min(60000, Number(url.searchParams.get('tail')) || 16000));
+        return sendJson(res, 200, { ...view, output: out.text, outputTruncated: out.truncated, totalChars: out.totalChars });
+      }
+      if ((m = p.match(/^\/api\/background\/([A-Za-z0-9._-]+)$/)) && method === 'DELETE') {
+        const r = bgRunner.stop(m[1], 'user');
+        if (!r.ok) return sendJson(res, 404, { error: r.error });
+        broadcast('background');
+        return sendJson(res, 200, r);
+      }
+      return sendJson(res, 404, { error: 'Rute perintah latar tidak dikenal' });
     } catch (error) { return sendJson(res, error.statusCode || 500, { error: error.message }); }
   }
 
@@ -1854,6 +1911,10 @@ ${msgs || '<p class="meta">Percakapan kosong.</p>'}
       // Checkpoint milik thread ikut dibersihkan: ref git yatim membuat objek
       // snapshot tidak pernah bisa dijangkau lagi oleh pemulihan mana pun.
       await checkpoints.pruneCheckpoints(threads.listThreads().map((t) => t.id)).catch(() => {});
+      // Catatan tugas milik thread ini ikut dibuang. Prosesnya TIDAK dihentikan
+      // di sini: ia bisa jadi masih sah berjalan untuk pekerjaan lain, dan
+      // menghapus thread bukan perintah untuk membunuh apa pun.
+      try { bgRunner.prune(threads.listThreads().map((t) => t.id)); } catch { /* abaikan */ }
       broadcast('threads');
       return sendJson(res, 200, { ok: true });
     }
@@ -2887,6 +2948,13 @@ function scheduleJobs() {
   // diunduh ke dist/ (bila autoUpdate aktif) — UI memberi tahu & memasang.
   setTimeout(() => updateTick().catch(() => {}), 8_000);
   setInterval(() => updateTick().catch(() => {}), 6 * HOUR);
+
+  // Perintah latar: catatan lama dibersihkan tiap jam. Bukan tiap permintaan
+  // dan bukan tiap detik — pemindaian yang sering hanya menambah beban disk
+  // tanpa mengubah apa pun yang terlihat.
+  setInterval(() => {
+    try { bgRunner.prune(threads.listThreads().map((t) => t.id)); } catch { /* abaikan */ }
+  }, HOUR);
 }
 
 // ---------- start ----------
@@ -2894,6 +2962,10 @@ async function main() {
   // Run yang tertinggal "running" dari proses sebelumnya tidak boleh tampil
   // sebagai pekerjaan aktif. Tandai terputus sebelum UI bisa membacanya.
   runs.recoverInterrupted();
+  // Perintah latar: prosesnya sudah mati bersama server lama, tetapi catatannya
+  // masih berguna (perintah apa, sampai mana keluarannya). Yang dipulihkan
+  // ditandai `error` supaya tidak ada yang menunggu proses yang tidak ada.
+  try { bgRunner.recover(); } catch (error) { console.warn('[bg] pemulihan gagal:', error.message); }
 
   // Jangan menahan pembukaan UI sambil menunggu sumber internet.
   const snap = readJson('snapshot.json', null);
@@ -2950,6 +3022,10 @@ async function main() {
 
 // tunnel tidak boleh ditinggal hidup setelah server mati
 process.on('exit', () => { try { stopTunnel(); } catch { /* abaikan */ } });
+// Perintah latar ikut dihentikan saat server berhenti. POSIX menjalankannya
+// `detached`, jadi tanpa ini mereka benar-benar selamat dari shutdown dan tidak
+// akan pernah bisa dihentikan lagi dari UI — proses yatim yang memegang port.
+process.on('exit', () => { try { bgRunner.stopAll(); } catch { /* abaikan */ } });
 // Permintaan yang menunggu jawaban dipegang oleh promise di memori. Saat proses
 // berhenti, lepaskan semuanya supaya tidak ada tool yang menggantung sampai
 // batas waktunya habis di proses yang sudah tidak ada.
