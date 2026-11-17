@@ -4173,7 +4173,7 @@ window.__ahMachines = {
   function apBind() {
     apApply();
     apRender();
-    $('#ap-window-seg button').forEach((b) => b.addEventListener('click', () => {
+    $$('#ap-window-seg button').forEach((b) => b.addEventListener('click', () => {
       const v = apLoad(); v.window = b.dataset.apWindow; apSave(v); apApply(); apRender();
     }));
     $('#ap-sidebar-only')?.addEventListener('click', () => {
@@ -8550,7 +8550,7 @@ Jangan mengarang — bila data tidak ada di folder, katakan tidak ada.`;
   function clearFindHits() {
     findHits = [];
     $('#find-count').textContent = '';
-    $('#chat-messages .msg.find-hit').forEach((el) => el.classList.remove('find-hit'));
+    $$('#chat-messages .msg.find-hit').forEach((el) => el.classList.remove('find-hit'));
   }
   function renderFind() {
     const q = ($('#find-input').value || '').trim().toLowerCase();
