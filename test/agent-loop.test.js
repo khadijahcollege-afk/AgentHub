@@ -99,14 +99,19 @@ test('mode plan menyembunyikan tool tulis dari model', async () => {
   const names = lastBody.tools.map((t) => t.function.name);
   // `Agent` tetap ditawarkan di plan mode: ia sendiri tidak menulis apa pun,
   // dan anaknya mewarisi mode plan sehingga tool tulisnya juga tidak ada.
-  assert.deepEqual(names.sort(), ['Agent', 'grep_files', 'list_files', 'read_file']);
+  // `AskUserQuestion` juga tetap ada: menyusun rencana justru saat pengguna
+  // perlu ikut memilih arah, sebelum ada yang diubah.
+  assert.deepEqual(names.sort(), ['Agent', 'AskUserQuestion', 'grep_files', 'list_files', 'read_file']);
   assert.equal(names.includes('write_file'), false);
 });
 
-test('tanpa folder kerja, tool bawaan tidak ditawarkan', async () => {
+test('tanpa folder kerja, hanya AskUserQuestion yang ditawarkan', async () => {
   calls = 0; mode = 'tool';
   await runAgentLoop({ prompt: 'Halo', cwd: null, mode: 'yolo' });
-  assert.equal(lastBody.tools, undefined, 'tanpa cwd tidak ada tool sama sekali');
+  // Tool berkas tanpa folder kerja pasti gagal, jadi tidak ditawarkan. Bertanya
+  // tetap masuk akal — justru itu cara paling wajar memutuskan folder mana yang
+  // dipakai.
+  assert.deepEqual(lastBody.tools.map((t) => t.function.name), ['AskUserQuestion']);
 });
 
 test('batas putaran menghentikan model yang berputar-putar', async () => {
@@ -124,12 +129,15 @@ test('pembatalan menghentikan loop di tengah', async () => {
   await assert.rejects(() => p, (e) => e.name === 'AbortError');
 });
 
-test('mode build tidak menawarkan tool tulis/perintah', async () => {
+test('mode build menawarkan tool tulis/perintah, tetapi keputusannya ask', async () => {
   calls = 0; mode = 'tool';
   await runAgentLoop({ prompt: 'Ubah berkas', cwd: work, mode: 'build' });
   const names = lastBody.tools.map((t) => t.function.name);
-  assert.equal(names.includes('write_file'), false);
-  assert.equal(names.includes('run_command'), false);
+  // Dulu tool ini disembunyikan karena `ask` mustahil dijawab. Sekarang `ask`
+  // benar-benar bertanya, jadi menyembunyikannya membuat agent tidak bisa
+  // meminta izin dan pengguna tidak tahu apa yang sedang ditahan.
+  assert.equal(names.includes('write_file'), true);
+  assert.equal(names.includes('run_command'), true);
 });
 
 test('mode yolo menawarkan semua tool bawaan', async () => {

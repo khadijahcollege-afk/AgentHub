@@ -144,12 +144,21 @@ process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: e.hoo
 
 test('definisi tool menyesuaikan mode', async () => {
   const plan = await tools.toolDefinitions({ cwd: work, mode: 'plan', includeMcp: false });
-  assert.deepEqual(plan.map((d) => d.function.name).sort(), ['Agent', 'grep_files', 'list_files', 'read_file']);
+  assert.deepEqual(plan.map((d) => d.function.name).sort(), ['Agent', 'AskUserQuestion', 'grep_files', 'list_files', 'read_file']);
+  // Build & edit tidak lagi menyembunyikan tool: `ask` sekarang benar-benar
+  // bertanya, jadi menyembunyikan tool berarti agent tidak bisa meminta izin.
   const edit = await tools.toolDefinitions({ cwd: work, mode: 'edit', includeMcp: false });
-  assert.equal(edit.some((d) => d.function.name === 'run_command'), false, 'mode edit menyembunyikan perintah');
+  assert.equal(edit.some((d) => d.function.name === 'run_command'), true, 'mode edit menawarkan perintah (dengan persetujuan)');
+  const build = await tools.toolDefinitions({ cwd: work, mode: 'build', includeMcp: false });
+  assert.equal(build.some((d) => d.function.name === 'write_file'), true, 'mode build menawarkan tulis (dengan persetujuan)');
   const yolo = await tools.toolDefinitions({ cwd: work, mode: 'yolo', includeMcp: false });
-  assert.equal(yolo.length, 7);
+  assert.equal(yolo.length, 8);
   for (const d of yolo) assert.equal(d.type, 'function');
+});
+
+test('AskUserQuestion ditawarkan tanpa folder kerja (bertanya = cara memilih folder)', async () => {
+  const noCwd = await tools.toolDefinitions({ cwd: null, mode: 'yolo', includeMcp: false });
+  assert.deepEqual(noCwd.map((d) => d.function.name), ['AskUserQuestion']);
 });
 
 test('subagent tidak ditawarkan ke child, dan profil boleh mempersempit', async () => {
@@ -174,13 +183,14 @@ test('subagent tidak ditawarkan ke child, dan profil boleh mempersempit', async 
 test('Agent adalah tool orkestrasi: boleh di plan, tanpa cwd tidak ditawarkan', async () => {
   assert.equal(tools.decide('Agent', {}, 'plan').allow, true);
   const noCwd = await tools.toolDefinitions({ cwd: null, mode: 'yolo', includeMcp: false });
-  assert.deepEqual(noCwd, [], 'tanpa folder kerja tidak ada yang bisa dikerjakan subagent');
+  assert.deepEqual(noCwd.map((d) => d.function.name), ['AskUserQuestion'], 'tanpa folder kerja hanya bertanya yang masuk akal');
 });
 
 test('ringkasan tool melaporkan mode dan jumlahnya', async () => {
   const s = await tools.toolSummary({ cwd: work, mode: 'yolo' });
   assert.equal(s.mode, 'yolo');
-  assert.equal(s.builtin.length, 7);
+  assert.equal(s.builtin.length, 8);
   assert.equal(s.builtin.includes('Agent'), true);
-  assert.equal(s.total >= 7, true);
+  assert.equal(s.builtin.includes('AskUserQuestion'), true);
+  assert.equal(s.total >= 8, true);
 });

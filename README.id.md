@@ -122,7 +122,9 @@ Agent yang mengemudikan aplikasi tidak perlu menebak; kontraknya disajikan lewat
 | `GET /api/usage` | rekap pemakaian token per engine |
 | `GET/POST /api/tunnel` | quick tunnel cloudflared opsional: status, nyalakan, matikan |
 | `GET /api/files?cwd=&q=` | daftar folder baca-saja yang menopang autocomplete `@` |
-| `POST /api/threads/:id/stop` | hentikan run aktif; selalu `200`, idempoten |
+| `POST /api/threads/:id/stop` | hentikan run aktif; selalu `200`, idempoten, melepas permintaan yang sedang menunggu jawaban |
+| `GET/POST /api/threads/:id/approvals` | permintaan yang menunggu manusia: izin (`allow`/`deny`) dan pertanyaan (`answered`/`reject`); tetap terbaca setelah halaman dimuat ulang |
+| `GET/DELETE /api/permissions` | aturan "selalu di folder ini" per folder; hanya untuk tool tulis |
 | `GET/POST /api/schedules`, `POST/DELETE /api/schedules/:id(/run)` | jadwal prompt berulang: buat, aktifkan, jalankan sekarang, hapus |
 | `GET /api/backup` · `POST /api/restore` | ekspor semua data ke satu JSON & pulihkan (config/token tidak ikut) |
 | `GET /api/threads/:id/stats` | statistik sesi: pesan, token per jenis, blok konteks (batas model dari katalog, %, cache hit rate) |
@@ -168,6 +170,38 @@ antre jika dua aksi bersamaan). `confirm()`/`prompt()` native dilarang oleh tes
 statis karena Electron dan webview memblokirnya — dan agent yang mengemudikan UI
 lewat CDP tidak bisa menjawabnya. Dialog aktif terlihat di
 `window.__ahState().dialog`, jadi otomasi bisa menunggu, mengisi, lalu konfirmasi.
+
+## Agent bertindak, dan bertanya sebelum melakukannya
+
+Satu run adalah loop tool yang sungguhan, bukan satu balasan: model diberi
+delapan tool bawaan (baca, tulis, edit, hapus, daftar, cari, jalankan perintah,
+bertanya), memanggilnya, melihat hasilnya, lalu melanjutkan sampai selesai atau
+mencapai batas putaran. Sembilan event hook (`PreToolUse`, `PostToolUse`,
+`UserPromptSubmit`, `PermissionRequest`, `SessionStart`, `SessionEnd`,
+`SubagentStart`, `SubagentStop`, `Notification`) membiarkan skrip proyek
+memeriksa, mengubah, atau menolak semuanya — tetapi hook hanya bisa
+*melebarkan* `ask` menjadi `allow`; ia tidak pernah bisa membuka `plan`.
+
+Mode izin menentukan apa yang butuh manusia: `plan` hanya membaca, `build`
+bertanya sebelum menulis, `edit` menulis bebas tetapi bertanya untuk perintah,
+`guarded` hanya bertanya pada perintah berbahaya, `yolo` tidak pernah bertanya.
+Ketika mode berkata *ask*, run benar-benar berhenti. Pertanyaannya muncul
+sebagai kartu di atas composer, dan setiap permintaan dijamin berakhir — oleh
+jawaban, batas waktu (3 menit untuk izin, 10 menit untuk pertanyaan), tombol
+Stop, atau proses yang dimatikan. Permintaan yang menunggu bertahan dari muat
+ulang halaman: menutup tab tidak lagi membatalkannya, dan tab baru mengambil
+lagi kartunya lewat `GET /api/threads/:id/approvals`.
+
+`AskUserQuestion` adalah tool untuk keputusan yang tidak boleh ditebak: 1–4
+pertanyaan, 2–4 opsi, pilihan tunggal atau ganda, plus kotak jawaban bebas. Ia
+divalidasi sebelum kartu dibuat, karena kartu setengah jadi lebih membingungkan
+daripada galat yang jelas. Ia tidak pernah otomatis diizinkan — termasuk di
+`yolo` — sebab tanpa manusia ia hanya menunggu sepuluh menit lalu gagal.
+"Selalu di folder ini" hanya ditawarkan untuk penulisan berkas; satu perintah
+yang tampak jinak tidak menjamin perintah berikutnya jinak.
+
+Setiap putaran agent juga menyimpan salinan berkas yang akan berubah, sehingga
+satu langkah bisa dibatalkan tanpa menyentuh staging git.
 
 ## Privacy & keamanan
 

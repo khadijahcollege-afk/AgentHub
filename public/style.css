@@ -375,6 +375,140 @@ a { color: var(--blue); }
   .sub-stat { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 }
 
+/* ---------- permintaan izin & pertanyaan ----------
+   Run berhenti menunggu di sini, jadi kartu ini adalah satu-satunya hal yang
+   bisa menggerakkan run. Karena itu ia duduk tepat di atas composer, bukan di
+   dalam riwayat: begitu dijawab ia hilang, dan yang tersisa di riwayat hanya
+   hasil tool-nya. Beberapa permintaan bisa menumpuk (mis. subagent bertanya
+   sambil induk menunggu izin), jadi tingginya dibatasi dan bisa di-scroll. */
+.chat-asks {
+  flex-shrink: 0;
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 0 20px 8px;
+  max-width: 800px; width: 100%; margin: 0 auto;
+  max-height: 46vh; overflow: hidden;
+}
+.chat-asks.hidden { display: none; }
+
+/* Kartu menyerap sisa tinggi host dan menggulung isinya sendiri. Tanpa ini
+   kartu setinggi 1100px di layar 640px mendorong tombol "Kirim jawaban" keluar
+   layar — dan tombol itu satu-satunya jalan melanjutkan run yang berhenti.
+   `flex: 0 1 auto` membuat beberapa kartu berbagi ruang, bukan saling
+   menumpuk keluar layar. */
+.ask-card {
+  display: flex; flex-direction: column;
+  flex: 0 1 auto;
+  max-height: 100%; min-height: 0;
+  border: 1px solid rgba(106, 168, 255, .26);
+  border-radius: 11px;
+  background: rgba(106, 168, 255, .045);
+  padding: 10px 12px;
+  min-width: 0;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.ask-card.ask-permission { border-color: rgba(255, 196, 92, .3); background: rgba(255, 196, 92, .045); }
+.ask-card.ask-permission .ask-ico { color: #ffc45c; }
+
+.ask-head { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; min-width: 0; flex-shrink: 0; }
+.ask-head b { font-size: 11.5px; font-weight: 600; color: #e6e6ea; }
+.ask-ico { display: inline-flex; color: var(--blue); flex-shrink: 0; }
+.ask-ico svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.ask-who {
+  font-size: 10px; padding: 1px 6px; border-radius: 999px;
+  background: rgba(255, 255, 255, .07); color: #b9b9c0;
+  flex-shrink: 0; max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ask-tool {
+  font-family: ui-monospace, Consolas, monospace; font-size: 10.5px;
+  color: #a9a9b1; background: rgba(255, 255, 255, .05);
+  padding: 1px 6px; border-radius: 5px; flex-shrink: 0;
+}
+.ask-risk {
+  font-size: 9.5px; padding: 1px 6px; border-radius: 999px;
+  background: rgba(255, 255, 255, .07); color: #b0b0b8; flex-shrink: 0;
+}
+.ask-risk.high { background: rgba(255, 107, 129, .16); color: var(--err); }
+.ask-skip {
+  background: none; border: 0; color: #8f8f97; font-size: 10.5px;
+  cursor: pointer; padding: 2px 4px; border-radius: 5px; flex-shrink: 0;
+}
+.ask-skip:hover { color: #d4d4d9; background: rgba(255, 255, 255, .06); }
+
+.ask-body {
+  margin-top: 8px; display: flex; flex-direction: column; gap: 10px; min-width: 0;
+  /* Satu-satunya bagian yang menggulung: kepala dan kaki kartu tetap terlihat
+     sehingga tombol jawab tidak pernah hilang di balik isi yang panjang. */
+  overflow-y: auto; min-height: 0; flex: 1 1 auto;
+}
+.ask-reason { margin: 0; font-size: 11.5px; color: #b6b6be; line-height: 1.5; }
+.ask-cmd {
+  margin: 0; padding: 7px 9px; border-radius: 7px;
+  background: rgba(0, 0, 0, .3); border: 1px solid rgba(255, 255, 255, .05);
+  font-family: ui-monospace, Consolas, monospace; font-size: 11px; color: #d8d8dd;
+  white-space: pre-wrap; overflow-wrap: anywhere; max-height: 130px; overflow: auto;
+}
+.ask-path {
+  font-family: ui-monospace, Consolas, monospace; font-size: 11px; color: #cfcfd5;
+  overflow-wrap: anywhere;
+}
+
+.ask-q { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.ask-q-head { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; min-width: 0; }
+.ask-chip {
+  font-size: 9.5px; text-transform: uppercase; letter-spacing: .04em;
+  padding: 1px 6px; border-radius: 4px; flex-shrink: 0;
+  background: rgba(106, 168, 255, .16); color: #9cc4ff;
+}
+.ask-q-text { font-size: 11.5px; color: #dcdce1; line-height: 1.5; min-width: 0; }
+.ask-multi { font-size: 9.5px; color: #85858d; flex-shrink: 0; }
+
+.ask-opts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 5px; }
+.ask-opt {
+  display: flex; flex-direction: column; gap: 1px;
+  text-align: left; cursor: pointer; min-width: 0;
+  padding: 6px 9px; border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, .08);
+  background: rgba(255, 255, 255, .022);
+  color: #d5d5da; font: inherit;
+  transition: border-color .12s, background .12s;
+}
+.ask-opt:hover { border-color: rgba(106, 168, 255, .4); background: rgba(106, 168, 255, .085); }
+.ask-opt.on { border-color: var(--blue); background: rgba(106, 168, 255, .16); }
+.ask-opt-label { font-size: 11.5px; font-weight: 550; overflow-wrap: anywhere; }
+.ask-opt-desc { font-size: 10px; color: #94949c; line-height: 1.45; overflow-wrap: anywhere; }
+.ask-opt-preview {
+  font-family: ui-monospace, Consolas, monospace; font-size: 9.5px; color: #85858d;
+  margin-top: 3px; max-height: 46px; overflow: hidden;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.ask-other { border-style: dashed; }
+.ask-input {
+  width: 100%; box-sizing: border-box;
+  padding: 6px 9px; border-radius: 7px;
+  border: 1px solid rgba(255, 255, 255, .1);
+  background: rgba(0, 0, 0, .28); color: #e4e4e8;
+  font: inherit; font-size: 11.5px;
+}
+.ask-input:focus { outline: none; border-color: rgba(106, 168, 255, .55); }
+
+.ask-foot { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 9px; min-width: 0; flex-shrink: 0; }
+.ask-hint { font-size: 10px; color: #85858d; min-width: 0; overflow-wrap: anywhere; }
+.ask-foot .btn.tiny { font-size: 10.5px; padding: 4px 10px; }
+.ask-err { margin: 7px 0 0; font-size: 10.5px; color: var(--err); overflow-wrap: anywhere; }
+
+@media (max-width: 560px) {
+  .chat-asks { padding: 0 12px 8px; max-height: 52vh; }
+  .ask-opts { grid-template-columns: 1fr; }
+  .ask-card { padding: 9px 10px; }
+}
+@media (max-width: 420px) {
+  .ask-head b, .ask-q-text, .ask-reason, .ask-opt-label { font-size: 11px; }
+  /* Tombol tetap terbaca: tiga tombol izin tidak bisa sejajar di 320px. */
+  .ask-foot { gap: 5px; }
+  .ask-foot .btn.tiny { flex: 1 1 auto; text-align: center; }
+}
+
 .msg { max-width: 720px; width: 100%; margin: 0 auto; }
 .msg.user { display: flex; justify-content: flex-end; }
 .msg.user .bubble {

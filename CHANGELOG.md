@@ -1,5 +1,83 @@
 # Changelog
 
+## 1.7.0 — 2026-11-17
+Tujuh tahap hasil membaca ulang ZCode (Apache-2.0) dan menerapkan polanya ke
+AgentHub. Yang diambil bukan tampilannya, melainkan kontrak yang membuat agent
+aman dipakai: apa yang boleh dilakukan tanpa bertanya, apa yang harus
+ditunggu, dan apa yang harus bisa dipulihkan setelah gagal.
+
+- **Agent benar-benar bisa bertindak** — `lib/agent-loop.js` memanggil model,
+  menjalankan tool, mengirim hasilnya balik, dan berhenti hanya ketika model
+  selesai atau batas putaran tercapai. Delapan tool bawaan (baca, tulis, edit,
+  hapus, daftar, cari, perintah, tanya) dengan keputusan izin per mode:
+  `plan` hanya membaca, `build` bertanya sebelum menulis, `edit` menulis bebas
+  tetapi bertanya untuk perintah, `guarded` hanya bertanya pada perintah
+  berbahaya, `yolo` tidak bertanya. Batas waktu perintah, batas ukuran berkas,
+  dan pembatalan lewat `AbortController` supaya satu run tidak bisa
+  menggantung.
+- **Persetujuan menggantikan penolakan** — dulu mode `build` menyembunyikan
+  tool tulis karena `ask` mustahil dijawab; satu-satunya efeknya adalah agent
+  yang diam-diam tidak bisa meminta izin. Sekarang `ask` benar-benar berhenti
+  dan menunggu (`lib/approvals.js`): kartu muncul di atas composer, jawabannya
+  `allow`/`deny`/`answered`, dan setiap permintaan pasti berakhir lewat
+  jawaban, batas waktu (3 menit izin, 10 menit pertanyaan), pembatalan, atau
+  tombol Stop. Aturan "selalu di folder ini" hanya tersedia untuk tool tulis —
+  satu perintah yang tampak jinak tidak menjamin perintah berikutnya jinak.
+- **`AskUserQuestion`** (`lib/ask-question.js`) — agent bisa menanyakan
+  keputusan yang tidak boleh ditebak: 1–4 pertanyaan, 2–4 opsi, pilihan
+  tunggal atau ganda, plus kotak jawaban bebas. Validasinya ketat karena kartu
+  setengah jadi lebih membingungkan daripada galat yang jelas; pertanyaan yang
+  tidak bisa dirender ditolak sebelum kartunya dibuat. Tool ini TIDAK PERNAH
+  otomatis diizinkan, termasuk di `yolo`, karena tanpa manusia ia hanya
+  menunggu sepuluh menit lalu gagal.
+- **Run yang menunggu manusia bertahan dari refresh** — menutup tab atau
+  memuat ulang halaman di tengah run tidak lagi membunuh pertanyaannya: server
+  hanya membatalkan run yang tidak sedang menunggu jawaban, dan tab baru
+  mengambil ulang kartunya lewat `GET /api/threads/:id/approvals`. Tab yang
+  mewarisi status `running` dari server kini juga mengadopsi hasil akhirnya
+  lewat broadcast `threads`, jadi chip "Working" tidak berputar selamanya di
+  tab yang tidak memiliki stream.
+- **Checkpoint berkas** — setiap putaran agent menyimpan salinan berkas yang
+  akan berubah, sehingga satu langkah bisa dibatalkan tanpa menyentuh staging
+  git dan tanpa menebak isi sebelumnya.
+- **Hook (9 event)** — `PreToolUse`, `PostToolUse`, `UserPromptSubmit`,
+  `PermissionRequest`, `SessionStart`, `SessionEnd`, `SubagentStart`,
+  `SubagentStop`, `Notification`. Hook proses bisa menolak, mengganti argumen
+  (`updatedInput`), atau membuka `ask` menjadi `allow` — tetapi tidak pernah
+  menutup `plan`. Hook yang rusak tidak menggagalkan run.
+- **MCP** — server MCP eksternal digabung saat dibaca, dengan prefiks nama
+  per plugin, dan tool MCP hanya ditawarkan di mode plan bila namanya jelas
+  membaca (`read`/`get`/`list`/…). Rahasia tetap tertutup di status.
+- **Instruksi tetap** — urutan tetap user → proyek → thread, supaya aturan
+  yang lebih spesifik selalu menang dan tidak bergantung urutan berkas di
+  disk.
+- **Plugin** — satu paket berisi skill, perintah garis miring, hook, dan
+  server MCP. Skill & perintah hanya teks (tidak menambah izin); hook dan MCP
+  butuh persetujuan eksplisit yang terikat ke digest yang mencakup isi skrip
+  yang dirujuk, bukan hanya manifest. Pemasangan menyalin ke
+  `DATA_DIR/plugins/<name>` agar mencopot plugin benar-benar menghapus kode
+  yang dijalankan. Server MCP milik plugin tidak pernah ditulis ke `mcp.json`
+  dan hanya bisa dibaca dari API.
+- **Memori yang tumbuh sendiri** — setelah run berhasil, fakta penting
+  diekstrak dari pesan baru saja (bukan seluruh riwayat), maksimal 3 fakta per
+  run, dan disaring keras terhadap pola instruksi/rahasia karena fakta itu
+  disuntikkan ke setiap prompt. Mati secara bawaan (`memoryAutoExtract`).
+- **Subagent** — tool `Agent` menjalankan anak dengan konteks bersih, mode
+  tidak pernah lebih longgar dari induknya, dan laporannya kembali sebagai
+  hand-back. `Explore` sengaja dibatasi oleh daftar tool (baca/daftar/cari),
+  bukan janji di prompt. Maksimal 4 anak per run, dan anak tidak bisa
+  memiliki anak.
+- **Tautan baca-saja** — percakapan bisa dibagikan sebagai halaman publik
+  tanpa token, dengan masa berlaku dan pencabutan; token akses tidak pernah
+  ikut ke halaman itu.
+- **`test/helpers/port.js` memeriksa sambungan, bukan hanya bind** — di
+  Windows proses lain bisa mendengarkan `::` saja, sehingga bind IPv4 ke port
+  yang sama tetap "berhasil" padahal setiap permintaan dijawab proses lain
+  itu. Tes lalu gagal dengan "server harus hidup" seolah kode yang rusak.
+- Regresi: `approval`, `approvals-api`, `ask-question`, `agent-loop`,
+  `hook-wiring`, `subagents-api`, `checkpoints`, `plugin*`, `memory-extract`,
+  `share`, `port-helper` — 424 tes, semuanya lulus.
+
 ## 1.6.14 — 2026-11-17
 - **Model gratis GLM-5.3-Flash benar-benar dipakai (REA kartu Start Plan
   ZCode)** — kuota harian diperbarui sesuai kartu aslinya (300.000.000

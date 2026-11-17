@@ -49,3 +49,23 @@ test('port hasil pilihan benar-benar bisa didengarkan', async () => {
     await new Promise((r) => srv.close(r));
   }
 });
+
+test('port yang didengarkan proses lain di :: saja tetap dilewati', async () => {
+  // Regresi nyata: server tetangga mendengarkan `::` saja. Bind IPv4 ke
+  // 0.0.0.0 di port yang sama BERHASIL di Windows, jadi pemeriksaan "bisa
+  // didengarkan" saja tidak cukup — permintaan ke 127.0.0.1 akan dijawab
+  // proses lain itu dan server uji tidak pernah terlihat hidup.
+  const free = await pickFreePort(9500, 60);
+  let srv;
+  try {
+    srv = await occupy(free, '::');
+  } catch {
+    return; // platform tanpa IPv6: kasus ini tidak berlaku
+  }
+  try {
+    const picked = await pickFreePort(free, 6);
+    assert.notEqual(picked, free, 'port yang menjawab di :: tidak boleh ditawarkan');
+  } finally {
+    await new Promise((r) => srv.close(r));
+  }
+});

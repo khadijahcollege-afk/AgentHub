@@ -159,6 +159,12 @@ window.__ahMachines = {
   // karena ia hidup selama satu run saja: setelah selesai, ringkasannya masuk
   // ke jejak tool pesan assistant dan kartu ini hilang.
   let runSubs = [];
+  // Permintaan izin/pertanyaan yang menunggu jawaban pada run aktif. Deklarasinya
+  // di sini, bukan di dekat fungsinya, karena `setRun` (di bawah) membersihkannya
+  // dan `setRun` bisa dipanggil saat booting — sebelum baris deklarasinya
+  // dijalankan. `let` yang belum diinisialisasi akan melempar ReferenceError,
+  // dan booting berhenti tanpa pesan yang berguna.
+  let runAsks = [];
 
   // --- mesin: run & koneksi ---
   // runStatus: idle | running | done | error | stopped (RUN_MACHINE)
@@ -197,7 +203,7 @@ window.__ahMachines = {
     if (toolChip && next !== 'running') { toolChip.classList.add('hidden'); toolChip.textContent = ''; }
     // Kartu subagent hanya milik run aktif: menyisakannya setelah run selesai
     // membuat baris "bekerja" terus berdetak padahal tidak ada yang berjalan.
-    if (next !== 'running') clearRunSubs();
+    if (next !== 'running') { clearRunSubs(); clearAsks(); }
   }
 
   // Server adalah sumber kebenaran untuk run yang sedang berjalan. Saat thread
@@ -210,6 +216,29 @@ window.__ahMachines = {
       toast('Run terakhir terputus — ' + thread.runError, 4500, 'err', 'run-error');
     }
     setRun('idle');
+  }
+
+  // Tab yang TIDAK memulai run — halaman dimuat ulang di tengah run, atau run
+  // dijawab dari tab lain — tidak punya stream SSE run. Satu-satunya cara ia
+  // tahu run sudah selesai adalah broadcast `threads`. Tanpa adopsi ini
+  // `runStatus` tetap 'running' selamanya: chip "Working" berputar terus, dan
+  // `renderChat({ preserveStream: runActive() })` kembali sebelum menggambar
+  // pesan apa pun — pengguna melihat jawaban yang tidak pernah muncul padahal
+  // server sudah menyimpannya.
+  async function adoptRemoteRun() {
+    if (!curThread || runCtrl) return; // kita pemilik stream: jangan diganggu
+    try {
+      const fresh = await api(`/api/threads/${curThread.id}`);
+      // Thread bisa berganti selagi menunggu jawaban (pengguna membuka thread
+      // lain): jangan menimpa yang sedang dilihat.
+      if (curThread?.id !== fresh.id) return;
+      curThread = fresh;
+      syncRunFromThread(fresh, { notify: false });
+      renderChat();
+      // Run yang masih berjalan bisa berhenti lagi di tool berikutnya, jadi
+      // kartu yang menunggu harus tetap diambil ulang.
+      if (fresh.runState === 'running' && !runAsks.length) loadAsks(fresh.id);
+    } catch { /* thread dihapus / server sibuk: biarkan tampilan apa adanya */ }
   }
 
   function setDelegation(next) {
@@ -2426,6 +2455,10 @@ window.__ahMachines = {
         }).catch(() => curThread);
       }
       if (!runActive()) syncRunFromThread(curThread);
+      // Thread yang dibuka mungkin sedang menunggu jawaban (mis. halaman baru
+      // dimuat ulang di tengah run). Kartunya harus kembali sebelum pengguna
+      // menyimpulkan agent-nya hang.
+      if (!runAsks.length) loadAsks(curThread.id);
       view = 'studio';
       $$('.view').forEach((el) => el.classList.toggle('active', el.id === 'view-studio'));
       $$('.rail-btn[data-view]').forEach((b) => b.classList.toggle('active', b.dataset.view === 'studio'));
@@ -2632,6 +2665,311 @@ window.__ahMachines = {
   // preserveStream: jangan sentuh DOM pesan saat stream sedang menulis ke sana
   // (SSE `threads` bisa datang di tengah run; render ulang akan menghapus kursor
   // dan teks yang sedang tumbuh).
+  // ---------- permintaan persetujuan & pertanyaan ----------
+  // Satu kartu per permintaan, di atas composer. Ia hidup selama run dan
+  // hilang setelah dijawab; tanpa kartu ini run berhenti diam-diam di tengah
+  // jalan dan pengguna hanya melihat "Working" yang tidak bergerak.
+  // (`runAsks` dideklarasikan di bagian mesin run, karena `setRun` memakainya.)
+
+  function upsertAsk(ev) {
+    if (!ev?.requestId) return;
+    const i = runAsks.findIndex((a) => a.requestId === ev.requestId);
+    const row = {
+      requestId: ev.requestId,
+      kind: ev.kind === 'question' ? 'question' : 'permission',
+      tool: ev.tool || '',
+      reason: ev.reason || '',
+      input: ev.input || null,
+      mode: ev.mode || null,
+      cwd: ev.cwd || null,
+      risk: ev.risk || null,
+      questions: Array.isArray(ev.questions) ? ev.questions : [],
+      subagent: ev.subagent || null,
+      agentId: ev.agentId || null,
+      createdAt: ev.createdAt || Date.now(),
+      expiresAt: ev.expiresAt || null,
+      // Pilihan sementara pengguna, disimpan di state supaya render ulang
+      // (timer, event tool lain) tidak menghapus apa yang sudah dicentang.
+      picked: i >= 0 ? runAsks[i].picked : {},
+      other: i >= 0 ? runAsks[i].other : {},
+      busy: false,
+      error: null,
+    };
+    if (i >= 0) runAsks[i] = row; else runAsks.push(row);
+    renderAsks();
+    // Kartu ini adalah satu-satunya jalan melanjutkan run, jadi ia harus
+    // terlihat tanpa pengguna harus menggulung riwayat mencari-cari.
+    const scroller = $('#chat-scroll');
+    if (scroller) scroller.scrollTop = scroller.scrollHeight;
+  }
+
+  function dropAsk(requestId) {
+    runAsks = runAsks.filter((a) => a.requestId !== requestId);
+    renderAsks();
+  }
+
+  function clearAsks() {
+    runAsks = [];
+    renderAsks();
+  }
+
+  // Permintaan yang menunggu bisa bertahan lebih lama dari tab: halaman
+  // di-refresh, tab lain dibuka, atau server baru saja dimulai ulang. Tanpa
+  // pengambilan ulang ini kartunya hilang sementara run tetap menunggu sampai
+  // batas waktunya habis, dan pengguna menyimpulkan agent-nya hang.
+  async function loadAsks(threadId) {
+    if (!threadId) { clearAsks(); return; }
+    try {
+      const r = await api(`/api/threads/${threadId}/approvals`);
+      const list = Array.isArray(r?.requests) ? r.requests : [];
+      if (!list.length) return;
+      for (const req of list) upsertAsk(req);
+    } catch { /* thread baru / server lama: tidak ada yang menunggu */ }
+  }
+
+  // Satu bentuk untuk semua pilihan: array indeks. Pilihan tunggal pun memakai
+  // array berisi 0–1 elemen, supaya render, klik, dan pengiriman tidak perlu
+  // tiga cabang yang bisa saling bertentangan (dulu pilihan tunggal menyimpan
+  // angka sementara multi menyimpan array — submit membaca angka dan diam-diam
+  // mengirim jawaban kosong).
+  function picksOf(a, qi) {
+    const v = a.picked?.[qi];
+    if (Array.isArray(v)) return v;
+    return v == null ? [] : [v];
+  }
+
+  function labelsOf(q, picks) {
+    return picks
+      .map((i) => q.options[i]?.label)
+      .filter((label) => typeof label === 'string' && label);
+  }
+
+  // Menandai pilihan langsung di DOM, tanpa menggambar ulang kartu. Menggambar
+  // ulang pada setiap klik membuang posisi gulung isi pertanyaan, fokus, dan
+  // teks yang sedang diketik di kotak "Lainnya" — pengguna melihat kartunya
+  // melompat setiap kali memilih opsi.
+  function applyPicks(card, row) {
+    if (!card) return;
+    for (const opt of card.querySelectorAll('[data-ask-opt]')) {
+      const [qi, oi] = opt.dataset.askOpt.split(':').map(Number);
+      const q = row.questions[qi];
+      if (!q) continue;
+      const on = picksOf(row, qi).includes(oi);
+      opt.classList.toggle('on', on);
+      opt.setAttribute('aria-pressed', String(on));
+    }
+    for (const other of card.querySelectorAll('[data-ask-other]')) {
+      const qi = Number(other.dataset.askOther);
+      other.classList.toggle('on', row.other?.[qi] != null);
+    }
+  }
+
+  function askCardHtml(a) {
+    const who = a.subagent ? `<span class="ask-who">${esc(a.subagent)}</span>` : '';
+    if (a.kind === 'question') {
+      const qs = a.questions.map((q, qi) => {
+        const picks = picksOf(a, qi);
+        const opts = q.options.map((o, oi) => {
+          const on = picks.includes(oi);
+          return `<button type="button" class="ask-opt${on ? ' on' : ''}" data-ask-opt="${qi}:${oi}" aria-pressed="${on}">
+            <span class="ask-opt-label">${esc(o.label)}</span>
+            <span class="ask-opt-desc">${esc(o.description)}</span>
+            ${o.preview ? `<span class="ask-opt-preview">${esc(o.preview)}</span>` : ''}
+          </button>`;
+        }).join('');
+        const free = a.other?.[qi] != null;
+        return `<div class="ask-q" data-ask-q="${qi}">
+          <div class="ask-q-head"><span class="ask-chip">${esc(q.header)}</span><span class="ask-q-text">${esc(q.question)}</span>${q.multiSelect ? `<span class="ask-multi">${tr('boleh lebih dari satu')}</span>` : ''}</div>
+          <div class="ask-opts">${opts}
+            <button type="button" class="ask-opt ask-other${free ? ' on' : ''}" data-ask-other="${qi}" aria-pressed="${free}">
+              <span class="ask-opt-label">${tr('Lainnya')}</span>
+              <span class="ask-opt-desc">${tr('Tulis jawaban sendiri')}</span>
+            </button>
+          </div>
+          ${free ? `<input class="ask-input" data-ask-input="${qi}" maxlength="2000" placeholder="${esc(tr('Jawaban Anda…'))}" value="${esc(a.other?.[qi] || '')}">` : ''}
+        </div>`;
+      }).join('');
+      return `<div class="ask-card ask-question" data-ask-id="${esc(a.requestId)}">
+        <div class="ask-head">
+          <span class="ask-ico">${svgIco('<circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.4 2.3c-.6.3-.9.8-.9 1.5v.4"/><path d="M12 17h.01"/>')}</span>
+          <b>${tr('Agent bertanya')}</b>${who}
+          <span class="grow"></span>
+          <button type="button" class="ask-skip" data-ask-reject="${esc(a.requestId)}">${tr('Lewati')}</button>
+        </div>
+        <div class="ask-body">${qs}</div>
+        <div class="ask-foot">
+          <span class="ask-hint">${tr('Kosongkan yang tidak ingin dijawab.')}</span>
+          <span class="grow"></span>
+          <button type="button" class="btn primary tiny" data-ask-send="${esc(a.requestId)}"${a.busy ? ' disabled' : ''}>${a.busy ? tr('Mengirim…') : tr('Kirim jawaban')}</button>
+        </div>
+        ${a.error ? `<p class="ask-err">${esc(a.error)}</p>` : ''}
+      </div>`;
+    }
+
+    const detail = a.tool === 'run_command'
+      ? `<pre class="ask-cmd">${esc(String(a.input?.command || ''))}</pre>`
+      : a.input?.path
+        ? `<div class="ask-path">${esc(String(a.input.path))}</div>`
+        : '';
+    const risk = a.risk === 'high'
+      ? `<span class="ask-risk high">${tr('berisiko tinggi')}</span>`
+      : a.risk === 'medium' ? `<span class="ask-risk">${tr('mengubah data')}</span>` : '';
+    const canRemember = ['write_file', 'edit_file', 'delete_file'].includes(a.tool);
+    return `<div class="ask-card ask-permission" data-ask-id="${esc(a.requestId)}">
+      <div class="ask-head">
+        <span class="ask-ico">${svgIco('<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>')}</span>
+        <b>${tr('Butuh izin')}</b>${who}
+        <span class="ask-tool">${esc(a.tool)}</span>${risk}
+        <span class="grow"></span>
+      </div>
+      <div class="ask-body">
+        <p class="ask-reason">${esc(a.reason || '')}</p>
+        ${detail}
+      </div>
+      <div class="ask-foot">
+        <span class="ask-hint">${tr('Mode')} ${esc(a.mode || '')}</span>
+        <span class="grow"></span>
+        <button type="button" class="btn tiny" data-ask-deny="${esc(a.requestId)}"${a.busy ? ' disabled' : ''}>${tr('Tolak')}</button>
+        ${canRemember ? `<button type="button" class="btn tiny" data-ask-always="${esc(a.requestId)}"${a.busy ? ' disabled' : ''}>${tr('Selalu di folder ini')}</button>` : ''}
+        <button type="button" class="btn primary tiny" data-ask-allow="${esc(a.requestId)}"${a.busy ? ' disabled' : ''}>${tr('Izinkan')}</button>
+      </div>
+      ${a.error ? `<p class="ask-err">${esc(a.error)}</p>` : ''}
+    </div>`;
+  }
+
+  function renderAsks() {
+    const host = $('#chat-asks');
+    if (!host) return;
+    if (!runAsks.length) { host.classList.add('hidden'); host.innerHTML = ''; return; }
+    host.classList.remove('hidden');
+    host.innerHTML = runAsks.map(askCardHtml).join('');
+  }
+
+  // Satu tempat untuk mengirim jawaban: tombol mana pun berakhir di endpoint
+  // yang sama, jadi kegagalan (permintaan sudah kedaluwarsa, tab lain sudah
+  // menjawab) dilaporkan sekali dengan cara yang sama.
+  async function answerAsk(requestId, body) {
+    const row = runAsks.find((a) => a.requestId === requestId);
+    if (!row || row.busy) return;
+    row.busy = true;
+    row.error = null;
+    renderAsks();
+    try {
+      await api(`/api/threads/${curThread.id}/approvals/${requestId}`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+      dropAsk(requestId);
+    } catch (e) {
+      row.busy = false;
+      // Permintaan yang sudah tidak ada bukan kesalahan pengguna: kartunya
+      // basi (mis. run sudah dihentikan). Buang, jangan biarkan menggantung.
+      if (e.status === 404) { dropAsk(requestId); return; }
+      row.error = e.message || String(e);
+      renderAsks();
+    }
+  }
+
+  function submitQuestionCard(requestId) {
+    const row = runAsks.find((a) => a.requestId === requestId);
+    if (!row) return;
+    const answers = {};
+    row.questions.forEach((q, qi) => {
+      const free = row.other?.[qi];
+      if (free != null && String(free).trim()) { answers[q.question] = String(free).trim(); return; }
+      const labels = labelsOf(q, picksOf(row, qi));
+      // Multi-pilih dikirim sebagai satu string dipisah koma: `answers` adalah
+      // Record<string,string>, jadi bentuk itu yang bisa dibaca model tanpa
+      // kehilangan batas antar pilihan.
+      if (labels.length) answers[q.question] = labels.join(', ');
+    });
+    // Semua pertanyaan dilewati tetap dikirim sebagai `{}`: model diberi tahu
+    // bahwa pengguna memilih untuk tidak menjawab, bukan dibiarkan menunggu.
+    answerAsk(requestId, { decision: 'answered', answers });
+  }
+
+  // Kartu diklik lewat delegasi supaya render ulang tidak perlu memasang
+  // listener baru untuk setiap tombol.
+  document.addEventListener('click', (e) => {
+    const opt = e.target.closest?.('[data-ask-opt]');
+    if (opt) {
+      const [qi, oi] = opt.dataset.askOpt.split(':').map(Number);
+      const card = opt.closest('[data-ask-id]');
+      const row = runAsks.find((a) => a.requestId === card?.dataset.askId);
+      if (!row) return;
+      const q = row.questions[qi];
+      if (!q) return;
+      if (q.multiSelect) {
+        const cur = picksOf(row, qi);
+        const next = cur.includes(oi) ? cur.filter((x) => x !== oi) : [...cur, oi].sort((x, y) => x - y);
+        row.picked = { ...row.picked, [qi]: next };
+      } else {
+        // Klik pilihan yang sama membatalkan pilihan: pengguna harus bisa
+        // mengosongkan satu pertanyaan tanpa menutup seluruh kartu.
+        const cur = picksOf(row, qi);
+        row.picked = { ...row.picked, [qi]: cur.includes(oi) ? [] : [oi] };
+      }
+      if (row.other?.[qi] != null) {
+        row.other = { ...row.other, [qi]: null };
+        card.querySelector(`[data-ask-input="${qi}"]`)?.remove();
+      }
+      applyPicks(card, row);
+      return;
+    }
+    const other = e.target.closest?.('[data-ask-other]');
+    if (other) {
+      const qi = Number(other.dataset.askOther);
+      const card = other.closest('[data-ask-id]');
+      const row = runAsks.find((a) => a.requestId === card?.dataset.askId);
+      if (!row) return;
+      const on = row.other?.[qi] != null;
+      row.other = { ...row.other, [qi]: on ? null : '' };
+
+      // Kotak teks bebas dibuat/dibuang di tempat, bukan lewat render ulang:
+      // render ulang akan menghapus kartu yang sedang diklik dan membuat fokus
+      // keyboard hilang tepat setelah "Lainnya" ditekan.
+      const holder = card.querySelector(`[data-ask-q="${qi}"] .ask-opts`);
+      if (on) {
+        card.querySelector(`[data-ask-input="${qi}"]`)?.remove();
+      } else {
+        row.picked = { ...row.picked, [qi]: [] };
+        if (holder && !card.querySelector(`[data-ask-input="${qi}"]`)) {
+          const input = document.createElement('input');
+          input.className = 'ask-input';
+          input.dataset.askInput = String(qi);
+          input.maxLength = 2000;
+          input.placeholder = tr('Jawaban Anda…');
+          holder.after(input);
+          setTimeout(() => input.focus(), 0);
+        }
+      }
+      applyPicks(card, row);
+      return;
+    }
+    const send = e.target.closest?.('[data-ask-send]');
+    if (send) { submitQuestionCard(send.dataset.askSend); return; }
+    const reject = e.target.closest?.('[data-ask-reject]');
+    if (reject) { answerAsk(reject.dataset.askReject, { decision: 'reject' }); return; }
+    const allow = e.target.closest?.('[data-ask-allow]');
+    if (allow) { answerAsk(allow.dataset.askAllow, { decision: 'allow' }); return; }
+    const always = e.target.closest?.('[data-ask-always]');
+    if (always) { answerAsk(always.dataset.askAlways, { decision: 'allow', always: true }); return; }
+    const deny = e.target.closest?.('[data-ask-deny]');
+    if (deny) { answerAsk(deny.dataset.askDeny, { decision: 'deny' }); return; }
+  });
+
+  // Input bebas disimpan saat diketik: render ulang berikutnya (timer atau
+  // event tool) tidak boleh menghapus apa yang sedang pengguna tulis.
+  document.addEventListener('input', (e) => {
+    const input = e.target.closest?.('[data-ask-input]');
+    if (!input) return;
+    const qi = Number(input.dataset.askInput);
+    const card = input.closest('[data-ask-id]');
+    const row = runAsks.find((a) => a.requestId === card?.dataset.askId);
+    if (!row) return;
+    row.other = { ...row.other, [qi]: input.value };
+  });
+
   // ---------- subagent pada run aktif ----------
   // Satu baris per subagent: tipe, tugas, tool yang sedang dipanggil, dan waktu.
   // Tanpa ini run yang mendelegasikan pekerjaan hanya terlihat "Working" selama
@@ -3050,6 +3388,11 @@ window.__ahMachines = {
           // Subagent punya kartu sendiri: ia berjalan lama dan bisa lebih dari
           // satu, jadi menaruhnya di chip tool akan menutupi status agent utama.
           upsertRunSub(ev);
+        } else if (ev.type === 'approval') {
+          // Run berhenti menunggu di sini. Tanpa kartunya pengguna hanya melihat
+          // "Working" yang tidak bergerak dan mungkin menekan Stop — padahal yang
+          // ditunggu justru jawabannya.
+          upsertAsk(ev);
         } else if (ev.type === 'done') {
           const meta = curThread.messages[curThread.messages.length - 1];
           meta.content = acc; meta.ms = ev.ms; meta.servedBy = ev.servedBy; meta.status = 'done';
@@ -7090,6 +7433,10 @@ Jangan mengarang — bila data tidak ada di folder, katakan tidak ada.`;
     if (!scopes.length) return;
     // event yang butuh data baru: ambil state sekali, render slice yang relevan
     loadState({ slices: scopes.flatMap((s) => scopeSlices(s)), silent: true });
+    // Thread berubah = mungkin run yang kita tampilkan sebagai "berjalan" sudah
+    // selesai di server (dijawab dari tab lain, atau kita mewarisi statusnya
+    // saat halaman dimuat ulang).
+    if (scopes.includes('threads') && runActive() && !runCtrl) adoptRemoteRun();
   }
 
   function onScope(scope) {
@@ -7110,7 +7457,12 @@ Jangan mengarang — bila data tidak ada di folder, katakan tidak ada.`;
       retry = 0;
       setConn('live');
       // setelah putus, state bisa basi (run selesai / task pindah saat offline)
-      if (wasDown) loadState();
+      if (wasDown) {
+        // `loadState` menggambar ulang dengan preserveStream saat run aktif,
+        // jadi run yang sudah berakhir selagi kita offline tidak akan pernah
+        // tampil. Adopsi setelah state segar memastikan hasilnya terlihat.
+        loadState().then(() => { if (!runCtrl) adoptRemoteRun(); }).catch(() => {});
+      }
     };
 
     es.onmessage = (ev) => {

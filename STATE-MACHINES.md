@@ -137,6 +137,36 @@ honest state, and the next send is allowed immediately (`error → running` is l
 `thread.running` is still written and still returned for older clients, but it is
 derived from `runState`. Read `runState` if you are writing new code.
 
+## Approval lifecycle (a run that stops to ask)
+
+`run: running → running` is not a transition the run machine can express, yet a
+run can sit still for minutes waiting for a person. That waiting is its own
+small machine, owned by `lib/approvals.js`:
+
+```
+(created) → pending → answered | denied | cancelled | timedOut
+```
+
+It is deliberately **not** in `lib/machines.js`: it is ephemeral, never
+persisted, and it belongs to the server process rather than to a thread field.
+It is documented here because the invariants matter more than the shape.
+
+| Invariant | Why |
+| --- | --- |
+| Every request ends | Answer, timeout (3 min permission / 10 min question), `/stop`, or process shutdown. A promise that can outlive all four is a hung run. |
+| `ask` is not `deny` | `decide()` is pure and returns `decision: 'ask'`. `executeTool` decides whether a human exists; with no client (delegate, CLI, direct API) it denies with a reason instead of waiting forever. |
+| `AskUserQuestion` never auto-approves | Not even in `yolo`. Without a human it would wait ten minutes and then fail with a misleading message. |
+| A waiting run survives a reload | `res.on('close')` skips `ctrl.abort()` when `approvals.list(threadId)` is non-empty; the new tab re-reads the card from `GET /api/threads/:id/approvals`. Timeouts still guarantee termination. |
+| Answers are bound to their thread | `requestId` is random and checked against the thread id; a wrong-thread answer is `403 WRONG_THREAD`, not a silently ignored no-op. |
+| "Always" is narrow | Only `write_file`/`edit_file`/`delete_file` may be remembered, per folder, never `run_command`. |
+
+The UI mirrors it without owning it: `runAsks` in `public/app.js` is a render
+cache of the server's pending list, cleared by `setRun` on every terminal state
+and re-filled by `loadAsks()` when a thread opens. A tab that inherits
+`running` from the server but does not own the SSE stream calls
+`adoptRemoteRun()` on the `threads` broadcast, so the chip stops spinning and
+the final message appears.
+
 ## Why these are not machines (yet)
 
 Centralising everything costs more than it buys when the state is a single frame of
@@ -166,7 +196,11 @@ GET  /api/machines        # every machine + keyPool sets + sseScopes + version
 GET  /api/status          # runningThreads, recoveredRuns, checks in flight, promo state
 GET  /api/version         # { machines: 2, views, taskStatuses }
 POST /api/threads/:id/send   # 409 RUN_IN_PROGRESS while a run is active
-POST /api/threads/:id/stop   # always 200, { stopped: n }, idempotent
+POST /api/threads/:id/stop   # always 200, { stopped: n, released: n }, idempotent
+GET  /api/threads/:id/approvals        # prompts still waiting for a human
+POST /api/threads/:id/approvals/:rid   # { decision: allow|deny|answered|reject, ... }
+GET  /api/permissions                  # per-folder "always allow" rules
+DELETE /api/permissions                # { cwd } — forget one folder's rules
 GET  /api/threads/:id/workspace  # repo, branch, changed files, rule files
 GET  /api/threads/:id/diff       # files with +/- and a bounded patch
 POST /api/threads/:id/revert     # { paths, deleteUntracked? } — explicit, per file
@@ -214,6 +248,13 @@ Never infer status from a button's disabled state or from `thread.running`. Quer
 | `test/uploads.test.js` | basename sanitization, MIME guessing, size/base64 rejection, CLI paths vs pool inline text, upload/download/delete, `/send` invalid and over-limit attachments, attachment-only messages |
 | `test/desktop.test.js` | UI shell contract: unique element IDs, separate textareas, composer slots, in-app dialog (no native confirm/prompt), packaged handshake version |
 | `test/projects.test.js` | project/environment metadata routes that the UI's overlay and rail depend on |
+| `test/approval.test.js` | approval broker: allow/deny, timeout releases the run, abort and `cancelThread` release the registry, wrong-thread and bad-decision rejections, per-folder "always" rules limited to write tools, question answered/rejected, subagent tagging, no nested branching |
+| `test/approvals-api.test.js` | the same promises over the real server: `build` stops at a write until answered, deny writes nothing, `AskUserQuestion` reaches the model as an answer, questions still asked in `yolo`, wrong-thread 403, always-rule persisted and reused, `/stop` releases a waiting prompt |
+| `test/ask-question.test.js` | `AskUserQuestion` contract: 1–4 questions, 2–4 options, unique text/labels, header length, `Other` rejection, preview safety, answer normalization, and the text the model finally sees |
+| `test/agent-loop.test.js` | the tool loop end-to-end against a local OpenAI-compatible provider: tool call → execute → result → answer, round limit, cancellation, tools offered per mode |
+| `test/hook-wiring.test.js` | hook events actually wired into the loop: `ask` becomes `allow` only through `PermissionRequest`, denial writes nothing, a missing approval client denies instead of waiting |
+| `test/subagents-api.test.js` | subagent runs through the real server: `subagent` SSE events, child tool tagging, mode never looser than the parent |
+| `test/port-helper.test.js` | `pickFreePort` skips ports that are already answering (including the Windows case where a neighbour listens on `::` only, so an IPv4 bind still "succeeds") |
 
 ## Wiring
 

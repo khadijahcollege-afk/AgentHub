@@ -144,7 +144,9 @@ Agents driving the app do not have to guess. The contract is served over HTTP:
 | `GET /api/usage` | aggregate token usage per engine |
 | `GET/POST /api/tunnel` | optional cloudflared quick-tunnel: status, start, stop |
 | `GET /api/files?cwd=&q=` | read-only folder listing that powers `@` autocomplete |
-| `POST /api/threads/:id/stop` | stop the active run; always `200`, idempotent |
+| `POST /api/threads/:id/stop` | stop the active run; always `200`, idempotent, releases any prompt waiting for an answer |
+| `GET/POST /api/threads/:id/approvals` | prompts waiting for a human: permissions (`allow`/`deny`) and questions (`answered`/`reject`); readable after a reload |
+| `GET/DELETE /api/permissions` | per-folder "always allow in this folder" rules; write tools only |
 | `GET/POST /api/schedules`, `POST/DELETE /api/schedules/:id(/run)` | jadwal prompt berulang: buat, aktifkan, jalankan sekarang, hapus |
 | `GET /api/backup` · `POST /api/restore` | ekspor semua data ke satu JSON | `GET /api/threads/:id/stats`  pulihkan (config/token tidak ikut) |
 | `GET /api/threads/:id/stats` | statistik sesi: pesan, token per jenis, blok konteks (batas model dari katalog, %, cache hit rate) |
@@ -208,6 +210,37 @@ queued when two actions race). Native `confirm()`/`prompt()` are banned by a
 static test because Electron and embedded webviews block them — and an agent
 driving the UI through CDP could not answer them. The active dialog is visible in
 `window.__ahState().dialog`, so automation can wait for it, fill it, and confirm.
+
+## The agent acts, and asks before it does
+
+A run is a real tool loop, not a single completion: the model is given eight
+built-in tools (read, write, edit, delete, list, grep, run a command, ask a
+question), calls them, sees the results, and continues until it is finished or
+hits the round limit. Nine events (`PreToolUse`, `PostToolUse`,
+`UserPromptSubmit`, `PermissionRequest`, `SessionStart`, `SessionEnd`,
+`SubagentStart`, `SubagentStop`, `Notification`) let a project script inspect,
+rewrite, or refuse any of it — but a hook can only ever *widen* `ask` to
+`allow`; it can never open `plan`.
+
+Permission modes decide what needs a human: `plan` reads only, `build` asks
+before writing, `edit` writes freely but asks before commands, `guarded` asks
+only for dangerous commands, `yolo` never asks. When a mode says *ask*, the run
+genuinely stops. The question appears as a card above the composer and every
+request is guaranteed to end — by an answer, by a timeout (3 minutes for
+permission, 10 for a question), by Stop, or by process shutdown. A request that
+is waiting survives a page reload: closing the tab no longer aborts it, and a
+new tab fetches the card again from `GET /api/threads/:id/approvals`.
+
+`AskUserQuestion` is the tool for decisions that must not be guessed: 1–4
+questions, 2–4 options each, single or multi-select, plus a free-text box. It is
+validated before a card is ever built, because half a card is worse than a clear
+error. It is never auto-approved — not even in `yolo` — since without a human it
+would only wait ten minutes and then fail. "Always allow in this folder" is
+offered for file writes only; one harmless command does not make the next one
+safe.
+
+Every agent turn also snapshots the files it is about to change, so a single
+step can be undone without touching git staging.
 
 ## Privacy & security
 

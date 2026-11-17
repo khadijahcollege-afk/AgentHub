@@ -51,6 +51,7 @@ import * as hooks from './lib/hooks.js';
 import * as checkpoints from './lib/checkpoints.js';
 import * as instructionsLib from './lib/instructions.js';
 import * as pluginsLib from './lib/plugins.js';
+import * as approvals from './lib/approvals.js';
 import { toolSummary, PERMISSION_MODES, normalizeMode } from './lib/tools.js';
 
 // Nilai `permission` yang diterima dari UI. Nama lama (ask/edits/full) tetap sah
@@ -323,6 +324,12 @@ function summarizeToolInput(input) {
   const out = {};
   for (const [key, value] of Object.entries(input)) {
     if (key === 'content' || key === 'old' || key === 'new') { out[key] = `(${String(value ?? '').length} karakter)`; continue; }
+    if (key === 'questions') {
+      // Kartu pertanyaan dirender dari payload persetujuan, bukan dari ringkasan
+      // chip tool; di sini cukup jumlahnya supaya chip tidak membawa teks panjang.
+      out[key] = Array.isArray(value) ? `${value.length} pertanyaan` : value;
+      continue;
+    }
     out[key] = typeof value === 'string' ? value.slice(0, 200) : value;
   }
   return out;
@@ -1690,7 +1697,15 @@ ${msgs || '<p class="meta">Percakapan kosong.</p>'}
     // datang, sehingga chip lampiran dan status "mengirim" terlihat menggantung
     // selama engine CLI yang lambat start.
     res.write(': connected\n\n');
-    const send = (obj) => res.write(`data: ${JSON.stringify(obj)}\n\n`);
+    res.write(': connected\n\n');
+    const send = (obj) => {
+      // Klien bisa sudah pergi (tab ditutup, halaman dimuat ulang) sementara
+      // run masih berjalan. Menulis ke respons yang sudah tertutup bukan alasan
+      // untuk melempar: run-nya justru harus tetap selesai dan menyimpan
+      // pesannya, supaya halaman berikutnya melihat hasilnya.
+      if (res.writableEnded || res.destroyed) return;
+      try { res.write(`data: ${JSON.stringify(obj)}\n\n`); } catch { /* klien hilang */ }
+    };
 
     // Client putus (tab ditutup / jaringan hilang) → hentikan proses agar tidak
     // menggantung 10 menit dan tidak menahan thread dalam status running.
@@ -1698,7 +1713,30 @@ ${msgs || '<p class="meta">Percakapan kosong.</p>'}
     // dibaca, yang akan membatalkan setiap run tepat setelah dimulai.
     const ctrl = new AbortController();
     const unregister = runs.registerStop(m[1], () => ctrl.abort());
-    res.on('close', () => { if (!res.writableEnded) ctrl.abort(); });
+    res.on('close', () => {
+      if (res.writableEnded) return;
+      // KECUALI bila run sedang menunggu jawaban manusia. Melempar di sini
+      // membuat kartu pertanyaan mati bersama tab: pengguna yang memuat ulang
+      // halaman melihat run yang hilang, padahal ia baru saja hendak menjawab.
+      // ZCode menyebut pending prompt sebagai state sesi yang bisa dipulihkan;
+      // batas waktunya (3 menit izin, 10 menit pertanyaan) yang menjamin run
+      // ini tetap berakhir walau tidak ada yang kembali.
+      if (approvals.list(m[1]).length) return;
+      ctrl.abort();
+    });
+
+    // Klien persetujuan untuk run ini. `ask` berhenti di sini dan menunggu
+    // jawaban dari kartu di UI, bukan ditolak seperti jalur headless. Payloadnya
+    // ikut mengalir lewat SSE yang sama supaya run tidak perlu koneksi kedua.
+    //
+    // Permintaan yang menunggu juga disiarkan sebagai event tersendiri: kartu
+    // harus bisa digambar ulang setelah halaman di-refresh, dan run yang
+    // menunggu tidak mengirim apa pun selain event ini.
+    const approvalClient = approvals.createClient({
+      threadId: m[1],
+      signal: ctrl.signal,
+      notify: (req) => send({ type: 'approval', ...req }),
+    });
 
     try {
       let acc = '';
@@ -1737,6 +1775,7 @@ ${msgs || '<p class="meta">Percakapan kosong.</p>'}
         permission: PERMISSION_INPUTS.includes(b.permission) ? b.permission : undefined,
         useTools,
         signal: ctrl.signal,
+        approvals: approvalClient,
         // Event tool diteruskan apa adanya ke UI: pengguna harus bisa melihat
         // tool apa yang dipanggil dan apakah ditolak, bukan hanya "Working".
         onEvent: (evt) => {
@@ -1838,13 +1877,45 @@ ${msgs || '<p class="meta">Percakapan kosong.</p>'}
 
   // hentikan run yang sedang berjalan di sebuah thread (idempoten)
   if ((m = p.match(/^\/api\/threads\/([a-f0-9]+)\/stop$/)) && method === 'POST') {
+    // Permintaan yang menunggu jawaban dilepas LEBIH DULU, sebelum abort.
+    // Abort juga menyelesaikannya, tetapi sebagai "run dihentikan" tanpa
+    // menyebut apa yang ditunggu; melepas di sini memberi alasan yang benar dan
+    // jumlah yang bisa dilaporkan ke UI.
+    const released = approvals.cancelThread(m[1], 'Run dihentikan sebelum dijawab');
     const n = runs.stop(m[1]);
     const t = threads.getThread(m[1]);
     // Run yang tercatat running tetapi prosesnya sudah tidak ada (mis. sisa
     // crash) juga disembuhkan di sini, bukan dibiarkan "Working" selamanya.
     if (t && (t.runState === 'running' || t.running)) runs.finish(m[1], 'stopped');
     if (t) broadcast('threads');
-    return sendJson(res, 200, { ok: true, stopped: n });
+    return sendJson(res, 200, { ok: true, stopped: n, released });
+  }
+
+  // Permintaan yang masih menunggu di sebuah thread. Dipakai UI setelah halaman
+  // dimuat ulang / dibuka di perangkat lain: kartu persetujuan dan pertanyaan
+  // harus muncul kembali tanpa menunggu run mengirim event baru.
+  if ((m = p.match(/^\/api\/threads\/([a-f0-9]+)\/approvals$/)) && method === 'GET') {
+    return sendJson(res, 200, { requests: approvals.list(m[1]) });
+  }
+
+  // Jawaban untuk satu permintaan: izin (allow/deny) atau pertanyaan
+  // (answered/reject). `requestId` acak dan terikat ke thread, jadi menebak id
+  // tidak cukup untuk menjawab permintaan thread lain.
+  if ((m = p.match(/^\/api\/threads\/([a-f0-9]+)\/approvals\/([a-f0-9]+)$/)) && method === 'POST') {
+    const b = await readBody(req);
+    const r = approvals.resolve(m[1], m[2], b);
+    if (!r.ok) return sendJson(res, r.status || 400, { error: r.error, code: r.code });
+    broadcast('threads');
+    return sendJson(res, 200, { ok: true, decision: r.decision });
+  }
+
+  // Aturan "selalu bolehkan di folder ini" yang tersimpan.
+  if (p === '/api/permissions' && method === 'GET') {
+    return sendJson(res, 200, { rules: approvals.listRules(), canRemember: ['write_file', 'edit_file', 'delete_file'] });
+  }
+  if (p === '/api/permissions' && method === 'DELETE') {
+    const b = await readBody(req);
+    return sendJson(res, 200, { ok: approvals.clearRules(b.cwd) });
   }
 
   // delegasi: satu prompt → banyak agent paralel (SSE)
@@ -2417,6 +2488,10 @@ async function main() {
 
 // tunnel tidak boleh ditinggal hidup setelah server mati
 process.on('exit', () => { try { stopTunnel(); } catch { /* abaikan */ } });
+// Permintaan yang menunggu jawaban dipegang oleh promise di memori. Saat proses
+// berhenti, lepaskan semuanya supaya tidak ada tool yang menggantung sampai
+// batas waktunya habis di proses yang sudah tidak ada.
+process.on('exit', () => { try { approvals.cancelAll('Server berhenti'); } catch { /* abaikan */ } });
 
 main().catch((e) => {
   console.error(e);

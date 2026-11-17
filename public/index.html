@@ -177,6 +177,11 @@
           </div>
           <div id="chat-messages" class="chat-messages hidden"></div>
           <div id="chat-subs" class="chat-subs hidden"></div>
+          <!-- Tepat di atas composer: kartu ini adalah satu-satunya hal yang bisa
+               menggerakkan run, jadi ia tidak boleh tergulung jauh dari tombol
+               kirim. Isi yang panjang digulung DI DALAM kartu (lihat .ask-body),
+               bukan dengan mendorong composer keluar layar. -->
+          <div id="chat-asks" class="chat-asks hidden"></div>
           <div id="bottom-composer-slot" class="bottom-slot"></div>
         </div>
         <section id="terminal-panel" class="terminal-panel hidden" aria-label="Terminal proyek">

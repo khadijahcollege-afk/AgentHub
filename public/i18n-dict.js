@@ -840,4 +840,22 @@ export const EN = {
   'Isi path marketplace dulu': 'Enter the marketplace path first',
   'Setujui plugin': 'Approve plugin',
   'Data plugin disimpan supaya bisa dipakai lagi saat dipasang ulang.': 'Plugin data is kept so it can be reused if you reinstall it.',
+
+  // --- permintaan izin & pertanyaan agent ---
+  'Agent bertanya': 'The agent is asking',
+  'Lewati': 'Skip',
+  'Kirim jawaban': 'Send answer',
+  'Mengirim…': 'Sending…',
+  'Lainnya': 'Other',
+  'Tulis jawaban sendiri': 'Write your own answer',
+  'Jawaban Anda…': 'Your answer…',
+  'Kosongkan yang tidak ingin dijawab.': 'Leave blank anything you would rather not answer.',
+  'Butuh izin': 'Needs permission',
+  'Tolak': 'Deny',
+  'Selalu di folder ini': 'Always in this folder',
+  'Izinkan': 'Allow',
+  'berisiko tinggi': 'high risk',
+  'mengubah data': 'changes data',
+  'boleh lebih dari satu': 'more than one allowed',
+  'Mode': 'Mode',
 };

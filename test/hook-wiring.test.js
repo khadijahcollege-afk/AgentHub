@@ -78,11 +78,41 @@ test('mode plan tidak bisa dibuka oleh PermissionRequest', async () => {
   assert.equal(fs.existsSync(path.join(repo, 'plan.txt')), false);
 });
 
-test('tanpa hook izin, keputusan ask tetap ask', async () => {
+test('tanpa klien persetujuan, ask dijalankan sebagai penolakan beralasan', async () => {
   fs.writeFileSync(path.join(dir, 'hooks.json'), JSON.stringify({ enabled: true, events: {} }));
   const r = await tools.executeTool('write_file', { path: 'tetap.txt', content: 'x' }, { cwd: repo, mode: 'build' });
   assert.equal(r.ok, false);
-  assert.equal(r.decision, 'ask');
+  // `decide()` mengembalikan `ask`; `executeTool` yang tahu tidak ada manusia
+  // di jalur ini (CLI/API langsung) lalu menolaknya dengan alasan. Menunggu
+  // selamanya di sini akan menggantung proses tanpa siapa pun untuk menjawab.
+  assert.equal(r.decision, 'deny');
+  assert.match(r.reason, /Tidak ada klien persetujuan/);
+  assert.equal(fs.existsSync(path.join(repo, 'tetap.txt')), false);
+});
+
+test('dengan klien persetujuan, ask benar-benar menunggu jawaban pengguna', async () => {
+  fs.writeFileSync(path.join(dir, 'hooks.json'), JSON.stringify({ enabled: true, events: {} }));
+  const approvals = await import('../lib/approvals.js');
+  const noted = [];
+  const client = approvals.createClient({
+    threadId: 'abcd1234',
+    notify: (req) => {
+      noted.push(req);
+      // Jawab seolah pengguna menekan "Izinkan" setelah kartunya muncul.
+      setImmediate(() => approvals.resolve('abcd1234', req.requestId, { decision: 'allow' }));
+    },
+  });
+  const r = await tools.executeTool(
+    'write_file',
+    { path: 'tunggu.txt', content: 'dari persetujuan' },
+    { cwd: repo, mode: 'build', client },
+  );
+  assert.equal(noted.length, 1, 'kartu izin muncul satu kali');
+  assert.equal(noted[0].kind, 'permission');
+  assert.equal(noted[0].tool, 'write_file');
+  assert.equal(r.ok, true);
+  assert.equal(r.decision, 'allow');
+  assert.equal(fs.readFileSync(path.join(repo, 'tunggu.txt'), 'utf8'), 'dari persetujuan');
 });
 
 test('UserPromptSubmit: allow meneruskan prompt apa adanya', async () => {
