@@ -3104,3 +3104,23 @@ input, select, textarea { border-radius: 10px; }
 .seg-btn { border-radius: 8px; }
 .ask-input, .ask-opt { border-radius: 10px; }
 .kcol-head .add { border-radius: 9px; }
+
+/* ---------- tema OLED: hitam pekat hemat layar ---------- */
+html[data-theme="oled"] { --bg: #000; --rail: rgba(0, 0, 0, .92); --side: rgba(0, 0, 0, .92); }
+html[data-theme="oled"] #app.layout { background: #000; }
+html[data-tl="1"][data-theme="oled"] #app.layout { background: rgba(0, 0, 0, calc(1 - (1 - var(--t-content, 1)) * .85)); }
+html[data-theme="oled"] .rail { background: rgba(0, 0, 0, .92); }
+html[data-theme="oled"] .sidebar { background: #000; }
+html[data-theme="oled"] .stat-card, html[data-theme="oled"] .panel,
+html[data-theme="oled"] .set-card, html[data-theme="oled"] .ap-block,
+html[data-theme="oled"] .pill-main, html[data-theme="oled"] .pop,
+html[data-theme="oled"] .dialog-card, html[data-theme="oled"] .msg { background: #0a0a0b; border-color: #1c1c20; }
+html[data-theme="oled"] .toast { background: #0a0a0b; }
+
+/* ---------- preview kartu tema baru ---------- */
+.theme-prev.glass { background: linear-gradient(135deg, #26262c 0%, #1a1a1f 55%, #2c3444 100%); }
+.theme-prev.glass i { background: rgba(255, 255, 255, .38); }
+.theme-prev.glass u { background: rgba(255, 255, 255, .16); }
+.theme-prev.oled { background: #000; border-color: #222226; }
+.theme-prev.oled i { background: #232327; }
+.theme-prev.oled u { background: #141417; }

@@ -6492,6 +6492,8 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
   const THEMES = [
     ['dark', 'Gelap', '<div class="theme-prev dark"><i></i><u></u></div>'],
     ['light', 'Terang', '<div class="theme-prev light"><i></i><u></u></div>'],
+    ['glass', 'Kaca', '<div class="theme-prev glass"><i></i><u></u></div>'],
+    ['oled', 'OLED', '<div class="theme-prev oled"><i></i><u></u></div>'],
     ['system', 'Sistem', '<div class="theme-prev system"><i></i><u></u></div>'],
   ];
   function sysLight() {
@@ -6499,10 +6501,24 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
   }
   function applyTheme() {
     const pref = localStorage.getItem('ah_theme') || 'dark';
-    const eff = pref === 'system' ? (sysLight() ? 'light' : 'dark') : pref;
+    const eff = pref === 'system' ? (sysLight() ? 'light' : 'dark') : (pref === 'glass' || pref === 'oled' ? 'dark' : pref);
     document.documentElement.dataset.theme = eff;
-    $$('#theme-cards .theme-card').forEach((c) => c.classList.toggle('active', c.dataset.theme === pref));
-    $$('#acct-theme-label').forEach((el) => { el.textContent = pref === 'system' ? 'Sistem' : (pref === 'light' ? 'Terang' : 'Gelap'); });
+    // Kaca = gelap + translucensi dipaksa menyala; beralih tema lain ->
+    // kembalikan kendali translucensi ke preferensi pengguna.
+    if (pref === 'glass') {
+      document.documentElement.dataset.tl = '1';
+      const v = apLoad();
+      document.documentElement.style.setProperty('--t-side', v.sidebar / 100);
+      document.documentElement.style.setProperty('--t-content', v.content / 100);
+      document.documentElement.style.setProperty('--t-surface', v.surface / 100);
+    } else if (localStorage.getItem('ah_theme') !== 'glass') {
+      apApply();
+    }
+    $('#theme-cards .theme-card').forEach((c) => c.classList.toggle('active', c.dataset.theme === pref));
+    $('#acct-theme-label').forEach((el) => {
+      el.textContent = pref === 'system' ? 'Sistem' : pref === 'light' ? 'Terang'
+        : pref === 'glass' ? 'Kaca' : pref === 'oled' ? 'OLED' : 'Gelap';
+    });
   }
   function renderThemeCards() {
     const host = $('#theme-cards');
@@ -6547,10 +6563,15 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
   applyChatWidth();
   const ACCENTS = [
     ['#4f8cff', 'Biru (bawaan)'],
+    ['#22d3ee', 'Cyan'],
+    ['#2dd4bf', 'Teal'],
     ['#3ecf8e', 'Hijau'],
-    ['#a78bfa', 'Ungu'],
-    ['#f5567b', 'Merah'],
+    ['#a3e635', 'Lime'],
+    ['#fbbf24', 'Amber'],
     ['#ef7d45', 'Oranye'],
+    ['#f5567b', 'Rose'],
+    ['#a78bfa', 'Ungu'],
+    ['#f472b6', 'Pink'],
   ];
   function applyAccent(color) {
     if (color) document.documentElement.style.setProperty('--accent', color);
@@ -8211,12 +8232,13 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
       .catch(() => toast(`ID perangkat: ${id}`, 6000));
   });
   $('#acct-theme').addEventListener('click', () => {
-    const order = ['dark', 'light', 'system'];
+    const order = ['dark', 'glass', 'oled', 'light', 'system'];
+    const labels = { dark: 'gelap', glass: 'kaca', oled: 'OLED', light: 'terang', system: 'ikuti sistem' };
     const cur = localStorage.getItem('ah_theme') || 'dark';
     const next = order[(order.indexOf(cur) + 1) % order.length];
     localStorage.setItem('ah_theme', next);
     applyTheme();
-    toast('Mode tampilan: ' + (next === 'system' ? 'ikuti sistem' : next === 'light' ? 'terang' : 'gelap'));
+    toast('Mode tampilan: ' + labels[next]);
   });
   $('#acct-usage').addEventListener('click', () => { setLayer(null); $('#rail-usage').click(); });
   $('#acct-upgrade').addEventListener('click', () => { setLayer(null); go('promo'); });
