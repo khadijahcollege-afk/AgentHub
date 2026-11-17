@@ -1,5 +1,70 @@
 # Changelog
 
+## 1.7.4 — 2026-11-17
+Antrean pesan yang tidak pernah membuang ketikan, kiriman yang aman diulang, dan
+muatan thread yang tidak lagi menenggelamkan HP.
+
+Sampai 1.7.3, menekan kirim saat run masih berjalan berarti kehilangan teks.
+Server menolak dengan `409 RUN_IN_PROGRESS` — benar bagi pemanggil API, tetapi bagi
+pengguna itu pesan yang ia ketik lenyap tanpa jejak. Yang diambil dari ZCode
+(`docs/web-remote-control-task-command-queue.md`,
+`docs/web-remote-control/snapshot-byte-budget.md`) adalah semantiknya; kanal chat
+pihak ketiga (Telegram/Feishu/Weixin), token bot, polling, dan kartu pesan tidak
+diambil karena aplikasi ini tidak punya bot.
+
+- **Antrean pesan milik server** (`lib/queue.js`, `GET|POST /api/threads/:id/queue`)
+  — FIFO ketat, disimpan di `queue.json`, bertahan saat halaman dimuat ulang dan
+  terlihat sama dari tab mana pun. Kirim saat run berjalan masuk antrean; pesan
+  dijalankan sendiri begitu run sebelumnya selesai. Batas 20 pesan per thread dan
+  16.000 karakter per pesan: antrean ini untuk beberapa pesan lanjutan, bukan
+  tempat menumpuk pekerjaan semalam.
+- **`reserve → mulai → commit`** — item TIDAK hilang saat diambil. Hanya setelah
+  run-nya benar-benar dimulai (`runs.begin` berhasil) item dihapus lewat `commit`.
+  Bila start gagal (thread hilang, validasi, hook menolak), `release` mengembalikan
+  item ke posisinya dengan isi utuh. Menghapus di awal berarti kehilangan pesan
+  yang tidak pernah dijalankan. Reservasi kedaluwarsa sendiri
+  (`RESERVE_TTL_MS = 20000`), jadi tab yang mati di tengah pengambilan tidak
+  membekukan antrean.
+- **Penguras yang jalan dari SEMUA akhir run** — `runs.onIdle(fn)` dipanggil dari
+  `finish()` setelah state ditulis, bukan dari empat tempat pemanggilan `finish`
+  yang berbeda. Dengan begitu antrean tetap terkuras pada jalur `done`, `error`,
+  `stopped`, dan pemulihan sesudah crash. Antrean yang tertinggal dari proses
+  sebelumnya juga dikuras saat server mulai.
+- **Idempotensi kiriman** (`lib/inputs.js`) — klien mengirim `clientCommandId`
+  pada setiap `/send`, dan klaim disimpan SEBELUM run dimulai (`inputs.json`,
+  TTL 24 jam, 2000 entri). Percobaan ulang menjawab dari catatan
+  (`{ duplicate: true, userMessageId, ... }`) alih-alih menjalankan model dua kali.
+  Klaim dilepas (`forget`) bila run tidak jadi mulai, supaya kiriman yang sudah
+  diperbaiki bisa masuk lagi.
+- **Anggaran byte thread untuk perangkat kecil** (`lib/snapshot.js`) —
+  `?messageLimit=` dan `?byteBudget=` adalah parameter opsional; tanpa keduanya
+  respons tetap penuh, jadi desktop tidak berubah. Pemotongan dimulai dari pesan
+  assistant TERBESAR, tidak pernah menyentuh pesan user atau pesan subrun, dan
+  menyisakan pratinjau minimal 2.000 karakter. `refId` menunjuk indeks pesan ASLI,
+  jadi `GET …/message-body?refId=` tidak pernah salah pesan. Anggaran dijepit
+  32 KB–2 MB dengan bawaan 200 KB.
+- **UI: baris antrean di dalam composer** — pesan yang menunggu terlihat bersama
+  tombol kirim, bukan sebagai toast yang hilang. Tombol kirim tidak pernah mati:
+  saat run berjalan ia mengantre. Hapus satu item, kosongkan antrean, dan penanda
+  "berjalan" hanya muncul untuk item yang benar-benar dipegang penguras.
+- **Tiga bug nyata yang ditemukan audit UI, bukan tes** — (1) `/stop` memanggil
+  `runs.finish` walaupun prosesnya masih hidup, sehingga `finish` berjalan dua kali
+  dan panggilan kedua mendarat setelah penguras memulai run berikutnya: run yang
+  baru berjalan normal tercatat `error`. Sekarang `/stop` hanya menyelesaikan state
+  bila tidak ada proses hidup. (2) `renderChat` menggulung `#chat-messages`, yang
+  tidak punya overflow (`scrollHeight === clientHeight`), sehingga thread panjang
+  terbuka di paling atas dengan composer ±36.000 px di bawah layar; penggulung
+  sebenarnya adalah `#chat-scroll`. (3) Tab yang tidak memulai run (dibuka ulang,
+  atau run dijalankan dari perangkat lain) tidak tahu ada run aktif, jadi
+  kirimannya ditolak `409` alih-alih masuk antrean — sekarang `RUN_IN_PROGRESS`
+  dijawab dengan mengantrekan pesan itu.
+- Regresi: `queue` (11, murni), `inputs` (10, murni), `snapshot` (11, murni),
+  `queue-api` (7, HTTP sungguhan termasuk jalur `stopped`), `send-replay` (5, HTTP)
+  — suite penuh 534 tes, semuanya lulus. Audit UI di 1440/1024/390/320 dua bahasa:
+  baris antrean di dalam pill, tidak ada teks yang meluber, tombol kirim tetap
+  hidup saat run berjalan, hapus/kosongkan sinkron ke server, thread panjang
+  terbuka di akhir, dan isi lengkap bisa dimuat ulang dengan hash yang cocok.
+
 ## 1.7.3 — 2026-11-17
 Grafik commit, pemindah cabang yang menolak membuang pekerjaan, dan patch per file
 di drawer Perubahan.

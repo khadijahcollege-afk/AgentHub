@@ -53,6 +53,9 @@ import * as compactLib from './lib/compact.js';
 import * as instructionsLib from './lib/instructions.js';
 import * as pluginsLib from './lib/plugins.js';
 import * as approvals from './lib/approvals.js';
+import * as queue from './lib/queue.js';
+import * as inputs from './lib/inputs.js';
+import * as snapshot from './lib/snapshot.js';
 import { toolSummary, PERMISSION_MODES, normalizeMode } from './lib/tools.js';
 
 // Nilai `permission` yang diterima dari UI. Nama lama (ask/edits/full) tetap sah
@@ -616,6 +619,464 @@ function serveDownload(res, filePath, downloadName) {
 }
 
 // ---------- routing ----------
+// ---------- satu badan run ----------
+// Badan satu run dipakai dua jalur: `POST /send` (klien menunggu lewat SSE)
+// dan penguras antrean (tidak ada klien yang menunggu). Keduanya WAJIB
+// menjalankan kode yang sama: kalau antrean punya salinan sendiri, ia akan
+// perlahan berbeda — hook, checkpoint, memori, dan ringkasan hanya ada di
+// satu jalur, dan yang ketinggalan adalah jalur yang jarang dipakai.
+//
+// `res` boleh objek tiruan (lihat antrean di bawah): yang dipakai hanya
+// `writeHead`, `write`, `end`, `on`, `writableEnded`, dan `destroyed`.
+//
+// `onStarted` dipanggil tepat setelah `runs.begin` berhasil. Penguras antrean
+// memakainya untuk menghapus item antrean: item baru boleh hilang setelah
+// run-nya benar-benar dimulai, bukan setelah permintaannya diterima.
+async function handleSend(threadId, b, res, { onStarted = null } = {}) {
+  const t = threads.getThread(threadId);
+  if (!t) return sendJson(res, 404, { error: 'Thread tidak ditemukan' });
+  const engineId = b.engine || t.engine || 'pool';
+
+  // Workspace: kiriman membawa cwd (chip folder) → dipakai & disimpan ke thread.
+  // Tanpa itu, thread memakai folder yang terakhir ia pakai, bukan folder tab lain.
+  let workspace;
+  try {
+    workspace = b.cwd ? resolveWorkspace(b.cwd) : (t.cwd ? resolveWorkspace(t.cwd) : undefined);
+  } catch (error) {
+    return sendJson(res, error.statusCode || 400, { error: error.message, code: error.code });
+  }
+
+  // Lampiran divalidasi sebelum run dimulai: id yang tidak dikenal tidak boleh
+  // meninggalkan pesan user setengah jadi di thread.
+  const ids = Array.isArray(b.attachments)
+    ? [...new Set(b.attachments.filter((x) => typeof x === 'string' && x.trim()))]
+    : [];
+  if (ids.length > MAX_ATTACHMENTS) {
+    return sendJson(res, 400, {
+      error: `Maksimal ${MAX_ATTACHMENTS} lampiran per pesan`, code: 'ATTACHMENT_LIMIT',
+    });
+  }
+  const attachments = [];
+  for (const id of ids) {
+    const meta = getUpload(id);
+    if (!meta) {
+      return sendJson(res, 400, { error: 'Lampiran tidak ditemukan atau sudah dihapus', code: 'ATTACHMENT_INVALID' });
+    }
+    attachments.push(meta);
+  }
+
+  // Catatan idempotensi. `clientCommandId` datang dari pengirim yang ingin
+  // aman terhadap pengulangan; `claim` menyimpan klaim SEBELUM run dimulai,
+  // jadi percobaan kedua tidak pernah sampai ke `runs.begin`.
+  const commandId = inputs.normalizeCommandId(b.clientCommandId);
+  if (commandId) {
+    const prior = inputs.claim(threadId, commandId, { queueItemId: b.queueItemId || null });
+    if (prior) {
+      // Sudah pernah diterima. Menjawab dari catatan, bukan menjalankan lagi:
+      // model tidak dipanggil dua kali dan percakapan tidak mendapat pesan
+      // ganda. `duplicate` memberi tahu klien bahwa ini jawaban lama.
+      return sendJson(res, 200, {
+        ok: true, duplicate: true, commandId,
+        status: prior.status,
+        userMessageId: prior.userMessageId || null,
+        acceptedAt: prior.at,
+      });
+    }
+  }
+
+  // Satu run per thread. Dua kiriman paralel (tab lain / agent) ditolak
+  // sebelum ada pesan yang ditulis, supaya urutan percakapan tidak rusak.
+  try { runs.begin(threadId); } catch (error) {
+    // Klaim yang tidak jadi dipakai harus dilepas, kalau tidak kiriman yang
+    // sama akan selamanya dianggap "sudah diterima" padahal tidak pernah jalan.
+    inputs.forget(threadId, commandId);
+    return sendJson(res, error.statusCode || 409, {
+      error: error.message, code: error.code, machine: error.machine,
+      from: error.from, to: error.to, allowed: error.allowed,
+    });
+  }
+  if (onStarted) {
+    try { onStarted(); } catch (e) { console.warn(`[send] onStarted gagal: ${e.message}`); }
+  }
+
+  const rawPrompt = String(b.prompt || '').slice(0, 16000);
+  const kind = engineType(engineId);
+  recordFeature('chat', { engine: engineId });
+  // Perintah dari plugin: `/nama argumen` diperluas menjadi isi
+  // commands/<nama>.md sebelum apa pun dikirim. Teks asli yang user ketik tetap
+  // tersimpan di thread, jadi ia melihat apa yang ia tulis — bukan instruksi
+  // panjang hasil perluasan.
+  const pluginCommand = pluginsLib.expandCommand(rawPrompt);
+  const basePrompt = pluginCommand ? pluginCommand.body : rawPrompt;
+  // CLI punya akses disk → beri path. Pool tidak → inline isi teksnya.
+  let modelPrompt = attachments.length
+    ? await augmentPrompt(basePrompt, attachments, {
+      includePaths: kind !== 'pool',
+      inlineText: kind === 'pool',
+    })
+    : basePrompt;
+  // Memori jangka panjang disuntikkan di server (bukan UI) supaya SEMUA
+  // jalur kirim — UI, API langsung, maupun agent eksternal — mendapat konteks
+  // yang sama. Prompt yang terlihat user di chat tetap tanpa blok memori.
+  if (config.memoryEnabled !== false) {
+    const mem = memory.memoryContext();
+    if (mem) modelPrompt = mem + '\n\n---\n\n' + modelPrompt;
+  }
+
+  // Instruksi tetap: AGENTS.md level user, aturan proyek, lalu instruksi
+  // thread. Ketiganya dulu tersimpan tetapi tidak pernah sampai ke model.
+  const instructions = instructionsLib.buildInstructions({ cwd: workspace, systemPrompt: t.systemPrompt });
+  if (instructions.text) modelPrompt = `${instructions.text}\n\n---\n\n${modelPrompt}`;
+
+  // UserPromptSubmit: kesempatan terakhir mengubah atau menolak prompt sebelum
+  // model melihatnya. Ditolak berarti run tidak dimulai dan pesan user tidak
+  // ditulis — supaya percakapan tidak menyimpan pertanyaan yang tak pernah dijawab.
+  let promptHook = null;
+  try {
+    promptHook = await hooks.runEvent('UserPromptSubmit', {
+      prompt: modelPrompt, raw_prompt: rawPrompt, cwd: workspace,
+    }, { cwd: workspace });
+  } catch { promptHook = null; }
+  if (promptHook?.denied) {
+    // Run tidak jadi berjalan: klaim idempotensi harus dilepas supaya kiriman
+    // dengan id yang sama (setelah pengguna memperbaiki promptnya) bisa masuk.
+    inputs.forget(threadId, commandId);
+    runs.finish(threadId, 'stopped');
+    return sendJson(res, 403, {
+      error: `Prompt ditolak hook: ${promptHook.reason || 'tanpa alasan'}`,
+      code: 'PROMPT_BLOCKED',
+    });
+  }
+  if (promptHook?.updatedInput?.prompt) modelPrompt = String(promptHook.updatedInput.prompt);
+  if (promptHook?.additionalContext) modelPrompt += `\n\n[konteks tambahan dari hook]\n${promptHook.additionalContext}`;
+
+  const userMsg = threads.appendMessage(threadId, {
+    role: 'user',
+    content: rawPrompt,
+    engine: engineId,
+    ...(attachments.length ? { attachments: attachments.map(publicUpload) } : {}),
+    // modelContent = prompt persis yang dikirim ke engine (lampiran inline
+    // + blok memori). Penting untuk audit: user melihat teks bersih,
+    // thread merekam apa yang sebenarnya diterima model.
+    ...(modelPrompt !== rawPrompt ? { modelContent: modelPrompt } : {}),
+  });
+  threads.patchThread(threadId, { engine: engineId, ...(workspace ? { cwd: workspace } : {}) });
+  // Id pesan user dicatat sekarang, saat run baru mulai: pengulangan yang
+  // datang ketika run masih berjalan bisa dijawab "sudah diterima" beserta
+  // pesan mana yang menerimanya — bukan dengan pesan ganda.
+  inputs.settle(threadId, commandId, { status: 'running', userMessageId: userMsg.id });
+  // Riwayat sebelum pesan ini; builder di harness yang memilih & membatasi.
+  const history = (threads.getThread(threadId)?.messages || []).filter((x) => x.id !== userMsg.id);
+  broadcast('threads');
+
+  res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });
+  // Flush header segera: tanpa ini fetch klien baru selesai saat token pertama
+  // datang, sehingga chip lampiran dan status "mengirim" terlihat menggantung
+  // selama engine CLI yang lambat start.
+  res.write(': connected\n\n');
+  res.write(': connected\n\n');
+  const send = (obj) => {
+    // Klien bisa sudah pergi (tab ditutup, halaman dimuat ulang) sementara
+    // run masih berjalan. Menulis ke respons yang sudah tertutup bukan alasan
+    // untuk melempar: run-nya justru harus tetap selesai dan menyimpan
+    // pesannya, supaya halaman berikutnya melihat hasilnya.
+    if (res.writableEnded || res.destroyed) return;
+    try { res.write(`data: ${JSON.stringify(obj)}\n\n`); } catch { /* klien hilang */ }
+  };
+
+  // Client putus (tab ditutup / jaringan hilang) → hentikan proses agar tidak
+  // menggantung 10 menit dan tidak menahan thread dalam status running.
+  // Pakai `res` (bukan `req`): 'close' pada req bisa menyala begitu body selesai
+  // dibaca, yang akan membatalkan setiap run tepat setelah dimulai.
+  const ctrl = new AbortController();
+  const unregister = runs.registerStop(threadId, () => ctrl.abort());
+  res.on('close', () => {
+    if (res.writableEnded) return;
+    // KECUALI bila run sedang menunggu jawaban manusia. Melempar di sini
+    // membuat kartu pertanyaan mati bersama tab: pengguna yang memuat ulang
+    // halaman melihat run yang hilang, padahal ia baru saja hendak menjawab.
+    // ZCode menyebut pending prompt sebagai state sesi yang bisa dipulihkan;
+    // batas waktunya (3 menit izin, 10 menit pertanyaan) yang menjamin run
+    // ini tetap berakhir walau tidak ada yang kembali.
+    if (approvals.list(threadId).length) return;
+    ctrl.abort();
+  });
+
+  // Klien persetujuan untuk run ini. `ask` berhenti di sini dan menunggu
+  // jawaban dari kartu di UI, bukan ditolak seperti jalur headless. Payloadnya
+  // ikut mengalir lewat SSE yang sama supaya run tidak perlu koneksi kedua.
+  //
+  // Permintaan yang menunggu juga disiarkan sebagai event tersendiri: kartu
+  // harus bisa digambar ulang setelah halaman di-refresh, dan run yang
+  // menunggu tidak mengirim apa pun selain event ini.
+  const approvalClient = approvals.createClient({
+    threadId: threadId,
+    signal: ctrl.signal,
+    notify: (req) => send({ type: 'approval', ...req }),
+  });
+
+  try {
+    let acc = '';
+    // Tool-calling hanya untuk engine pool: engine CLI mengelola tool-nya
+    // sendiri. Default aktif bila thread punya folder kerja — tanpa folder,
+    // tool berkas tidak ada gunanya dan model hanya akan membuang putaran.
+    const useTools = engineType(engineId) === 'pool'
+      && !!workspace
+      && b.tools !== false;
+
+    // Snapshot sebelum agent menyentuh berkas. Ini satu-satunya cara memulihkan
+    // hasil yang buruk tanpa ikut membuang pekerjaan pengguna yang belum
+    // di-commit. Gagal membuat snapshot tidak boleh menggagalkan run — agent
+    // hanya kehilangan kemampuan undo, bukan kemampuannya bekerja.
+    let checkpointId = null;
+    if (useTools && workspace && ['edit', 'guarded', 'yolo'].includes(normalizeMode(b.permission))) {
+      try {
+        const cp = await checkpoints.createCheckpoint(threadId, workspace, {
+          label: rawPrompt.slice(0, 80) || 'sebelum run',
+        });
+        checkpointId = cp.id;
+        send({ type: 'checkpoint', id: cp.id, files: cp.files });
+      } catch { /* bukan repo git / git tidak ada: lanjut tanpa snapshot */ }
+    }
+
+    const r = await runEngine(engineId, modelPrompt, {
+      cwd: workspace,
+      model: b.model,
+      history,
+      // Ringkasan percakapan lama (lib/compact.js): tanpa ini model hanya
+      // melihat 12 pesan terakhir dan mengulangi keputusan dari awal thread.
+      compact: t.compact || null,
+      replyLang: config.replyLang,
+      effort: ['low', 'medium', 'high'].includes(b.effort) ? b.effort : undefined,
+      // Mode izin dipakai dua kali: untuk flag CLI (nama lama ask/edits/plan
+      // dipetakan ke flag resmi tiap CLI) dan sebagai gerbang tool di server
+      // (normalizeMode memetakan ask→build, edits→edit, full→yolo). Keduanya
+      // menerima nilai mentah supaya pemetaan CLI tidak ikut berubah.
+      permission: PERMISSION_INPUTS.includes(b.permission) ? b.permission : undefined,
+      useTools,
+      signal: ctrl.signal,
+      approvals: approvalClient,
+      // Event tool diteruskan apa adanya ke UI: pengguna harus bisa melihat
+      // tool apa yang dipanggil dan apakah ditolak, bukan hanya "Working".
+      onEvent: (evt) => {
+        // Event milik subagent ikut ditandai `subagent`/`agentId`: UI
+        // menampilkannya di baris anak, bukan mencampurnya dengan tool induk.
+        const child = evt?.subagent ? { subagent: evt.subagent, agentId: evt.agentId } : {};
+        if (evt?.type === 'tools') send({ type: 'tools', names: evt.names, ...child });
+        else if (evt?.type === 'subagent') {
+          send({
+            type: 'subagent',
+            phase: evt.phase,
+            agentType: evt.subagent,
+            agentId: evt.agentId,
+            description: String(evt.description || '').slice(0, 120),
+            ok: evt.ok,
+            ms: evt.durationMs,
+            tokens: evt.tokens,
+            toolUses: evt.toolUses,
+            error: evt.error ? String(evt.error).slice(0, 200) : null,
+          });
+        } else if (evt?.type === 'tool_start') send({ type: 'tool', phase: 'start', name: evt.name, decision: evt.decision, reason: evt.reason, input: summarizeToolInput(evt.input), ...child });
+        else if (evt?.type === 'tool_result') send({ type: 'tool', phase: 'result', name: evt.name, ok: evt.ok, ms: evt.ms, preview: String(evt.text || '').slice(0, 400), ...child });
+      },
+      onDelta: (chunk) => {
+        acc += chunk;
+        if (acc.length < 200000) send({ type: 'delta', text: chunk });
+      },
+    });
+    if (!acc.trim()) { acc = r.text; send({ type: 'delta', text: r.text }); }
+    threads.appendMessage(threadId, {
+      role: 'assistant',
+      engine: engineId,
+      content: acc.slice(0, 200000),
+      ms: r.ms,
+      servedBy: r.servedBy,
+      model: r.model,
+      tokens: r.tokens || null,
+      usage: r.usage || null,
+      runStatus: 'done',
+      ...(r.tools?.length ? { tools: r.tools.map((t) => ({ name: t.name, ok: t.ok, decision: t.decision })) } : {}),
+      // Id snapshot dikirim ke UI supaya tombol "Pulihkan" pada pesan ini tahu
+      // keadaan mana yang harus dikembalikan.
+      ...(checkpointId ? { checkpointId } : {}),
+    });
+    // Pemakaian nyata lewat gateway mengurangi saldo promo bila modelnya
+    // termasuk plan (GLM-5.3 / GLM-5.3-Flash) dan tiket sedang aktif.
+    if (r.tokens) {
+      try { recordUsage(loadPass(), r.model, r.tokens); } catch { /* statistik tidak boleh menggagalkan run */ }
+    }
+    runs.finish(threadId, 'done');
+    inputs.settle(threadId, commandId, { status: 'done', userMessageId: userMsg.id });
+    broadcast('threads');
+    // Ekstraksi memori otomatis: hanya bila diaktifkan, hanya setelah run
+    // sukses, dan tidak ditunggu — pengguna sudah menerima jawabannya.
+    if (config.memoryEnabled !== false && config.memoryAutoExtract === true) {
+      try {
+        const full = threads.getThread(threadId);
+        const cursor = memoryExtract.extractStatus(threadId)?.cursor || null;
+        memoryExtract.schedule({
+          threadId: threadId,
+          thread: full,
+          enabled: true,
+          cursor,
+          runStatus: 'done',
+          model: b.model || 'auto',
+          onDone: (rec) => {
+            if (rec?.added) {
+              broadcast('memory');
+              toast('Memori diperbarui', `${rec.added} fakta baru dari percakapan ini`);
+            }
+          },
+        });
+      } catch { /* ekstraksi tidak boleh menyentuh run yang sudah selesai */ }
+    }
+    // Ringkasan konteks otomatis: hanya bila diaktifkan, hanya setelah run
+    // sukses, dan tidak ditunggu. Bila dibiarkan mati (bawaan), percakapan
+    // panjang tetap memakai jendela 12 pesan — perilaku lama, tanpa biaya
+    // panggilan model tambahan.
+    if (config.compactAuto === true) {
+      scheduleCompact(threadId, b.model || 'auto');
+    }
+    // run panjang selesai → beri tahu lewat notifikasi Windows
+    if (r.ms > 15000) {
+      const t = threads.getThread(threadId);
+      toast('Run selesai', `${(t?.title || 'Thread').slice(0, 60)} · ${Math.round(r.ms / 1000)} detik`);
+    }
+    send({ type: 'done', ms: r.ms, servedBy: r.servedBy });
+  } catch (e) {
+    const stopped = e.name === 'AbortError' || ctrl.signal.aborted;
+    threads.appendMessage(threadId, {
+      role: 'assistant',
+      engine: engineId,
+      content: stopped ? 'Dihentikan.' : `Gagal: ${e.message}`,
+      runStatus: stopped ? 'stopped' : 'error',
+    });
+    runs.finish(threadId, stopped ? 'stopped' : 'error', { error: stopped ? null : e.message });
+    inputs.settle(threadId, commandId, {
+      status: stopped ? 'stopped' : 'error',
+      userMessageId: userMsg.id,
+    });
+    broadcast('threads');
+    send(stopped
+      ? { type: 'stopped', message: 'Run dihentikan' }
+      : { type: 'error', message: String(e.message || e) });
+  } finally {
+    unregister();
+    broadcast('threads');
+  }
+  return res.end();
+}
+
+// ---------- penguras antrean ----------
+// Satu-satunya tempat yang memindahkan antrean ke run. Dipanggil dari
+// `runs.onIdle` — jadi ia jalan untuk SEMUA akhir run (done, error, stopped,
+// pulih-sesudah-crash), bukan hanya jalur sukses.
+//
+// Urutannya mengikuti spec ZCode dan sengaja tidak dibalik:
+//   reserve → mulai run → commit (hapus item) setelah run benar-benar mulai
+// Kalau `commit` didahulukan lalu start gagal, pesan yang tidak pernah
+// dijalankan sudah hilang dari antrean dan tidak ada lagi yang bisa
+// memperbaikinya.
+let draining = new Set();
+
+// Respons tiruan untuk run tanpa klien. Saat antrean menjalankan sebuah pesan,
+// tidak ada tab yang menunggu SSE-nya — tetapi run-nya tetap harus bisa
+// menyiarkan hal yang MEMBUTUHKAN manusia: kartu persetujuan dan pertanyaan.
+// Tanpa ini, run hasil antrean yang berhenti di `ask` akan menunggu 3 menit
+// tanpa ada yang tahu ada yang harus dijawab.
+function headlessRes() {
+  const rec = { status: 0, json: null, writableEnded: false, destroyed: false };
+  return {
+    get writableEnded() { return rec.writableEnded; },
+    get destroyed() { return rec.destroyed; },
+    get status() { return rec.status; },
+    get json() { return rec.json; },
+    writeHead(status) { rec.status = Number(status) || 0; },
+    write(chunk) {
+      const text = String(chunk || '');
+      if (!text.startsWith('data: ')) return true;
+      try {
+        const evt = JSON.parse(text.slice(6));
+        if (evt && evt.type === 'approval') broadcast('threads');
+      } catch { /* bukan JSON: chunk pembuka */ }
+      return true;
+    },
+    end(body) {
+      rec.writableEnded = true;
+      if (typeof body === 'string') {
+        try { rec.json = JSON.parse(body); } catch { /* bukan JSON */ }
+      }
+    },
+    on() {},
+    once() {},
+  };
+}
+
+async function drainQueue(threadId) {
+  if (draining.has(threadId)) return;
+  // Thread yang masih menunggu jawaban manusia tidak boleh didorong: item
+  // berikutnya akan menumpuk di atas run yang belum selesai.
+  if (runs.isActive(threadId) || approvals.list(threadId).length) return;
+  if (!queue.count(threadId)) return;
+
+  draining.add(threadId);
+  try {
+    let reserved;
+    try {
+      reserved = queue.reserve(threadId);
+    } catch (error) {
+      // QUEUE_EMPTY / QUEUE_RESERVED bukan kegagalan: antrean memang belum
+      // bisa dilanjutkan sekarang. Percobaan berikutnya terjadi pada akhir run
+      // selanjutnya, atau saat pengguna menekan tombol jalankan.
+      if (error.code !== 'QUEUE_EMPTY') console.warn(`[queue] ${threadId}: ${error.message}`);
+      return;
+    }
+
+    const item = reserved.item;
+    const res = headlessRes();
+    let started = false;
+    try {
+      await handleSend(threadId, {
+        prompt: item.prompt,
+        attachments: item.attachments,
+        engine: item.engine || undefined,
+        model: item.model || undefined,
+        cwd: item.cwd || undefined,
+        effort: item.effort || undefined,
+        permission: item.permission || undefined,
+        clientCommandId: item.clientCommandId,
+      }, res, {
+        onStarted: () => {
+          started = true;
+          try { queue.commit(threadId, reserved.reservationId); } catch (e) {
+            console.warn(`[queue] commit gagal: ${e.message}`);
+          }
+          broadcast('threads');
+        },
+      });
+    } catch (error) {
+      console.warn(`[queue] run antrean gagal: ${error.message}`);
+    } finally {
+      // Start gagal (thread hilang, validasi, atau runs.begin menolak) → item
+      // kembali ke tempatnya dengan isi utuh, supaya pengguna melihat pesannya
+      // masih ada dan bisa memutuskan sendiri.
+      if (!started) {
+        try { queue.release(threadId, reserved.reservationId); } catch { /* sudah hilang */ }
+        broadcast('threads');
+      }
+    }
+  } finally {
+    draining.delete(threadId);
+  }
+}
+
+runs.onIdle((threadId) => {
+  // Digeser ke tick berikutnya: `finish()` belum kembali saat pendengar
+  // dipanggil, dan memulai run baru di tengah penyelesaian run lama membuat
+  // urutan siaran SSE sulit dibaca (UI sempat melihat dua status hidup).
+  setImmediate(() => { drainQueue(threadId).catch(() => {}); });
+});
+
 async function route(req, res) {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
@@ -1341,7 +1802,17 @@ ${msgs || '<p class="meta">Percakapan kosong.</p>'}
   if ((m = p.match(/^\/api\/threads\/([a-f0-9]+)$/))) {
     if (method === 'GET') {
       const t = threads.getThread(m[1]);
-      return t ? sendJson(res, 200, t) : sendJson(res, 404, { error: 'Thread tidak ditemukan' });
+      if (!t) return sendJson(res, 404, { error: 'Thread tidak ditemukan' });
+      // Perangkat kecil boleh meminta versi ringkas: `?messageLimit=` membatasi
+      // jumlah pesan, `?byteBudget=` memotong isi pesan raksasa menjadi pratinjau
+      // ber-`refId`. Tanpa parameter ini responsnya penuh seperti sebelumnya, jadi
+      // perilaku desktop tidak berubah.
+      const messageLimit = Number(url.searchParams.get('messageLimit')) || 0;
+      const byteBudget = Number(url.searchParams.get('byteBudget')) || 0;
+      const payload = (messageLimit || byteBudget)
+        ? snapshot.applyLimits(t, { messageLimit, byteBudget })
+        : t;
+      return sendJson(res, 200, payload);
     }
     if (method === 'POST') {
       // patch terbatas: judul, pin, dan folder kerja (bukan pesan/meta run — itu milik run)
@@ -1744,302 +2215,7 @@ ${msgs || '<p class="meta">Percakapan kosong.</p>'}
 
   // kirim prompt: respons SSE (delta / done / error)
   if ((m = p.match(/^\/api\/threads\/([a-f0-9]+)\/send$/)) && method === 'POST') {
-    const b = await readBody(req);
-    const t = threads.getThread(m[1]);
-    if (!t) return sendJson(res, 404, { error: 'Thread tidak ditemukan' });
-    const engineId = b.engine || t.engine || 'pool';
-
-    // Workspace: kiriman membawa cwd (chip folder) → dipakai & disimpan ke thread.
-    // Tanpa itu, thread memakai folder yang terakhir ia pakai, bukan folder tab lain.
-    let workspace;
-    try {
-      workspace = b.cwd ? resolveWorkspace(b.cwd) : (t.cwd ? resolveWorkspace(t.cwd) : undefined);
-    } catch (error) {
-      return sendJson(res, error.statusCode || 400, { error: error.message, code: error.code });
-    }
-
-    // Lampiran divalidasi sebelum run dimulai: id yang tidak dikenal tidak boleh
-    // meninggalkan pesan user setengah jadi di thread.
-    const ids = Array.isArray(b.attachments)
-      ? [...new Set(b.attachments.filter((x) => typeof x === 'string' && x.trim()))]
-      : [];
-    if (ids.length > MAX_ATTACHMENTS) {
-      return sendJson(res, 400, {
-        error: `Maksimal ${MAX_ATTACHMENTS} lampiran per pesan`, code: 'ATTACHMENT_LIMIT',
-      });
-    }
-    const attachments = [];
-    for (const id of ids) {
-      const meta = getUpload(id);
-      if (!meta) {
-        return sendJson(res, 400, { error: 'Lampiran tidak ditemukan atau sudah dihapus', code: 'ATTACHMENT_INVALID' });
-      }
-      attachments.push(meta);
-    }
-
-    // Satu run per thread. Dua kiriman paralel (tab lain / agent) ditolak
-    // sebelum ada pesan yang ditulis, supaya urutan percakapan tidak rusak.
-    try { runs.begin(m[1]); } catch (error) {
-      return sendJson(res, error.statusCode || 409, {
-        error: error.message, code: error.code, machine: error.machine,
-        from: error.from, to: error.to, allowed: error.allowed,
-      });
-    }
-
-    const rawPrompt = String(b.prompt || '').slice(0, 16000);
-    const kind = engineType(engineId);
-    recordFeature('chat', { engine: engineId });
-    // Perintah dari plugin: `/nama argumen` diperluas menjadi isi
-    // commands/<nama>.md sebelum apa pun dikirim. Teks asli yang user ketik tetap
-    // tersimpan di thread, jadi ia melihat apa yang ia tulis — bukan instruksi
-    // panjang hasil perluasan.
-    const pluginCommand = pluginsLib.expandCommand(rawPrompt);
-    const basePrompt = pluginCommand ? pluginCommand.body : rawPrompt;
-    // CLI punya akses disk → beri path. Pool tidak → inline isi teksnya.
-    let modelPrompt = attachments.length
-      ? await augmentPrompt(basePrompt, attachments, {
-        includePaths: kind !== 'pool',
-        inlineText: kind === 'pool',
-      })
-      : basePrompt;
-    // Memori jangka panjang disuntikkan di server (bukan UI) supaya SEMUA
-    // jalur kirim — UI, API langsung, maupun agent eksternal — mendapat konteks
-    // yang sama. Prompt yang terlihat user di chat tetap tanpa blok memori.
-    if (config.memoryEnabled !== false) {
-      const mem = memory.memoryContext();
-      if (mem) modelPrompt = mem + '\n\n---\n\n' + modelPrompt;
-    }
-
-    // Instruksi tetap: AGENTS.md level user, aturan proyek, lalu instruksi
-    // thread. Ketiganya dulu tersimpan tetapi tidak pernah sampai ke model.
-    const instructions = instructionsLib.buildInstructions({ cwd: workspace, systemPrompt: t.systemPrompt });
-    if (instructions.text) modelPrompt = `${instructions.text}\n\n---\n\n${modelPrompt}`;
-
-    // UserPromptSubmit: kesempatan terakhir mengubah atau menolak prompt sebelum
-    // model melihatnya. Ditolak berarti run tidak dimulai dan pesan user tidak
-    // ditulis — supaya percakapan tidak menyimpan pertanyaan yang tak pernah dijawab.
-    let promptHook = null;
-    try {
-      promptHook = await hooks.runEvent('UserPromptSubmit', {
-        prompt: modelPrompt, raw_prompt: rawPrompt, cwd: workspace,
-      }, { cwd: workspace });
-    } catch { promptHook = null; }
-    if (promptHook?.denied) {
-      runs.finish(m[1], 'stopped');
-      return sendJson(res, 403, {
-        error: `Prompt ditolak hook: ${promptHook.reason || 'tanpa alasan'}`,
-        code: 'PROMPT_BLOCKED',
-      });
-    }
-    if (promptHook?.updatedInput?.prompt) modelPrompt = String(promptHook.updatedInput.prompt);
-    if (promptHook?.additionalContext) modelPrompt += `\n\n[konteks tambahan dari hook]\n${promptHook.additionalContext}`;
-
-    const userMsg = threads.appendMessage(m[1], {
-      role: 'user',
-      content: rawPrompt,
-      engine: engineId,
-      ...(attachments.length ? { attachments: attachments.map(publicUpload) } : {}),
-      // modelContent = prompt persis yang dikirim ke engine (lampiran inline
-      // + blok memori). Penting untuk audit: user melihat teks bersih,
-      // thread merekam apa yang sebenarnya diterima model.
-      ...(modelPrompt !== rawPrompt ? { modelContent: modelPrompt } : {}),
-    });
-    threads.patchThread(m[1], { engine: engineId, ...(workspace ? { cwd: workspace } : {}) });
-    // Riwayat sebelum pesan ini; builder di harness yang memilih & membatasi.
-    const history = (threads.getThread(m[1])?.messages || []).filter((x) => x.id !== userMsg.id);
-    broadcast('threads');
-
-    res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });
-    // Flush header segera: tanpa ini fetch klien baru selesai saat token pertama
-    // datang, sehingga chip lampiran dan status "mengirim" terlihat menggantung
-    // selama engine CLI yang lambat start.
-    res.write(': connected\n\n');
-    res.write(': connected\n\n');
-    const send = (obj) => {
-      // Klien bisa sudah pergi (tab ditutup, halaman dimuat ulang) sementara
-      // run masih berjalan. Menulis ke respons yang sudah tertutup bukan alasan
-      // untuk melempar: run-nya justru harus tetap selesai dan menyimpan
-      // pesannya, supaya halaman berikutnya melihat hasilnya.
-      if (res.writableEnded || res.destroyed) return;
-      try { res.write(`data: ${JSON.stringify(obj)}\n\n`); } catch { /* klien hilang */ }
-    };
-
-    // Client putus (tab ditutup / jaringan hilang) → hentikan proses agar tidak
-    // menggantung 10 menit dan tidak menahan thread dalam status running.
-    // Pakai `res` (bukan `req`): 'close' pada req bisa menyala begitu body selesai
-    // dibaca, yang akan membatalkan setiap run tepat setelah dimulai.
-    const ctrl = new AbortController();
-    const unregister = runs.registerStop(m[1], () => ctrl.abort());
-    res.on('close', () => {
-      if (res.writableEnded) return;
-      // KECUALI bila run sedang menunggu jawaban manusia. Melempar di sini
-      // membuat kartu pertanyaan mati bersama tab: pengguna yang memuat ulang
-      // halaman melihat run yang hilang, padahal ia baru saja hendak menjawab.
-      // ZCode menyebut pending prompt sebagai state sesi yang bisa dipulihkan;
-      // batas waktunya (3 menit izin, 10 menit pertanyaan) yang menjamin run
-      // ini tetap berakhir walau tidak ada yang kembali.
-      if (approvals.list(m[1]).length) return;
-      ctrl.abort();
-    });
-
-    // Klien persetujuan untuk run ini. `ask` berhenti di sini dan menunggu
-    // jawaban dari kartu di UI, bukan ditolak seperti jalur headless. Payloadnya
-    // ikut mengalir lewat SSE yang sama supaya run tidak perlu koneksi kedua.
-    //
-    // Permintaan yang menunggu juga disiarkan sebagai event tersendiri: kartu
-    // harus bisa digambar ulang setelah halaman di-refresh, dan run yang
-    // menunggu tidak mengirim apa pun selain event ini.
-    const approvalClient = approvals.createClient({
-      threadId: m[1],
-      signal: ctrl.signal,
-      notify: (req) => send({ type: 'approval', ...req }),
-    });
-
-    try {
-      let acc = '';
-      // Tool-calling hanya untuk engine pool: engine CLI mengelola tool-nya
-      // sendiri. Default aktif bila thread punya folder kerja — tanpa folder,
-      // tool berkas tidak ada gunanya dan model hanya akan membuang putaran.
-      const useTools = engineType(engineId) === 'pool'
-        && !!workspace
-        && b.tools !== false;
-
-      // Snapshot sebelum agent menyentuh berkas. Ini satu-satunya cara memulihkan
-      // hasil yang buruk tanpa ikut membuang pekerjaan pengguna yang belum
-      // di-commit. Gagal membuat snapshot tidak boleh menggagalkan run — agent
-      // hanya kehilangan kemampuan undo, bukan kemampuannya bekerja.
-      let checkpointId = null;
-      if (useTools && workspace && ['edit', 'guarded', 'yolo'].includes(normalizeMode(b.permission))) {
-        try {
-          const cp = await checkpoints.createCheckpoint(m[1], workspace, {
-            label: rawPrompt.slice(0, 80) || 'sebelum run',
-          });
-          checkpointId = cp.id;
-          send({ type: 'checkpoint', id: cp.id, files: cp.files });
-        } catch { /* bukan repo git / git tidak ada: lanjut tanpa snapshot */ }
-      }
-
-      const r = await runEngine(engineId, modelPrompt, {
-        cwd: workspace,
-        model: b.model,
-        history,
-        // Ringkasan percakapan lama (lib/compact.js): tanpa ini model hanya
-        // melihat 12 pesan terakhir dan mengulangi keputusan dari awal thread.
-        compact: t.compact || null,
-        replyLang: config.replyLang,
-        effort: ['low', 'medium', 'high'].includes(b.effort) ? b.effort : undefined,
-        // Mode izin dipakai dua kali: untuk flag CLI (nama lama ask/edits/plan
-        // dipetakan ke flag resmi tiap CLI) dan sebagai gerbang tool di server
-        // (normalizeMode memetakan ask→build, edits→edit, full→yolo). Keduanya
-        // menerima nilai mentah supaya pemetaan CLI tidak ikut berubah.
-        permission: PERMISSION_INPUTS.includes(b.permission) ? b.permission : undefined,
-        useTools,
-        signal: ctrl.signal,
-        approvals: approvalClient,
-        // Event tool diteruskan apa adanya ke UI: pengguna harus bisa melihat
-        // tool apa yang dipanggil dan apakah ditolak, bukan hanya "Working".
-        onEvent: (evt) => {
-          // Event milik subagent ikut ditandai `subagent`/`agentId`: UI
-          // menampilkannya di baris anak, bukan mencampurnya dengan tool induk.
-          const child = evt?.subagent ? { subagent: evt.subagent, agentId: evt.agentId } : {};
-          if (evt?.type === 'tools') send({ type: 'tools', names: evt.names, ...child });
-          else if (evt?.type === 'subagent') {
-            send({
-              type: 'subagent',
-              phase: evt.phase,
-              agentType: evt.subagent,
-              agentId: evt.agentId,
-              description: String(evt.description || '').slice(0, 120),
-              ok: evt.ok,
-              ms: evt.durationMs,
-              tokens: evt.tokens,
-              toolUses: evt.toolUses,
-              error: evt.error ? String(evt.error).slice(0, 200) : null,
-            });
-          } else if (evt?.type === 'tool_start') send({ type: 'tool', phase: 'start', name: evt.name, decision: evt.decision, reason: evt.reason, input: summarizeToolInput(evt.input), ...child });
-          else if (evt?.type === 'tool_result') send({ type: 'tool', phase: 'result', name: evt.name, ok: evt.ok, ms: evt.ms, preview: String(evt.text || '').slice(0, 400), ...child });
-        },
-        onDelta: (chunk) => {
-          acc += chunk;
-          if (acc.length < 200000) send({ type: 'delta', text: chunk });
-        },
-      });
-      if (!acc.trim()) { acc = r.text; send({ type: 'delta', text: r.text }); }
-      threads.appendMessage(m[1], {
-        role: 'assistant',
-        engine: engineId,
-        content: acc.slice(0, 200000),
-        ms: r.ms,
-        servedBy: r.servedBy,
-        model: r.model,
-        tokens: r.tokens || null,
-        usage: r.usage || null,
-        runStatus: 'done',
-        ...(r.tools?.length ? { tools: r.tools.map((t) => ({ name: t.name, ok: t.ok, decision: t.decision })) } : {}),
-        // Id snapshot dikirim ke UI supaya tombol "Pulihkan" pada pesan ini tahu
-        // keadaan mana yang harus dikembalikan.
-        ...(checkpointId ? { checkpointId } : {}),
-      });
-      // Pemakaian nyata lewat gateway mengurangi saldo promo bila modelnya
-      // termasuk plan (GLM-5.3 / GLM-5.3-Flash) dan tiket sedang aktif.
-      if (r.tokens) {
-        try { recordUsage(loadPass(), r.model, r.tokens); } catch { /* statistik tidak boleh menggagalkan run */ }
-      }
-      runs.finish(m[1], 'done');
-      broadcast('threads');
-      // Ekstraksi memori otomatis: hanya bila diaktifkan, hanya setelah run
-      // sukses, dan tidak ditunggu — pengguna sudah menerima jawabannya.
-      if (config.memoryEnabled !== false && config.memoryAutoExtract === true) {
-        try {
-          const full = threads.getThread(m[1]);
-          const cursor = memoryExtract.extractStatus(m[1])?.cursor || null;
-          memoryExtract.schedule({
-            threadId: m[1],
-            thread: full,
-            enabled: true,
-            cursor,
-            runStatus: 'done',
-            model: b.model || 'auto',
-            onDone: (rec) => {
-              if (rec?.added) {
-                broadcast('memory');
-                toast('Memori diperbarui', `${rec.added} fakta baru dari percakapan ini`);
-              }
-            },
-          });
-        } catch { /* ekstraksi tidak boleh menyentuh run yang sudah selesai */ }
-      }
-      // Ringkasan konteks otomatis: hanya bila diaktifkan, hanya setelah run
-      // sukses, dan tidak ditunggu. Bila dibiarkan mati (bawaan), percakapan
-      // panjang tetap memakai jendela 12 pesan — perilaku lama, tanpa biaya
-      // panggilan model tambahan.
-      if (config.compactAuto === true) {
-        scheduleCompact(m[1], b.model || 'auto');
-      }
-      // run panjang selesai → beri tahu lewat notifikasi Windows
-      if (r.ms > 15000) {
-        const t = threads.getThread(m[1]);
-        toast('Run selesai', `${(t?.title || 'Thread').slice(0, 60)} · ${Math.round(r.ms / 1000)} detik`);
-      }
-      send({ type: 'done', ms: r.ms, servedBy: r.servedBy });
-    } catch (e) {
-      const stopped = e.name === 'AbortError' || ctrl.signal.aborted;
-      threads.appendMessage(m[1], {
-        role: 'assistant',
-        engine: engineId,
-        content: stopped ? 'Dihentikan.' : `Gagal: ${e.message}`,
-        runStatus: stopped ? 'stopped' : 'error',
-      });
-      runs.finish(m[1], stopped ? 'stopped' : 'error', { error: stopped ? null : e.message });
-      broadcast('threads');
-      send(stopped
-        ? { type: 'stopped', message: 'Run dihentikan' }
-        : { type: 'error', message: String(e.message || e) });
-    } finally {
-      unregister();
-      broadcast('threads');
-    }
-    return res.end();
+    return handleSend(m[1], await readBody(req), res);
   }
 
   // hentikan run yang sedang berjalan di sebuah thread (idempoten)
@@ -2049,11 +2225,18 @@ ${msgs || '<p class="meta">Percakapan kosong.</p>'}
     // menyebut apa yang ditunggu; melepas di sini memberi alasan yang benar dan
     // jumlah yang bisa dilaporkan ke UI.
     const released = approvals.cancelThread(m[1], 'Run dihentikan sebelum dijawab');
+    const live = runs.isActive(m[1]);
     const n = runs.stop(m[1]);
     const t = threads.getThread(m[1]);
     // Run yang tercatat running tetapi prosesnya sudah tidak ada (mis. sisa
     // crash) juga disembuhkan di sini, bukan dibiarkan "Working" selamanya.
-    if (t && (t.runState === 'running' || t.running)) runs.finish(m[1], 'stopped');
+    //
+    // KECUALI bila prosesnya memang masih hidup: penyelesaian state-nya milik
+    // jalur abort di `/send` (satu tempat, setelah pesan "Dihentikan." ditulis).
+    // Menyelesaikannya di sini membuat `finish` dipanggil dua kali — dan
+    // panggilan kedua datang setelah penguras antrean memulai run berikutnya,
+    // sehingga thread yang baru saja berjalan normal tercatat "error".
+    if (t && !live && (t.runState === 'running' || t.running)) runs.finish(m[1], 'stopped');
     if (t) broadcast('threads');
     return sendJson(res, 200, { ok: true, stopped: n, released });
   }
@@ -2063,6 +2246,93 @@ ${msgs || '<p class="meta">Percakapan kosong.</p>'}
   // harus muncul kembali tanpa menunggu run mengirim event baru.
   if ((m = p.match(/^\/api\/threads\/([a-f0-9]+)\/approvals$/)) && method === 'GET') {
     return sendJson(res, 200, { requests: approvals.list(m[1]) });
+  }
+
+  // ---------- antrean input ----------
+  // Antrean dimiliki server dan disimpan di disk, sehingga pesan yang sudah
+  // diketik tidak bergantung pada tab yang kebetulan masih terbuka.
+  if ((m = p.match(/^\/api\/threads\/([a-f0-9]+)\/queue$/))) {
+    const t = threads.getThread(m[1]);
+    if (!t) return sendJson(res, 404, { error: 'Thread tidak ditemukan' });
+    if (method === 'GET') {
+      return sendJson(res, 200, { items: queue.list(m[1]), limit: queue.MAX_QUEUE_PER_THREAD });
+    }
+    if (method === 'POST') {
+      const b = await readBody(req);
+      // Lampiran divalidasi di sini juga: item yang menunjuk lampiran tidak
+      // dikenal akan gagal jauh kemudian, saat tidak ada yang bisa memperbaikinya.
+      const ids = Array.isArray(b.attachments)
+        ? [...new Set(b.attachments.filter((x) => typeof x === 'string' && x.trim()))]
+        : [];
+      if (ids.length > MAX_ATTACHMENTS) {
+        return sendJson(res, 400, { error: `Maksimal ${MAX_ATTACHMENTS} lampiran per pesan`, code: 'ATTACHMENT_LIMIT' });
+      }
+      for (const id of ids) {
+        if (!getUpload(id)) {
+          return sendJson(res, 400, { error: 'Lampiran tidak ditemukan atau sudah dihapus', code: 'ATTACHMENT_INVALID' });
+        }
+      }
+      const r = queue.enqueue(m[1], {
+        prompt: b.prompt,
+        attachments: ids,
+        engine: b.engine, model: b.model, cwd: b.cwd,
+        effort: b.effort, permission: b.permission,
+        clientCommandId: inputs.normalizeCommandId(b.clientCommandId),
+      });
+      if (!r.duplicate) broadcast('threads');
+      return sendJson(res, r.duplicate ? 200 : 201, {
+        item: r.item, duplicate: r.duplicate, count: queue.count(m[1]),
+      });
+    }
+    return sendJson(res, 405, { error: 'Metode tidak didukung' });
+  }
+
+  if ((m = p.match(/^\/api\/threads\/([a-f0-9]+)\/queue\/(reserve|release|commit)$/)) && method === 'POST') {
+    const t = threads.getThread(m[1]);
+    if (!t) return sendJson(res, 404, { error: 'Thread tidak ditemukan' });
+
+    if (m[2] === 'reserve') {
+      // Menjalankan dua run sekaligus di satu thread bukan pilihan yang
+      // tersedia: mengambil item hanya boleh saat thread benar-benar kosong.
+      if (runs.isActive(m[1])) {
+        return sendJson(res, 409, { error: 'Thread masih menjalankan run', code: 'RUN_IN_PROGRESS' });
+      }
+      try {
+        return sendJson(res, 200, queue.reserve(m[1]));
+      } catch (error) {
+        return sendJson(res, error.statusCode || 400, { error: error.message, code: error.code });
+      }
+    }
+
+    const b = await readBody(req);
+    const reservationId = String(b.reservationId || '');
+    try {
+      if (m[2] === 'commit') {
+        const item = queue.commit(m[1], reservationId);
+        broadcast('threads');
+        return sendJson(res, 200, { ok: true, item, count: queue.count(m[1]) });
+      }
+      return sendJson(res, 200, { ok: queue.release(m[1], reservationId) });
+    } catch (error) {
+      return sendJson(res, error.statusCode || 400, { error: error.message, code: error.code });
+    }
+  }
+
+  if ((m = p.match(/^\/api\/threads\/([a-f0-9]+)\/queue\/([a-f0-9]+)$/)) && method === 'DELETE') {
+    try {
+      return sendJson(res, 200, { ok: queue.remove(m[1], m[2]), count: queue.count(m[1]) });
+    } catch (error) {
+      return sendJson(res, error.statusCode || 400, { error: error.message, code: error.code });
+    }
+  }
+
+  // Isi lengkap satu pesan yang dipotong oleh anggaran byte. `refId` menunjuk
+  // indeks pesan ASLI, jadi pengambilan tidak pernah salah pesan.
+  if ((m = p.match(/^\/api\/threads\/([a-f0-9]+)\/message-body$/)) && method === 'GET') {
+    const t = threads.getThread(m[1]);
+    if (!t) return sendJson(res, 404, { error: 'Thread tidak ditemukan' });
+    const body = snapshot.bodyFor(t, url.searchParams.get('refId'));
+    return body ? sendJson(res, 200, body) : sendJson(res, 404, { error: 'Pesan tidak ditemukan', code: 'BODY_MISSING' });
   }
 
   // Jawaban untuk satu permintaan: izin (allow/deny) atau pertanyaan
@@ -2640,6 +2910,13 @@ async function main() {
   }
 
   scheduleJobs();
+  // Antrean yang tertinggal dari proses sebelumnya: pesan yang sudah diketik
+  // pengguna tidak boleh hilang hanya karena server dimulai ulang. Thread yang
+  // pulih sebagai "error" sudah tidak aktif, jadi pengurasnya bisa jalan.
+  // Dijalankan setelah server mendengarkan supaya siaran SSE-nya sampai.
+  for (const threadId of Object.keys(queue.counts())) {
+    setImmediate(() => { drainQueue(threadId).catch(() => {}); });
+  }
   if (staleSnap) {
     refreshPromoOnce().catch((error) => {
       console.error('[promo] refresh awal gagal:', error.message);

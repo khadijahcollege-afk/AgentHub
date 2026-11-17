@@ -48,6 +48,8 @@ Free AI API tiers (Groq, Google AI Studio, OpenRouter `:free`, …) are great �
 - **⌘ Composer power-ups** — `Ctrl+K` command palette, `@` file autocomplete from the working folder, real slash commands (`/new`, `/export`, `/engine`, `/model`, `/prompt`, `/save`, `/tasks`, …), a **prompt library** (save & reuse prompts, pin favorites), and **voice dictation** (Web Speech API, id-ID) when the browser supports it.
 - <img src="assets/icons/spark.svg" width="14" align="absmiddle"> **One-tap model adoption** — the model catalog lists pool members plus cached free models; if a provider key is already saved, **Pakai langsung** activates the model and switches the engine to the Gateway in one tap — no key hunting.
 - <img src="assets/icons/refresh.svg" width="14" align="absmiddle"> **Usage & change review** — per-message token counts, an aggregate usage popover, and a *Perubahan* drawer that shows the git status/diff a run actually produced (with per-file restore).
+- <img src="assets/icons/paperclip.svg" width="14" align="absmiddle"> **Message queue** — pressing send while a run is still working queues the message instead of rejecting it. The queue lives on the server (`queue.json`), survives a reload, and starts the next item on its own when the current run ends. Visible right inside the composer, with remove and clear.
+- **Safe retries & small-screen payloads** — every send carries an idempotency id, so a retry after a dropped connection answers from the ledger instead of running twice. On a narrow screen or a data-saver connection the thread is requested with a byte budget: the largest reply comes back as a preview with a **show full message** button, and the composer offers **load earlier messages**. The desktop payload is unchanged.
 - <img src="assets/icons/shield.svg" width="14" align="absmiddle"> **Local-first** — the server and data live on your machine. No AgentHub telemetry. Provider requests send your API key and prompt to the provider you select.
 - <img src="assets/icons/refresh.svg" width="14" align="absmiddle"> **Usage statistics & languages** — activity heatmap, 7/30/90-day charts, feature and engine breakdowns, plus separate Indonesian/English interface and agent reply-language settings.
 - <img src="assets/icons/snow.svg" width="14" align="absmiddle"> **Featherweight server** — pure Node.js, **zero npm dependencies** for the server itself; the desktop shell is a thin Electron wrapper (native window + tray, no browser).
@@ -139,6 +141,10 @@ Agents driving the app do not have to guess. The contract is served over HTTP:
 | `POST /api/promo/pass/:action` | `claim`, `dismiss`, `toggle`, `add-model`, `rename`, `upgrade`, `share` |
 | `POST /api/uploads` | store an attachment (JSON base64, 8 MB, returns `id`/`name`/`type`/`bytes`) |
 | `GET/DELETE /api/uploads/:id` | stream or remove an attachment |
+| `GET/POST /api/threads/:id/queue` | message queue: list waiting items, or enqueue one (FIFO, max 20 per thread) |
+| `POST /api/threads/:id/queue/(reserve\|release\|commit)` | take the head item, return it on a failed start, or drop it once its run began |
+| `DELETE /api/threads/:id/queue/:itemId` | remove one waiting item (a running item is refused) |
+| `GET /api/threads/:id?messageLimit=&byteBudget=` | the same thread, trimmed for a small screen; `GET …/message-body?refId=` returns the full text |
 | `GET/POST /api/prompts`, `POST/DELETE /api/prompts/:id` | prompt library: save, pin, patch, and reuse composer prompts |
 | `GET /api/models` · `POST /api/models/activate` | model catalog and one-tap activation reusing a saved provider key |
 | `GET /api/usage` | aggregate token usage per engine |
@@ -174,6 +180,16 @@ One run per thread: a second `POST /api/threads/:id/send` while a run is active 
 rejected with `409 RUN_IN_PROGRESS` before anything is written, and a thread left
 "running" by a crash is recovered as `error` on startup (counted in
 `recoveredRuns`), so the UI never shows phantom work with a locked send button.
+
+That refusal is the API contract, not the UI's behaviour. The composer sends to
+`POST /api/threads/:id/queue` instead whenever a run is active — and on
+`RUN_IN_PROGRESS` too, because a tab that did not start the run has no local way to
+know. Items are FIFO, survive a reload (`queue.json`), and are deleted only after
+their run actually starts (`reserve → start → commit`, with `release` restoring the
+item and its attachments if the start fails). Every send also carries a
+`clientCommandId`; a retry answers from the ledger with `duplicate: true` rather
+than running the model twice.
+
 Conversations keep context: the pool engine receives the thread's prior
 user/assistant turns (last 12 messages, 12k characters max) so a follow-up refers
 to the same work. CLI engines are invoked per message and keep their own session

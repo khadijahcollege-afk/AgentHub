@@ -165,6 +165,14 @@ window.__ahMachines = {
   // dijalankan. `let` yang belum diinisialisasi akan melempar ReferenceError,
   // dan booting berhenti tanpa pesan yang berguna.
   let runAsks = [];
+  // Antrean pesan milik thread aktif, seperti yang dilaporkan server. Disimpan
+  // di sini (bukan di dalam composer) karena `setRun` dan `renderChat` sama-sama
+  // perlu tahu isinya, dan karena isinya bertahan saat tab berganti thread.
+  let queueItems = [];
+  // Identitas kiriman untuk idempotensi. Satu id dibuat per percobaan kirim dan
+  // dipakai ulang saat mencoba lagi, sehingga jaringan yang memutus balasan
+  // tidak membuat pesan yang sama dijalankan dua kali.
+  let sendSeq = 0;
 
   // --- mesin: run & koneksi ---
   // runStatus: idle | running | done | error | stopped (RUN_MACHINE)
@@ -192,7 +200,15 @@ window.__ahMachines = {
       runStatus = next;
     }
     const btn = $('#btn-send');
-    if (btn) btn.disabled = next === 'running';
+    if (btn) {
+      // Tombol kirim TIDAK pernah dinonaktifkan: saat run berjalan, kiriman
+      // masuk antrean, bukan ditolak. Tombol mati membuat pengguna mengira ia
+      // harus menunggu diam-diam padahal bisa mengetik pesan lanjutan.
+      btn.disabled = false;
+      btn.title = next === 'running' ? 'Kirim ke antrean (run masih berjalan)' : 'Kirim';
+      btn.classList.toggle('queued', next === 'running');
+    }
+    renderQueue();
     const stop = $('#btn-stop');
     if (stop) stop.classList.toggle('hidden', next !== 'running');
     const chip = $('#chat-running');
@@ -228,7 +244,7 @@ window.__ahMachines = {
   async function adoptRemoteRun() {
     if (!curThread || runCtrl) return; // kita pemilik stream: jangan diganggu
     try {
-      const fresh = await api(`/api/threads/${curThread.id}`);
+      const fresh = await api(threadUrl(curThread.id));
       // Thread bisa berganti selagi menunggu jawaban (pengguna membuka thread
       // lain): jangan menimpa yang sedang dilihat.
       if (curThread?.id !== fresh.id) return;
@@ -2956,7 +2972,7 @@ window.__ahMachines = {
 
   async function openThread(id) {
     try {
-      curThread = await api(`/api/threads/${id}`);
+      curThread = await api(threadUrl(id));
       // Thread lama tanpa workspace mewarisi folder aktif sekali, supaya drawer
       // dan run berikutnya tidak diam-diam jatuh ke home directory.
       if (!curThread.cwd && activeCwd()) {
@@ -2965,6 +2981,9 @@ window.__ahMachines = {
         }).catch(() => curThread);
       }
       if (!runActive()) syncRunFromThread(curThread);
+      // Antrean thread ini milik server: tab yang baru dibuka harus melihat
+      // pesan yang menunggu, bukan antrean kosong.
+      loadQueue(curThread.id);
       // Thread yang dibuka mungkin sedang menunggu jawaban (mis. halaman baru
       // dimuat ulang di tengah run). Kartunya harus kembali sebelum pengguna
       // menyimpulkan agent-nya hang.
@@ -3079,6 +3098,145 @@ window.__ahMachines = {
     });
   }
 
+  // ---------- antrean pesan ----------
+  // Server pemilik antrean; UI hanya menampilkan dan mengubahnya. Semua aksi
+  // memakai endpoint server supaya tab lain melihat hasil yang sama dan isinya
+  // tidak hilang saat halaman dimuat ulang.
+
+  function newCommandId() {
+    sendSeq += 1;
+    return `c${Date.now().toString(36)}${sendSeq.toString(36)}${Math.random().toString(36).slice(2, 7)}`;
+  }
+
+  // Perangkat kecil tidak perlu seluruh isi thread untuk mulai membaca. Di
+  // layar sempit (atau koneksi hemat data) thread diminta dalam versi ringkas:
+  // 10 pesan terakhir dengan anggaran 200 KB. Desktop tidak berubah — ia tetap
+  // menerima thread penuh, jadi tidak ada fitur yang hilang di sana.
+  function wantsCompactThread() {
+    if (typeof window === 'undefined') return false;
+    if (window.matchMedia?.('(max-width: 760px)')?.matches) return true;
+    const c = navigator.connection;
+    return !!(c?.saveData || /(^|-)2g$/.test(String(c?.effectiveType || '')));
+  }
+
+  function threadUrl(id, { full = false } = {}) {
+    if (full || !wantsCompactThread()) return `/api/threads/${id}`;
+    // Jumlah pesan yang diminta TIDAK boleh lebih kecil dari yang sudah
+    // dimuat: menyegarkan thread setelah run selesai tidak boleh memangkas
+    // percakapan yang sedang dibaca pengguna menjadi 10 pesan lagi.
+    const loaded = Array.isArray(curThread?.messages) ? curThread.messages.length : 0;
+    const limit = Math.max(10, loaded);
+    return `/api/threads/${id}?messageLimit=${limit}&byteBudget=200000`;
+  }
+
+  // Ambil pesan yang dipotong anggaran byte. Alamatnya `refId` yang menunjuk
+  // indeks pesan ASLI di server, jadi tidak mungkin salah pesan walaupun daftar
+  // yang ditampilkan sudah dipangkas.
+  async function loadFullMessage(refId) {
+    if (!curThread || !refId) return;
+    try {
+      const r = await api(`/api/threads/${curThread.id}/message-body?refId=${encodeURIComponent(refId)}`);
+      const target = document.querySelector(`.msg[data-ref="${CSS.escape(String(refId))}"]`);
+      if (target) {
+        const body = target.querySelector('.msg-body');
+        if (body) body.innerHTML = md(r.content || '');
+        target.querySelector('.msg-trunc')?.remove();
+        target.removeAttribute('data-ref');
+      }
+      // Salinan di memori ikut diperbarui supaya render berikutnya tidak
+      // mengembalikan pratinjau yang baru saja dibuka.
+      const msg = (curThread.messages || []).find((m) => m.refId === refId);
+      if (msg) { msg.content = r.content; delete msg.truncated; }
+    } catch (e) { toast(`Gagal memuat pesan lengkap: ${e.message}`); }
+  }
+
+  // Muat ulang thread tanpa batas: pengguna yang ingin membaca percakapan lebih
+  // lama tidak boleh terjebak di jendela 10 pesan.
+  async function loadFullThread() {
+    if (!curThread) return;
+    try {
+      curThread = await api(threadUrl(curThread.id, { full: true }));
+      renderChat();
+    } catch (e) { toast(`Gagal memuat seluruh thread: ${e.message}`); }
+  }
+
+  function renderQueue() {
+    const host = $('#composer-queue');
+    if (!host) return;
+    const items = Array.isArray(queueItems) ? queueItems : [];
+    host.classList.toggle('hidden', items.length === 0);
+    if (!items.length) { host.innerHTML = ''; return; }
+    const rows = items.map((it, i) => {
+      // "berjalan" HANYA untuk item yang benar-benar sedang diambil penguras.
+      // Baris pertama antrean bukan yang berjalan — ia yang berikutnya. Menandai
+      // baris pertama sebagai "berjalan" setiap kali ada run aktif membuat
+      // pengguna mengira pesan kedua sedang dieksekusi padahal masih menunggu.
+      const mine = !!it.reserved;
+      const text = String(it.prompt || '').trim().replace(/\s+/g, ' ');
+      const preview = text || (it.attachments?.length
+        ? tr('{n} lampiran').replace('{n}', String(it.attachments.length))
+        : '');
+      return `<div class="q-row${mine ? ' q-running' : ''}" data-queue-id="${esc(it.id)}">
+        <span class="q-num">${i + 1}</span>
+        <span class="q-text" title="${esc(preview.slice(0, 300))}">${esc(preview.slice(0, 300))}</span>
+        ${mine ? `<span class="q-meta">${esc(tr('berjalan'))}</span>` : ''}
+        <button class="icon-btn" data-queue-remove="${esc(it.id)}" title="${esc(it.reserved ? tr('Sedang dijalankan') : tr('Hapus dari antrean'))}" ${it.reserved ? 'disabled' : ''}>${icon('x')}</button>
+      </div>`;
+    }).join('');
+    host.innerHTML = `<div class="q-head"><span>${esc(tr('Antrean {n}').replace('{n}', String(items.length)))}</span><span class="grow"></span><button class="q-clear" data-queue-clear>${esc(tr('Kosongkan'))}</button></div>${rows}`;
+  }
+
+  async function loadQueue(threadId = curThread?.id) {
+    if (!threadId) { queueItems = []; renderQueue(); return; }
+    try {
+      const r = await api(`/api/threads/${threadId}/queue`);
+      // Thread bisa berganti selagi menunggu jawaban.
+      if (curThread?.id !== threadId) return;
+      queueItems = Array.isArray(r?.items) ? r.items : [];
+      renderQueue();
+    } catch { /* server lama / thread terhapus: biarkan tampilan apa adanya */ }
+  }
+
+  async function removeQueueItem(id) {
+    if (!curThread) return;
+    try {
+      await api(`/api/threads/${curThread.id}/queue/${id}`, { method: 'DELETE' });
+      await loadQueue();
+    } catch (e) { toast(`Gagal menghapus dari antrean: ${e.message}`); }
+  }
+
+  async function clearQueue() {
+    if (!curThread) return;
+    const ids = (queueItems || []).filter((it) => !it.reserved).map((it) => it.id);
+    if (!ids.length) return;
+    // Satu per satu: server menolak menghapus item yang sedang dijalankan, dan
+    // menghapus semuanya sekaligus akan menyembunyikan penolakan itu.
+    for (const id of ids) {
+      await api(`/api/threads/${curThread.id}/queue/${id}`, { method: 'DELETE' }).catch(() => {});
+    }
+    await loadQueue();
+  }
+
+  // Kirim ke antrean saat run sedang berjalan. Ini pengganti "teks hilang":
+  // pengguna mengetik pesan lanjutan, menekan kirim, dan pesannya terlihat
+  // menunggu di atas composer alih-alih ditolak 409.
+  async function enqueuePrompt(text, attachments = []) {
+    const body = { prompt: text, clientCommandId: newCommandId() };
+    if (attachments.length) body.attachments = attachments.map((a) => a.id);
+    if (currentEngine) body.engine = currentEngine;
+    const model = $('#chat-model')?.value;
+    if (model) body.model = model;
+    const cwd = activeCwd();
+    if (cwd) body.cwd = cwd;
+    if (effort !== 'default') body.effort = effort;
+    if (permission !== 'full') body.permission = permission;
+    const r = await api(`/api/threads/${curThread.id}/queue`, {
+      method: 'POST', body: JSON.stringify(body),
+    });
+    await loadQueue();
+    return r;
+  }
+
   function renderComposerAttachments() {
     const host = $('#composer-attachments');
     if (!host) return;
@@ -3146,6 +3304,12 @@ window.__ahMachines = {
   // Klik chip lampiran: gambar dibuka, file lain diunduh. Memakai URL blob yang
   // sudah terautentikasi — tidak pernah menaruh token di URL.
   document.addEventListener('click', async (e) => {
+    const qRemove = e.target.closest('[data-queue-remove]');
+    if (qRemove) { removeQueueItem(qRemove.dataset.queueRemove); return; }
+    if (e.target.closest('[data-queue-clear]')) { clearQueue(); return; }
+    const fullMsg = e.target.closest('[data-full-msg]');
+    if (fullMsg) { loadFullMessage(fullMsg.dataset.fullMsg); return; }
+    if (e.target.closest('[data-full-thread]')) { loadFullThread(); return; }
     const remove = e.target.closest('[data-attach-remove]');
     if (remove) {
       const id = remove.dataset.attachRemove;
@@ -3593,8 +3757,9 @@ window.__ahMachines = {
       if (m.subrun) { (subruns = subruns || []).push(m); continue; }
       flushSubruns();
       const canRegen = m === lastAssistant && !runActive() && msgs.some((x) => x.role === 'user');
-      html += `<div class="msg assistant" data-mid="${m.id}">
+      html += `<div class="msg assistant" data-mid="${m.id}"${m.truncated && m.refId ? ` data-ref="${esc(m.refId)}"` : ''}>
         <div class="msg-body">${md(m.content || '')}</div>
+        ${m.truncated && m.refId ? `<div class="msg-trunc"><span>${esc(tr('Hanya pratinjau — pesan ini lebih panjang dari anggaran tampilan.'))}</span><button class="btn tiny" data-full-msg="${esc(m.refId)}">${esc(tr('Lihat pesan lengkap'))}</button></div>` : ''}
         <div class="msg-foot">
           <span>${esc(engineLabel(m.engine))}</span>
           ${m.servedBy ? `<span class="mf-sep">·</span><span>via ${esc(m.servedBy)}</span>` : ''}
@@ -3609,14 +3774,29 @@ window.__ahMachines = {
       </div>`;
     }
     flushSubruns();
-    $('#chat-messages').innerHTML = html;
-    $('#chat-messages').scrollTop = $('#chat-messages').scrollHeight;
+    // Penanda jumlah pesan yang tidak dimuat: menghilangkannya diam-diam
+    // membuat percakapan tampak lebih pendek daripada yang tersimpan.
+    const trimmed = Number(curThread.truncatedMessages) || 0;
+    const notice = trimmed
+      ? `<div class="msg-more"><button class="btn tiny" data-full-thread>${esc(tr('Muat {n} pesan sebelumnya').replace('{n}', String(trimmed)))}</button></div>`
+      : '';
+    $('#chat-messages').innerHTML = notice + html;
+    scrollChatToBottom();
     hydrateAttachments();
   }
 
   // ---------- streaming ----------
-  function parseSSE(res, onEvent) {
-    return new Promise((resolve, reject) => {
+  // Penggulung percakapan adalah `#chat-scroll`, bukan `#chat-messages`. Menulis
+  // `scrollTop` pada `#chat-messages` tidak berefek apa pun: ia flex item tanpa
+  // overflow, jadi scrollHeight == clientHeight. Akibatnya thread panjang
+  // terbuka di paling atas, dan composer — beserta baris antrean di dalamnya —
+  // berada ribuan piksel di bawah layar.
+  function scrollChatToBottom() {
+    const sc = $('#chat-scroll');
+    if (sc) sc.scrollTop = sc.scrollHeight;
+  }
+
+  function parseSSE(res, onEvent) {    return new Promise((resolve, reject) => {
       const reader = res.body.getReader();
       const dec = new TextDecoder();
       let buf = '';
@@ -3857,7 +4037,6 @@ window.__ahMachines = {
   }
 
   async function sendPrompt(directPrompt) {
-    if (runActive()) return;
     const typed = $('#composer-input').value.trim();
     // slash command hanya saat diketik di composer, bukan saat regenerate
     if (!directPrompt && typed.startsWith('/')) {
@@ -3880,8 +4059,31 @@ window.__ahMachines = {
     const sysP = curThread?.systemPrompt?.trim();
     const prompt = sysP ? sysP + '\\n\\n' + (directPrompt ?? typed).trim() : (directPrompt ?? typed).trim();
     if (!prompt && !sending.length) return;
+
+    // Run sedang berjalan: kiriman TIDAK dibuang dan tidak ditolak. Ia masuk
+    // antrean server dan akan dijalankan sendiri begitu run ini selesai.
+    // Sebelumnya teks yang sudah diketik pengguna hilang tanpa jejak.
+    if (runActive()) {
+      try {
+        if (!curThread) return;
+        const r = await enqueuePrompt(prompt, sending);
+        if (sending.length) { pendingAttachments = []; renderComposerAttachments(); }
+        $('#composer-input').value = '';
+        toast(r?.duplicate
+          ? 'Pesan itu sudah ada di antrean'
+          : `Masuk antrean — ${r?.count ?? queueItems.length} pesan menunggu`);
+      } catch (e) {
+        // Gagal mengantre = pesan tetap di composer supaya bisa dikirim ulang.
+        toast(`Gagal masuk antrean: ${e.message}`);
+      }
+      return;
+    }
     setRun('running');
     runCtrl = new AbortController();
+    // Satu id per kiriman, dipakai ulang bila permintaan ini diulang karena
+    // jaringannya putus: server mengenali id yang sama dan tidak menjalankan
+    // run kedua.
+    const commandId = newCommandId();
 
     try {
       if (!curThread) {
@@ -3918,10 +4120,33 @@ window.__ahMachines = {
           cwd: activeCwd(),
           effort: effort !== 'default' ? effort : undefined,
           permission: permission !== 'full' ? permission : undefined,
+          clientCommandId: commandId,
         }),
         signal: runCtrl.signal,
       });
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`);
+      if (!res.ok) {
+        // Kode error dibawa serta: `RUN_IN_PROGRESS` bukan kegagalan bagi
+        // pengguna, ia hanya berarti "masuk antrean" (lihat catch di bawah).
+        const errBody = await res.json().catch(() => ({}));
+        const err = new Error(errBody.error || `HTTP ${res.status}`);
+        err.code = errBody.code;
+        err.status = res.status;
+        throw err;
+      }
+      // Balasan JSON (bukan SSE) berarti server menjawab dari buku besar
+      // idempotensi: kiriman ini sudah pernah diterima. Tidak ada run baru,
+      // jadi tidak ada stream untuk dibaca — cukup segarkan dari thread.
+      const ctype = res.headers.get('content-type') || '';
+      if (!ctype.includes('text/event-stream')) {
+        const j = await res.json().catch(() => ({}));
+        if (j?.duplicate) toast('Pesan itu sudah diterima — tidak dijalankan ulang');
+        curThread = await api(threadUrl(curThread.id));
+        setRun('idle');
+        renderChat();
+        renderSidebar();
+        await loadQueue();
+        return;
+      }
       // Server sudah menerima lampiran: chip composer tidak boleh terkirim lagi
       // pada pesan berikutnya. Bila request gagal, chip tetap ada untuk retry.
       if (sending.length) {
@@ -3934,7 +4159,7 @@ window.__ahMachines = {
         if (ev.type === 'delta') {
           acc += ev.text;
           const el = $('#chat-messages .msg.assistant:last-child .msg-body');
-          if (el) { el.innerHTML = md(acc); $('#chat-messages').scrollTop = $('#chat-messages').scrollHeight; }
+          if (el) { el.innerHTML = md(acc); scrollChatToBottom(); }
         } else if (ev.type === 'tool') {
           // Chip tool: satu baris hidup yang menampilkan tool apa yang sedang
           // dipanggil. Tanpa ini run ber-tool hanya terlihat "Working" tanpa
@@ -3981,20 +4206,52 @@ window.__ahMachines = {
       setRun(outcome);
       if (outcome === 'done') toastBg('Run selesai — jawaban sudah siap di thread', 'run-done', 'ok');
       else if (outcome === 'error') toastBg('Run gagal — periksa pesan di thread', 'run-error', 'err');
-      curThread = await api(`/api/threads/${curThread.id}`);
+      curThread = await api(threadUrl(curThread.id));
       renderChat();
       renderSidebar();
       // Run selesai = saat paling berguna untuk melihat apa yang berubah.
       await refreshWorkspace();
       if (changesOpen) await refreshDiff();
     } catch (e) {
+      // Server lebih tahu daripada tab ini. Tab yang tidak memulai run (dibuka
+      // ulang, atau run dijalankan dari perangkat lain) tidak melihat status
+      // "running", jadi kirimannya sampai ke `/send` dan ditolak
+      // RUN_IN_PROGRESS. Menampilkan itu sebagai kegagalan berarti pengguna
+      // kehilangan teks yang sudah ia ketik — padahal antrean ada untuk
+      // keadaan ini. Klien hanya memutuskan lebih awal sebagai optimasi.
+      if (e.code === 'RUN_IN_PROGRESS') {
+        // Pesan sementara yang sudah digambar dibuang: thread akan diambil
+        // ulang, dan pesannya sekarang hidup di antrean server.
+        curThread.messages = (curThread.messages || []).filter((m) => m.id !== 'tmp-u' && m.id !== 'tmp-a');
+        try {
+          const r = await enqueuePrompt(prompt, sending);
+          if (sending.length) { pendingAttachments = []; renderComposerAttachments(); }
+          if ($('#composer-input').value.trim() === typed) $('#composer-input').value = '';
+          toast(r?.duplicate
+            ? 'Pesan itu sudah ada di antrean'
+            : `Masuk antrean — ${r?.count ?? queueItems.length} pesan menunggu`);
+          curThread = await api(threadUrl(curThread.id)).catch(() => curThread);
+          syncRunFromThread(curThread, { notify: false });
+          renderChat();
+          renderSidebar();
+        } catch (queueErr) {
+          setRun('idle');
+          renderChat();
+          toast(`Gagal masuk antrean: ${queueErr.message}`);
+        }
+        return;
+      }
       const aborted = e.name === 'AbortError' || runCtrl?.signal.aborted;
       setRun(aborted ? 'stopped' : 'error');
       if (!aborted) toast(e.message === 'OFFLINE' ? 'Server tidak terjangkau — coba lagi' : 'Gagal: ' + e.message);
-      if (curThread) { curThread = await api(`/api/threads/${curThread.id}`).catch(() => curThread); renderChat(); }
+      if (curThread) { curThread = await api(threadUrl(curThread.id)).catch(() => curThread); renderChat(); }
     } finally {
       runCtrl = null;
-      if (!directPrompt) $('#composer-input').value = '';
+      // Hanya kosongkan composer bila isinya masih teks yang tadi dikirim.
+      // Run yang panjang memberi waktu untuk mengetik pesan berikutnya, dan
+      // menghapus ketikan itu di akhir run adalah kehilangan yang tidak
+      // kelihatan sampai pengguna menyadarinya.
+      if (!directPrompt && $('#composer-input').value.trim() === typed) $('#composer-input').value = '';
       $('#composer-input').focus();
       // kembali ke idle setelah terminal state terlihat sebentar
       setTimeout(() => { if (!runActive()) setRun('idle'); }, 400);
@@ -7387,6 +7644,11 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
     renderSettingsNav();
     activateSettingsPane(settingsPane);
     renderReplyLangs();
+    // Antrean dan penanda pratinjau dibuat dari template string, jadi kamus
+    // tidak bisa menjangkaunya lewat penjelajah DOM: keduanya harus dirender
+    // ulang agar labelnya ikut bahasa baru.
+    renderQueue();
+    if (curThread && !runActive()) renderChat();
     if (typeof renderStats === 'function' && statsData) renderStats();
   }));
 
@@ -8025,6 +8287,10 @@ Jangan mengarang — bila data tidak ada di folder, katakan tidak ada.`;
     // selesai di server (dijawab dari tab lain, atau kita mewarisi statusnya
     // saat halaman dimuat ulang).
     if (scopes.includes('threads') && runActive() && !runCtrl) adoptRemoteRun();
+    // Antrean ikut berubah setiap kali sebuah run dimulai/diakhiri (item
+    // dihapus setelah run-nya mulai). Tanpa penyegaran ini baris "menunggu"
+    // tertinggal di layar padahal sudah dijalankan.
+    if (scopes.includes('threads') && curThread) loadQueue(curThread.id);
   }
 
   function onScope(scope) {
@@ -8166,5 +8432,19 @@ Jangan mengarang — bila data tidak ada di folder, katakan tidak ada.`;
     },
     thread: curThread?.id || null,
     threadRunState: curThread?.runState || (curThread?.running ? 'running' : 'idle'),
+    // Antrean pesan: audit butuh tahu isinya tanpa membaca DOM teks pesan.
+    queue: {
+      count: queueItems.length,
+      ids: queueItems.map((it) => it.id),
+      previews: queueItems.map((it) => String(it.prompt || '').slice(0, 60)),
+      reserved: queueItems.filter((it) => it.reserved).length,
+    },
+    // Angka muatan thread terakhir: membuktikan penghematan byte di layar kecil.
+    payload: {
+      messages: curThread?.messages?.length || 0,
+      truncatedMessages: curThread?.truncatedMessages || 0,
+      byteBudgetApplied: !!curThread?.byteBudgetApplied,
+      bodyRefs: curThread?.bodyRefs?.length || 0,
+    },
   });
 })();

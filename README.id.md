@@ -45,6 +45,8 @@ Screenshot menampilkan v1.6.13 dengan data contoh. Angka statistik hanya ilustra
 - **⌘ Composer serba bisa** — palet perintah `Ctrl+K`, autocomplete `@` untuk file di folder kerja, slash command sungguhan (`/new`, `/export`, `/engine`, `/model`, `/prompt`, `/save`, `/tasks`, …), **pustaka prompt** (simpan & pakai ulang, pin favorit), dan **dikte suara** (Web Speech API, id-ID) bila browser mendukung.
 - <img src="assets/icons/spark.svg" width="14" align="absmiddle"> **Adopsi model satu-tap** — katalog model memuat anggota pool + model gratis ter-cache; kalau key provider sudah tersimpan, **Pakai langsung** mengaktifkan model dan memindah engine ke Gateway sekali tap — tanpa cari key lagi.
 - <img src="assets/icons/refresh.svg" width="14" align="absmiddle"> **Pemakaian & review perubahan** — hitungan token per pesan, popover rekap pemakaian, dan laci *Perubahan* yang menampilkan status/diff git hasil run (beserta pemulihan per file).
+- <img src="assets/icons/paperclip.svg" width="14" align="absmiddle"> **Antrean pesan** — menekan kirim saat run masih berjalan memasukkan pesan ke antrean, bukan menolaknya. Antreannya milik server (`queue.json`), bertahan saat halaman dimuat ulang, dan pesan berikutnya dijalankan sendiri begitu run ini selesai. Terlihat langsung di dalam composer, lengkap dengan hapus dan kosongkan.
+- **Kiriman aman diulang & muatan ringkas di HP** — setiap kiriman membawa id idempotensi, jadi percobaan ulang setelah koneksi putus menjawab dari catatan alih-alih menjalankan dua kali. Di layar sempit atau koneksi hemat data, thread diminta dengan anggaran byte: balasan terpanjang datang sebagai pratinjau dengan tombol **lihat pesan lengkap**, dan composer menawarkan **muat pesan sebelumnya**. Muatan desktop tidak berubah.
 - <img src="assets/icons/shield.svg" width="14" align="absmiddle"> **Lokal dulu** — server dan data berada di komputer Anda. Tanpa telemetri AgentHub. Permintaan ke provider mengirim API key dan prompt ke provider pilihan Anda.
 - <img src="assets/icons/refresh.svg" width="14" align="absmiddle"> **Statistik & bahasa** — heatmap aktivitas, grafik 7/30/90 hari, rincian fitur dan engine, serta pengaturan bahasa antarmuka Indonesia/Inggris yang terpisah dari bahasa balasan agent.
 - <img src="assets/icons/snow.svg" width="14" align="absmiddle"> **Server ringan** — Node.js murni, **nol dependency npm**; shell desktop-nya Electron tipis (jendela native + tray, tanpa browser).
@@ -138,6 +140,10 @@ Agent yang mengemudikan aplikasi tidak perlu menebak; kontraknya disajikan lewat
 | `GET /api/terminal?workspace=` · `POST /api/terminal` | tab terminal milik satu workspace, dan jalankan perintah di sebuah tab (tanpa `tabId` = tab baru) |
 | `GET/DELETE /api/terminal/tabs/:id` · `POST /api/terminal/tabs` | buka tab lengkap dengan transkrip, tutup tab, atau buat tab kosong |
 | `GET/DELETE /api/terminal/:id` | satu perintah: status + keluaran, atau hentikan prosesnya (tab tetap ada) |
+| `GET/POST /api/threads/:id/queue` | antrean pesan: daftar item yang menunggu, atau masukkan satu (FIFO, maksimal 20 per thread) |
+| `POST /api/threads/:id/queue/(reserve\|release\|commit)` | ambil item paling depan, kembalikan bila start gagal, atau hapus setelah run-nya dimulai |
+| `DELETE /api/threads/:id/queue/:itemId` | hapus satu item yang masih menunggu (item yang sedang dijalankan ditolak) |
+| `GET /api/threads/:id?messageLimit=&byteBudget=` | thread yang sama, dipotong untuk layar kecil; `GET …/message-body?refId=` mengembalikan isi lengkapnya |
 
 Perpindahan tugas linear ketat: `inbox → todo → running → review → done`. Lompatan
 kolom ditolak `409` dengan body berisi `allowed`, jadi klien bisa mengoreksi diri
@@ -151,6 +157,15 @@ kirim terkunci. Percakapan menyimpan konteks: engine pool menerima giliran
 user/assistant sebelumnya (maksimal 12 pesan / 12 ribu karakter), sehingga
 pertanyaan lanjutan merujuk pekerjaan yang sama. Engine CLI dipanggil per pesan
 dan mengelola sesinya sendiri.
+
+Penolakan itu kontrak API, bukan perilaku UI. Composer mengirim ke
+`POST /api/threads/:id/queue` setiap kali ada run aktif — dan juga saat menerima
+`RUN_IN_PROGRESS`, karena tab yang tidak memulai run tidak punya cara lokal untuk
+tahu. Item bersifat FIFO, bertahan saat halaman dimuat ulang (`queue.json`), dan
+baru dihapus setelah run-nya benar-benar dimulai (`reserve → start → commit`,
+dengan `release` mengembalikan item beserta lampirannya bila start gagal). Setiap
+kiriman juga membawa `clientCommandId`; percobaan ulang dijawab dari catatan dengan
+`duplicate: true` alih-alih menjalankan model dua kali.
 
 Jendela itu dulu menghilangkan konteks tanpa jejak: lewat dua belas pesan, awal
 percakapan lenyap dan UI tidak menunjukkan apa pun, lalu model mengulang

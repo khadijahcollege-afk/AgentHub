@@ -921,4 +921,26 @@ export const EN = {
   'Salin path lengkap': 'Copy full path',
   'Tampilkan patch file ini': 'Show this file’s patch',
   'Patch untuk file ini tidak tersedia (mungkin dipotong).': 'No patch for this file (it may have been truncated).',
+  // ---------- antrean pesan & penghematan muatan ----------
+  // Teks ini dibuat di template string (bukan di index.html), jadi ia tidak
+  // pernah melewati penjelajah DOM. Setiap label yang tampil wajib punya kunci
+  // di sini, kalau tidak mode English akan menampilkan bahasa Indonesia.
+  'Antrean {n}': 'Queue {n}',
+  'Kosongkan': 'Clear all',
+  'berjalan': 'running',
+  'Sedang dijalankan': 'Currently running',
+  'Hapus dari antrean': 'Remove from queue',
+  '{n} lampiran': '{n} attachments',
+  'Masuk antrean — {n} pesan menunggu': 'Queued — {n} message(s) waiting',
+  'Pesan itu sudah ada di antrean': 'That message is already in the queue',
+  'Pesan itu sudah diterima — tidak dijalankan ulang': 'That message was already accepted — not run twice',
+  'Gagal masuk antrean: ': 'Could not queue: ',
+  'Gagal menghapus dari antrean: ': 'Could not remove from queue: ',
+  'Kirim ke antrean (run masih berjalan)': 'Send to queue (run still active)',
+  'Kirim': 'Send',
+  'Hanya pratinjau — pesan ini lebih panjang dari anggaran tampilan.': 'Preview only — this message is longer than the display budget.',
+  'Lihat pesan lengkap': 'Show full message',
+  'Muat {n} pesan sebelumnya': 'Load {n} earlier messages',
+  'Gagal memuat pesan lengkap: ': 'Could not load the full message: ',
+  'Gagal memuat seluruh thread: ': 'Could not load the whole thread: ',
 };

@@ -22,6 +22,7 @@ transition changes; the tests and the generated browser copy follow it.
 | --- | --- | --- | --- | --- |
 | `task` | inbox → todo → running → review → done | `lib/tasks.js` | `data/tasks.json` | `POST /api/tasks/:id` → `409 ILLEGAL_TRANSITION` |
 | `run` | idle → running → done/error/stopped → idle | `lib/runs.js` | thread fields `runState`, `runStartedAt`, `runEndedAt`, `runError` | `POST /api/threads/:id/send` → `409 RUN_IN_PROGRESS`; `/stop` is idempotent |
+| `queueItem` | waiting ⇄ reserved → (gone) | `lib/queue.js` | `data/queue.json` | `POST …/queue/reserve` → `409 QUEUE_RESERVED`; item removed only after its run starts |
 | `step` | working → done/error/stopped | `server.js` (delegate), `lib/threads.js#updateSubrun` | message `status` on subrun messages | written only through `updateSubrun` |
 | `delegation` | idle → starting → running → done/error/stopped | `public/app.js` | none (client session) | button lock + `Hentikan`/`Batal` switch, server run outcome is the source of truth |
 | `noteEditor` | closed → editing ⇄ dirty → saving | `public/app.js` | none (draft in DOM) | close is confirmed while `dirty` |
@@ -248,6 +249,46 @@ tab ──DELETE /api/terminal/tabs/:id──> (gone)
 The UI reads the list from `GET /api/terminal?workspace=` on every panel open, so
 the panel and the server cannot disagree about which tabs exist.
 
+## Input queue lifecycle (the message that used to be lost)
+
+A second send to a busy thread used to be a `409`, which is right for an API caller
+and wrong for a person: the text they just typed vanished. Owner: `lib/queue.js`.
+
+```
+(empty) ──POST …/queue──────────> waiting
+waiting ──POST …/queue/reserve──> reserved   (RESERVE_TTL_MS = 20000, then back to waiting)
+reserved ──run starts───────────> (gone)     (commit removes the item)
+reserved ──start fails──────────> waiting    (release, contents intact)
+waiting ──DELETE …/queue/:id────> (gone)
+```
+
+| Invariant | Why |
+| --- | --- |
+| Queued items live in the server (`queue.json`) | The typed message survives a reload and reads the same from every tab. A tab-local queue means closing the tab loses work already written. |
+| Strict FIFO; only the head may be reserved | A queue that can be skipped is a list. Order is the promise the user made to themselves. |
+| `reserve → start → commit`, never remove first | If the start fails (validation, hook refusal, `runs.begin` rejected) the item returns to its exact position with all its content. Removing first loses a message that never ran. |
+| One winner per item | Two tabs reserving the same head must not run it twice. `reserve` reads and writes in one synchronous block. |
+| Every reservation expires | A tab that dies mid-reserve must not freeze the queue forever. |
+| Drain runs from `runs.onIdle`, not from each caller | `finish()` is reached on done, error, stopped, and post-crash recovery. Adding the drain at four call sites means one missed site hangs the queue silently. |
+| A run waiting for a human blocks the drain | `approvals.list(threadId).length` is checked before reserving: pushing the next item on top of an unanswered question is how a queue turns into a pile. |
+| `409 RUN_IN_PROGRESS` becomes "queued", not an error | A tab that did not start the run (reloaded page, another device) has no local running state. The server is the authority, so the client enqueues on that code instead of reporting failure. |
+| `clientCommandId` claims before the run starts (`lib/inputs.js`) | A retry after a dropped connection answers from the ledger (`duplicate: true`) instead of calling the model twice. The claim is dropped with `forget()` when the run never started, so a corrected resend still works. |
+
+## Thread payload budget (small screens only)
+
+`GET /api/threads/:id` takes optional `?messageLimit=` and `?byteBudget=`. Without
+them the response is byte-for-byte what it always was — the desktop payload does
+not change, and nothing is trimmed by default.
+
+| Invariant | Why |
+| --- | --- |
+| Trimming happens only on the response | `lib/snapshot.js` clones messages before shortening them; the stored thread is never rewritten, so there is no such thing as a permanently truncated preview. |
+| User and subrun messages are never trimmed | The user's own typing must be readable without asking, and subrun content is already bounded when written. |
+| Trim starts from the largest assistant message | The cost is one giant reply, not "a large thread". Shrinking it first fixes the stall with the fewest edits. |
+| Preview floor is `MIN_PREVIEW_CHARS = 2000` | A preview cut to a few characters hides the message instead of summarising it. |
+| `refId` is the ORIGINAL index | `GET …/message-body?refId=` must never return the wrong message, even after `messageLimit` already dropped earlier ones. |
+| A trimmed response says so | `truncatedMessages`, `bodyRefs`, and `byteBudgetApplied` are what make the UI able to offer "show full message" and "load N earlier messages" instead of silently showing less. |
+
 ## Why these are not machines (yet)
 
 Centralising everything costs more than it buys when the state is a single frame of
@@ -342,6 +383,11 @@ Never infer status from a button's disabled state or from `thread.running`. Quer
 | `test/gitgraph.test.js` | pure layout without a repo: straight line, input not mutated, parallel branches, a shared parent getting exactly one rail, out-of-page parents dashed, root has no downward edge, lane width bounded by commit count, empty/non-array input, rails continuing across rows, every edge pointing downwards, one edge per parent |
 | `test/gitgraph-repo.test.js` | against real git: plain folder vs empty repo, ref decoration cleaned, merge commit with two parents ordered below them, paging without repeats, `maxCount` clamp, branch list marking the current branch, successful checkout, invalid/unknown names rejected before git runs, and a dirty worktree refused with the user's edits intact |
 | `test/gitgraph-api.test.js` | route contract: response shape with server-computed lanes, `repo:false` for a plain folder, `400 WORKSPACE_MISSING`, `maxCount` clamped, branches, checkout reflected in the workspace summary, `400 BRANCH_UNKNOWN`, `409 WORKTREE_DIRTY` leaving files untouched, and a `workspace` SSE broadcast on checkout |
+| `test/queue.test.js` | pure queue contract: strict FIFO, one winner per `reserve`, `release` restoring position and attachments intact, `commit` rejecting an unknown reservation, expired reservations swept on read, a running item not removable, `MAX_QUEUE_PER_THREAD`, empty-prompt refused while attachment-only is allowed, and a repeated `clientCommandId` not creating a second item |
+| `test/inputs.test.js` | idempotency ledger: command-id shape enforced, first claim empty and second returning the record, `settle` completing status and `userMessageId`, `forget` releasing a claim so a corrected resend works, per-thread separation, TTL expiry, and the entry cap keeping the newest records |
+| `test/snapshot.test.js` | payload budget: no parameters returns the same object untouched, `messageLimit` trims from the front and reports the count, the largest assistant message is trimmed first, user and subrun messages never trimmed, the caller's data not mutated, `bodyFor` returning full content with a matching hash and rejecting unknown or path-like `refId`, budget clamping, and the 2000-character preview floor |
+| `test/queue-api.test.js` | the same promises over the real server: a send during a run lands in the queue instead of `409`, the queued item really executes after the previous run ends (including from the `stopped` path), two items run in FIFO order, `reserve` refused with `RUN_IN_PROGRESS`, delete and clear, unknown attachments refused before queueing, and a repeated `clientCommandId` not stacking items |
+| `test/send-replay.test.js` | `/send` idempotency and the snapshot routes over HTTP: the same `clientCommandId` answering `duplicate: true` without a second user message or a second model call, the same id in another thread treated as new, a malformed id ignored rather than rejected, a large thread requested small and its full body fetched back with a matching hash, and `messageLimit` reporting `truncatedMessages` |
 
 ## Wiring
 
