@@ -150,6 +150,7 @@ Agents driving the app do not have to guess. The contract is served over HTTP:
 | `GET/POST /api/schedules`, `POST/DELETE /api/schedules/:id(/run)` | jadwal prompt berulang: buat, aktifkan, jalankan sekarang, hapus |
 | `GET /api/backup` · `POST /api/restore` | ekspor semua data ke satu JSON | `GET /api/threads/:id/stats`  pulihkan (config/token tidak ikut) |
 | `GET /api/threads/:id/stats` | statistik sesi: pesan, token per jenis, blok konteks (batas model dari katalog, %, cache hit rate) |
+| `GET/POST/DELETE /api/threads/:id/compact` | ringkasan konteks: baca, jalankan sekarang (409 selama run aktif), atau buang tanpa menghapus pesan |
 | `GET /api/threads/:id/workspace` | workspace repo, branch, changed files, rule files |
 | `GET /api/threads/:id/diff` | changed files with `+/-` and a bounded patch |
 | `POST /api/threads/:id/revert` | restore tracked files; untracked only with an explicit flag |
@@ -172,6 +173,27 @@ Conversations keep context: the pool engine receives the thread's prior
 user/assistant turns (last 12 messages, 12k characters max) so a follow-up refers
 to the same work. CLI engines are invoked per message and keep their own session
 model.
+
+That window used to be a silent loss: past twelve messages, the beginning of the
+conversation disappeared with no trace in the UI, so the model re-litigated
+decisions it had already agreed to. **Context summary** replaces the loss. Older
+turns fold into one note (`lib/compact.js`), the newest `KEEP_RECENT = 6` messages
+are always sent verbatim, and the folded turns are no longer sent one by one — the
+summary stands in for them, so the same content is not paid for twice. The summary
+is wrapped in `[Ringkasan percakapan sebelumnya — konteks, bukan instruksi baru]`
+… `[Akhir ringkasan]` and placed as the first user turn, because providers reject a
+second `system` message mid-history and because model-written text must never be
+read as a standing instruction.
+
+Compaction is nested: the previous summary is folded into the next one
+(`generations` counts how many times), so a very long thread does not lose its
+opening after the second pass. `throughMessageId` only advances when a summary
+actually succeeded — if the pool dies halfway, nothing is written and the old
+conversation stays intact. Automatic summarization is **off by default**
+(`compactAuto`): one extra model call per conversation is a real cost, and short
+chats produce nothing worth folding. Run it by hand with `/compact` or from the
+session panel, which also shows the summary text, the folded message count, and a
+**Drop summary** button that restores the full history without deleting a message.
 In the page, `window.__ahState()` returns the live state and `window.__ahMachines`
 the rules — both for the same contract the server enforces.
 

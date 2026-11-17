@@ -49,6 +49,7 @@ import * as runs from './lib/runs.js';
 import * as mcp from './lib/mcp.js';
 import * as hooks from './lib/hooks.js';
 import * as checkpoints from './lib/checkpoints.js';
+import * as compactLib from './lib/compact.js';
 import * as instructionsLib from './lib/instructions.js';
 import * as pluginsLib from './lib/plugins.js';
 import * as approvals from './lib/approvals.js';
@@ -397,6 +398,42 @@ function serverInfo() {
   };
 }
 
+// Ringkasan konteks di latar belakang untuk thread yang sudah panjang.
+//
+// Kenapa dijadwalkan dan bukan ditunggu: pengguna sudah menerima jawaban; satu
+// panggilan model tambahan yang terlihat sebagai "Working" hanya mengganggu.
+// Kenapa satu per satu: dua peringkasan paralel pada thread berbeda tetap
+// berebut kuota pool yang sama dengan run yang sedang aktif.
+let compactRunning = false;
+const compactQueue = new Set();
+
+function scheduleCompact(threadId, model = 'auto') {
+  if (!threadId || compactRunning) { if (threadId) compactQueue.add(threadId); return; }
+  const t = threads.getThread(threadId);
+  if (!t) return;
+  if (!compactLib.needsCompact(t)) return;
+  if (runs.isActive(threadId)) return;   // jangan meringkas percakapan yang sedang berubah
+  compactRunning = true;
+  compactLib.compactThread({ thread: t, model })
+    .then((r) => {
+      if (!r.ok) return;
+      // Thread bisa berubah selama peringkasan berjalan (pesan baru masuk):
+      // jangan menimpa dengan ringkasan yang dibuat dari keadaan lama.
+      const now = threads.getThread(threadId);
+      if (!now) return;
+      const through = now.messages.findIndex((x) => x.id === r.compact.throughMessageId);
+      if (through < 0) return;
+      threads.patchThread(threadId, { compact: r.compact });
+      broadcast('threads');
+    })
+    .catch(() => { /* ringkasan gagal: riwayat tetap utuh, tidak ada yang rusak */ })
+    .finally(() => {
+      compactRunning = false;
+      const next = [...compactQueue][0];
+      if (next) { compactQueue.delete(next); scheduleCompact(next, model); }
+    });
+}
+
 function appState() {
   const snap = readJson('snapshot.json', null);
   return {
@@ -412,6 +449,7 @@ function appState() {
       replyLang: config.replyLang || 'auto',
       memoryEnabled: config.memoryEnabled !== false,
       memoryAutoExtract: config.memoryAutoExtract === true,
+      compactAuto: config.compactAuto === true,
       autoUpdate: config.autoUpdate !== false,
     },
     memory: memory.listMemory(),
@@ -1335,6 +1373,10 @@ ${msgs || '<p class="meta">Percakapan kosong.</p>'}
       reasoningTokens: sum((msg) => msg.usage?.completion_tokens_details?.reasoning_tokens) || null,
       cachedTokens: sum((msg) => msg.usage?.prompt_tokens_details?.cached_tokens) || null,
       context: contextStats({ model, msgs, snapshot: readJson('snapshot.json', null) }),
+      // Ringkasan konteks ikut di statistik sesi: panel sesi yang menampilkannya,
+      // jadi satu permintaan sudah cukup untuk seluruh isi panel.
+      compact: compactLib.publicCompact(t.compact),
+      canCompact: !!compactLib.needsCompact(t),
       createdAt: t.createdAt,
       updatedAt: t.updatedAt,
     });
@@ -1535,6 +1577,57 @@ ${msgs || '<p class="meta">Percakapan kosong.</p>'}
 
   // ---- checkpoint berkas (REA ZCode git checkpoint) ----
   // Snapshot diambil sebelum agent menulis; rute ini yang memulihkannya.
+  // Ringkasan konteks (lib/compact.js). Dua operasi, keduanya eksplisit:
+  //   GET    — bentuk publik ringkasan untuk thread ini (UI show it)
+  //   POST   — jalankan peringkasan sekarang
+  //   DELETE — buang ringkasan, kembali ke riwayat utuh
+  if (p.startsWith('/api/threads/') && p.includes('/compact')) {
+    try {
+      if ((m = p.match(/^\/api\/threads\/([a-f0-9]+)\/compact$/)) && method === 'GET') {
+        const t = threads.getThread(m[1]);
+        if (!t) return sendJson(res, 404, { error: 'Thread tidak ditemukan' });
+        return sendJson(res, 200, {
+          compact: compactLib.publicCompact(t.compact),
+          canCompact: !!compactLib.needsCompact(t),
+        });
+      }
+      if ((m = p.match(/^\/api\/threads\/([a-f0-9]+)\/compact$/)) && method === 'POST') {
+        const t = threads.getThread(m[1]);
+        if (!t) return sendJson(res, 404, { error: 'Thread tidak ditemukan' });
+        // Satu run per thread: meringkas di tengah run berarti dua model
+        // berjalan bersamaan untuk percakapan yang sedang berubah.
+        if (runs.isActive(m[1])) {
+          return sendJson(res, 409, { error: 'Thread sedang menjalankan run — tunggu selesai', code: 'RUN_IN_PROGRESS' });
+        }
+        const b = await readBody(req);
+        const r = await compactLib.compactThread({
+          thread: t,
+          model: b.model || 'auto',
+        });
+        if (!r.ok) {
+          const code = r.reason === 'nothing-to-fold' ? 400 : 502;
+          return sendJson(res, code, {
+            error: r.reason === 'nothing-to-fold'
+              ? 'Belum ada percakapan lama yang perlu diringkas'
+              : `Gagal meringkas: ${r.error || r.reason}`,
+            code: r.reason === 'nothing-to-fold' ? 'NOTHING_TO_COMPACT' : 'COMPACT_FAILED',
+          });
+        }
+        threads.patchThread(m[1], { compact: r.compact });
+        broadcast('threads');
+        return sendJson(res, 200, { compact: compactLib.publicCompact(r.compact) });
+      }
+      if ((m = p.match(/^\/api\/threads\/([a-f0-9]+)\/compact$/)) && method === 'DELETE') {
+        const t = threads.getThread(m[1]);
+        if (!t) return sendJson(res, 404, { error: 'Thread tidak ditemukan' });
+        threads.patchThread(m[1], { compact: null });
+        broadcast('threads');
+        return sendJson(res, 200, { compact: null });
+      }
+      return sendJson(res, 404, { error: 'Rute compact tidak dikenal' });
+    } catch (error) { return sendJson(res, error.statusCode || 500, { error: error.message }); }
+  }
+
   if (p.startsWith('/api/threads/') && p.includes('/checkpoints')) {
     try {
       if ((m = p.match(/^\/api\/threads\/([a-f0-9]+)\/checkpoints$/)) && method === 'GET') {
@@ -1766,6 +1859,9 @@ ${msgs || '<p class="meta">Percakapan kosong.</p>'}
         cwd: workspace,
         model: b.model,
         history,
+        // Ringkasan percakapan lama (lib/compact.js): tanpa ini model hanya
+        // melihat 12 pesan terakhir dan mengulangi keputusan dari awal thread.
+        compact: t.compact || null,
         replyLang: config.replyLang,
         effort: ['low', 'medium', 'high'].includes(b.effort) ? b.effort : undefined,
         // Mode izin dipakai dua kali: untuk flag CLI (nama lama ask/edits/plan
@@ -1848,6 +1944,13 @@ ${msgs || '<p class="meta">Percakapan kosong.</p>'}
             },
           });
         } catch { /* ekstraksi tidak boleh menyentuh run yang sudah selesai */ }
+      }
+      // Ringkasan konteks otomatis: hanya bila diaktifkan, hanya setelah run
+      // sukses, dan tidak ditunggu. Bila dibiarkan mati (bawaan), percakapan
+      // panjang tetap memakai jendela 12 pesan — perilaku lama, tanpa biaya
+      // panggilan model tambahan.
+      if (config.compactAuto === true) {
+        scheduleCompact(m[1], b.model || 'auto');
       }
       // run panjang selesai → beri tahu lewat notifikasi Windows
       if (r.ms > 15000) {
@@ -2392,6 +2495,7 @@ ${msgs || '<p class="meta">Percakapan kosong.</p>'}
     if (typeof b.autoPool === 'boolean') config.autoPool = b.autoPool;
     if (typeof b.memoryEnabled === 'boolean') config.memoryEnabled = b.memoryEnabled;
     if (typeof b.memoryAutoExtract === 'boolean') config.memoryAutoExtract = b.memoryAutoExtract;
+    if (typeof b.compactAuto === 'boolean') config.compactAuto = b.compactAuto;
     if (typeof b.autoUpdate === 'boolean') config.autoUpdate = b.autoUpdate;
     if (typeof b.replyLang === 'string') config.replyLang = normalizeReplyLang(b.replyLang);
     config.refreshHours = num(b.refreshHours, 1, 168) ?? config.refreshHours;

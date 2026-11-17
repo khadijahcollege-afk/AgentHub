@@ -75,3 +75,42 @@ test('history: total karakter dibatasi dan pesan tertua dipotong dari depan', ()
   assert.equal(msgs[0].content.startsWith('AWAL-'), false);
   assert.equal(msgs[0].content.endsWith('x'), true);
 });
+
+// Ringkasan konteks (lib/compact.js): tanpa ini, pemotongan di atas membuang
+// awal percakapan tanpa jejak dan model mengulangi keputusan yang sudah dibuat.
+test('history: ringkasan dikirim paling depan dan pesan yang sudah diringkas tidak diulang', () => {
+  const history = Array.from({ length: 20 }, (_, i) => ({
+    id: `m${i}`,
+    role: i % 2 ? 'assistant' : 'user',
+    content: `pesan-${i}`,
+    runStatus: 'done',
+  }));
+  const compact = { summary: 'Memakai pnpm dan mengubah src/a.ts.', throughMessageId: 'm13' };
+  const msgs = buildPoolMessages(history, 'baru', compact);
+  assert.equal(msgs[0].role, 'user');
+  assert.match(msgs[0].content, /Ringkasan percakapan sebelumnya/);
+  assert.match(msgs[0].content, /Memakai pnpm/);
+  // Pesan yang sudah diwakili ringkasan tidak dikirim lagi (m0..m13 hilang).
+  assert.equal(msgs.some((m) => m.content === 'pesan-0'), false);
+  assert.equal(msgs.some((m) => m.content === 'pesan-13'), false);
+  // Pesan setelah cursor tetap ada, verbatim.
+  assert.equal(msgs.some((m) => m.content === 'pesan-14'), true);
+  assert.equal(msgs.at(-1).content, 'baru');
+});
+
+test('history: tanpa ringkasan perilakunya sama seperti sebelumnya', () => {
+  const history = [
+    { id: 'a', role: 'user', content: 'pertama', runStatus: 'done' },
+    { id: 'b', role: 'assistant', content: 'jawaban', runStatus: 'done' },
+  ];
+  assert.deepEqual(
+    buildPoolMessages(history, 'lanjut', null),
+    buildPoolMessages(history, 'lanjut'),
+  );
+  // Ringkasan tanpa teks tidak menambah giliran kosong. Cursor di pesan
+  // terakhir berarti tidak ada pesan segar — ringkasan kosong bukan alasan
+  // untuk mengirim ulang riwayat.
+  const tail = buildPoolMessages(history, 'lanjut', { throughMessageId: 'b' });
+  assert.equal(tail.length, 1);
+  assert.equal(tail[0].content, 'lanjut');
+});

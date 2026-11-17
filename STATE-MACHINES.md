@@ -167,6 +167,33 @@ and re-filled by `loadAsks()` when a thread opens. A tab that inherits
 `adoptRemoteRun()` on the `threads` broadcast, so the chip stops spinning and
 the final message appears.
 
+## Context summary lifecycle (compact)
+
+A thread's `compact` field is not a state machine, but it has one invariant that
+matters and one cursor that must never lie. Owner: `lib/compact.js`.
+
+```
+(absent) ──POST /compact──> summary(gen 1) ──POST /compact──> summary(gen 2)
+    ^                            │                                   │
+    └────────DELETE /compact─────┴─────────────DELETE /compact───────┘
+```
+
+| Invariant | Why |
+| --- | --- |
+| The newest `KEEP_RECENT = 6` messages are never folded | The work in progress must stay verbatim. A paraphrase of the current conclusion is worse than no summary at all. |
+| `throughMessageId` only advances on success | If the pool dies halfway, nothing is written; the old conversation is still whole. A cursor written optimistically would make messages vanish. |
+| A cursor pointing at a missing message restarts from the beginning | Threads get trimmed and forked. Guessing "everything before this is covered" would silently skip unsummarized conversation. |
+| Summaries are nested, not stacked | The previous summary is folded into the next (`generations` + 1). Ten summaries in a row would otherwise cost the same tokens as the history they replaced. |
+| Folded turns are not sent alongside their summary | The summary stands in for them; sending both pays twice for the same content. |
+| The summary is a user turn, not a `system` turn | Providers reject a second `system` message mid-history. It is wrapped in explicit fences so model-written text is not read as a new instruction. |
+| Automatic runs are one at a time and skip active threads | Two summaries in parallel compete with the run that is still producing the conversation being summarized. |
+| `DELETE` removes the summary, never a message | "Drop summary" is a window change, not history destruction. |
+
+`GET /api/threads/:id/compact` reports `canCompact` from the same
+`selectFolded()` the write path uses, so the button and the endpoint cannot
+disagree. `POST` returns `409 RUN_IN_PROGRESS`, `400 NOTHING_TO_COMPACT`, or
+`502 COMPACT_FAILED`; the failure path writes nothing.
+
 ## Why these are not machines (yet)
 
 Centralising everything costs more than it buys when the state is a single frame of
@@ -243,7 +270,7 @@ Never infer status from a button's disabled state or from `thread.running`. Quer
 | `test/recovery.test.js` | orphaned `running` thread is recovered as `error` at startup, history intact, and can run again |
 | `test/workspace.test.js` | thread workspace validation/persistence, side-effect-free `/api/workspace/check` for the free-folder picker, git status/diff, per-file revert (tracked + untracked guard), rule files, non-repo 409, subfolder workspace with root-relative paths |
 | `test/search.test.js` | global search across thread titles/messages, tasks, notes, projects; limits, short queries, regex characters, normalization |
-| `test/history.test.js` | pool conversation history: role order, filtering of subruns/streaming/errors, message and character caps |
+| `test/history.test.js` | pool conversation history: role order, filtering of subruns/streaming/errors, message and character caps, and that a summary is sent first while the turns it replaced are not |
 | `test/promoPass.test.js` | campaign window, billing day, quota/upgrade math, model matching, claim idempotence, toggles/add/rename/dismiss/share, unknown actions and bad JSON |
 | `test/uploads.test.js` | basename sanitization, MIME guessing, size/base64 rejection, CLI paths vs pool inline text, upload/download/delete, `/send` invalid and over-limit attachments, attachment-only messages |
 | `test/desktop.test.js` | UI shell contract: unique element IDs, separate textareas, composer slots, in-app dialog (no native confirm/prompt), packaged handshake version |
@@ -255,6 +282,8 @@ Never infer status from a button's disabled state or from `thread.running`. Quer
 | `test/hook-wiring.test.js` | hook events actually wired into the loop: `ask` becomes `allow` only through `PermissionRequest`, denial writes nothing, a missing approval client denies instead of waiting |
 | `test/subagents-api.test.js` | subagent runs through the real server: `subagent` SSE events, child tool tagging, mode never looser than the parent |
 | `test/port-helper.test.js` | `pickFreePort` skips ports that are already answering (including the Windows case where a neighbour listens on `::` only, so an IPv4 bind still "succeeds") |
+| `test/compact.test.js` | summary selection: nothing folded below the thresholds, the newest messages stay verbatim, an empty/short/refusal reply is rejected, a dead pool does not advance the cursor, the summary is length-capped at a sentence boundary, and the second pass folds the previous summary (`generations`) |
+| `test/compact-api.test.js` | the same promises over the real server: saved to the thread, `compacted` flag only in the list, the next run really receives the summary and not the folded turns, `DELETE` restores history without deleting messages, `409` during a run, `502` writes nothing, automatic mode via settings |
 
 ## Wiring
 

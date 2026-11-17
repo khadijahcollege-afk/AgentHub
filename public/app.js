@@ -3196,7 +3196,27 @@ window.__ahMachines = {
           ${ctx.cacheHitRate != null ? row('Cache hit rate', `${esc(ctx.cacheHitRate)}%`) : ''}
         </div>
       </div>` : '';
-    $('#session-kv').innerHTML = ctxHtml + [
+    // Ringkasan konteks: pesan lama diganti ringkasannya supaya jendela 12
+    // pesan tidak membuang awal percakapan tanpa jejak. Teksnya ditampilkan
+    // penuh di sini — tempat satu-satunya pengguna bisa memeriksa apa yang
+    // sebenarnya diingat model, bukan hanya percaya pada chip.
+    const cmp = s.compact || null;
+    const cmpHtml = `
+      <div class="ctx-block compact-block">
+        <div class="ctx-head"><span>${tr('Ringkasan konteks')}</span><b>${cmp ? `${esc(cmp.messages)} pesan` : `<span class="muted">${tr('belum ada')}</span>`}</b></div>
+        ${cmp ? `
+          <div class="compact-meta muted small">Generasi ${esc(cmp.generations)} · ${esc(cmp.foldedChars ? fmtNum(cmp.foldedChars) : '0')} karakter dilipat · ${esc(cmp.keptMessages)} pesan terakhir tetap utuh</div>
+          <div class="compact-text">${esc(cmp.summary)}</div>
+          <div class="compact-actions">
+            <button class="btn tiny" id="compact-refresh" type="button">${icon('refresh')} ${tr('Ringkas lagi')}</button>
+            <button class="btn tiny ghost" id="compact-drop" type="button">${icon('x')} ${tr('Buang ringkasan')}</button>
+          </div>` : `
+          <p class="muted small">${tr('Percakapan panjang diringkas agar keputusan lama tidak hilang saat jendela konteks penuh. Pesan terbaru selalu dikirim apa adanya.')}</p>
+          <div class="compact-actions">
+            <button class="btn tiny" id="compact-refresh" type="button">${icon('refresh')} ${tr('Ringkas sekarang')}</button>
+          </div>`}
+      </div>`;
+    $('#session-kv').innerHTML = ctxHtml + cmpHtml + [
       row('Sesi', esc(s.title || '—')),
       row('Engine', esc(engineLabels[s.engine] || s.engine || '—')),
       row('Model', s.model ? esc(s.model) : dash),
@@ -3215,6 +3235,40 @@ window.__ahMachines = {
     setLayer('session');
     positionPop('#session-pop', '#btn-session-info');
   }
+  // Aksi ringkasan konteks. Keduanya dijalankan dari panel sesi, jadi hasilnya
+  // langsung terlihat: panel digambar ulang, bukan ditutup.
+  async function compactNow() {
+    if (!curThread) return;
+    const btn = $('#compact-refresh');
+    if (btn) { btn.disabled = true; btn.dataset.busy = '1'; }
+    try {
+      const r = await api(`/api/threads/${curThread.id}/compact`, {
+        method: 'POST', body: JSON.stringify({ model: selectedModel || 'auto' }),
+      });
+      curThread = await api(`/api/threads/${curThread.id}`).catch(() => curThread);
+      toast(tr('Ringkasan dibuat - {n} pesan lama diringkas').replace('{n}', String(r.compact?.messages || 0)));
+      await openSessionInfo();
+    } catch (e) {
+      toast(e.message || tr('Gagal meringkas'));
+      if (btn) { btn.disabled = false; delete btn.dataset.busy; }
+    }
+  }
+
+  async function compactDrop() {
+    if (!curThread) return;
+    try {
+      await api(`/api/threads/${curThread.id}/compact`, { method: 'DELETE' });
+      curThread = await api(`/api/threads/${curThread.id}`).catch(() => curThread);
+      toast(tr('Ringkasan dibuang - riwayat utuh kembali'));
+      await openSessionInfo();
+    } catch (e) { toast(e.message || tr('Gagal membuang ringkasan')); }
+  }
+
+  document.addEventListener('click', (e) => {
+    if (e.target.closest('#compact-refresh')) { e.preventDefault(); compactNow(); }
+    if (e.target.closest('#compact-drop')) { e.preventDefault(); compactDrop(); }
+  });
+
   $('#btn-share')?.addEventListener('click', () => shareThread());
   $('#share-open')?.addEventListener('click', () => shareThread());
   $('#btn-sys-prompt')?.addEventListener('click', async () => {
@@ -3241,7 +3295,7 @@ window.__ahMachines = {
   });
 
   // ---------- perintah slash nyata ----------
-  const SLASH_COMMANDS = '/new chat baru · /export unduh .md atau json · /engine ganti engine · /model katalog model · /prompt prompt tersimpan · /save simpan prompt composer · /stats info sesi · /tasks /notes /promo /gateway /settings navigasi · /help daftar perintah';
+  const SLASH_COMMANDS = '/new chat baru · /export unduh .md atau json · /compact ringkas konteks percakapan lama · /engine ganti engine · /model katalog model · /prompt prompt tersimpan · /save simpan prompt composer · /stats info sesi · /tasks /notes /promo /gateway /settings navigasi · /help daftar perintah';
 
   function handleSlash(cmd, arg) {
     switch (cmd) {
@@ -3256,6 +3310,14 @@ window.__ahMachines = {
       case 'model': if (currentEngine === 'pool') openModelPop(); else toast('Pilih engine Gateway dulu (/engine)'); return true;
       case 'prompt': setLayer('prompts'); renderPrompts(); positionPop('#prompts-pop', '#composer'); return true;
       case 'stats': openSessionInfo(); return true;
+      case 'compact': {
+        // Dijalankan dari perintah karena meringkas butuh satu panggilan model:
+        // pengguna harus memintanya, bukan kaget kuota terpakai. Tanpa thread
+        // tidak ada yang bisa diringkas, dan itu dijelaskan — bukan diam.
+        if (!curThread) { toast(tr('Belum ada thread untuk diringkas')); return true; }
+        openSessionInfo().then(() => compactNow());
+        return true;
+      }
       case 'save': {
         const body = ($('#composer-input').value || '').trim();
         if (!body) { toast('Composer kosong — tidak ada yang bisa disimpan'); return true; }
@@ -5541,6 +5603,8 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
     if (tgl) tgl.checked = state.config?.memoryEnabled !== false;
     const auto = $('#set-mem-auto');
     if (auto) auto.checked = state.config?.memoryAutoExtract === true;
+    const cauto = $('#set-compact-auto');
+    if (cauto) cauto.checked = state.config?.compactAuto === true;
     renderExtractSummary();
     if (!host) return;
     const facts = state.memory || [];
@@ -5618,6 +5682,20 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
         ? 'Ekstraksi otomatis aktif — fakta disimpan setelah run berhasil'
         : 'Ekstraksi otomatis dimatikan');
     } catch (err) { toast('Gagal: ' + err.message); e.target.checked = !e.target.checked; }
+  });
+
+  // Ringkasan konteks otomatis. Sama pola dengan ekstraksi memori: setelan
+  // disimpan di server (bukan localStorage) karena yang menjalankannya server,
+  // dan checkbox dikembalikan bila penyimpanan gagal — jangan pernah menampilkan
+  // setelan yang tidak benar-benar tersimpan.
+  $('#set-compact-auto')?.addEventListener('change', async (e) => {
+    try {
+      await api('/api/settings', { method: 'POST', body: JSON.stringify({ compactAuto: e.target.checked }) });
+      state.config.compactAuto = e.target.checked;
+      toast(e.target.checked
+        ? tr('Ringkasan konteks otomatis aktif - percakapan panjang diringkas setelah run')
+        : tr('Ringkasan konteks otomatis dimatikan'));
+    } catch (err) { toast(tr('Gagal: ') + err.message); e.target.checked = !e.target.checked; }
   });
 
   // Ekstrak manual: berguna untuk mencoba sebelum menyalakan otomatis, dan untuk

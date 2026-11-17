@@ -23,6 +23,28 @@ export const EN = {
   '(memakai aplikasi yang sudah login di komputer ini). Engine yang belum terpasang tetap terlihat, tetapi tidak bisa dipilih.':
     '(using an app already signed in on this computer). Engines that are not installed stay visible but cannot be selected.',
   '/skill nama-skill': '/skill skill-name',
+  // --- ringkasan konteks (compact) ---
+  'Ringkasan konteks': 'Context summary',
+  'Ringkas lagi': 'Summarize again',
+  'Ringkas sekarang': 'Summarize now',
+  'Buang ringkasan': 'Drop summary',
+  'belum ada': 'none yet',
+  'Ringkasan dibuat - {n} pesan lama diringkas': 'Summary created - {n} older messages folded',
+  'Ringkasan dibuang - riwayat utuh kembali': 'Summary dropped - full history restored',
+  'Belum ada thread untuk diringkas': 'No thread to summarize yet',
+  'Belum ada percakapan lama yang perlu diringkas': 'No older conversation to summarize yet',
+  'Gagal meringkas': 'Could not summarize',
+  'Gagal membuang ringkasan': 'Could not drop the summary',
+  'Percakapan panjang diringkas agar keputusan lama tidak hilang saat jendela konteks penuh. Pesan terbaru selalu dikirim apa adanya.':
+    'Long conversations are summarized so older decisions survive a full context window. The newest messages are always sent verbatim.',
+  '/compact ringkas konteks percakapan lama': '/compact summarize older conversation context',
+  'Ringkasan konteks otomatis aktif - percakapan panjang diringkas setelah run':
+    'Automatic context summary is on - long conversations are summarized after a run',
+  'Ringkasan konteks otomatis dimatikan': 'Automatic context summary is off',
+  'Gagal: ': 'Failed: ',
+  'Ringkas konteks percakapan panjang secara otomatis': 'Automatically summarize long conversations',
+  'Percakapan panjang hanya mengirim 12 pesan terakhir ke model, sehingga keputusan di awal thread hilang tanpa jejak. Ringkasan menggantikannya: pesan lama dilipat menjadi satu catatan, sedangkan pesan terbaru tetap dikirim apa adanya. Satu panggilan model per ringkasan, berjalan setelah run selesai dan hanya bila percakapannya sudah cukup panjang. Bisa juga dijalankan manual lewat /compact.':
+    'A long conversation only sends the last 12 messages to the model, so decisions made earlier in the thread vanish without a trace. The summary replaces that loss: older messages fold into a single note while the newest messages are still sent verbatim. One model call per summary, run after a finished run and only once the conversation is long enough. It can also be run by hand with /compact.',
   '→ AgentHub jadi aplikasi layar penuh dengan ikon sendiri.': '→ AgentHub becomes a full-screen app with its own icon.',
   '1. Unduh: github.com/cloudflare/cloudflared/releases (cloudflared-windows-amd64.exe) 2. Simpan sebagai cloudflared.exe di folder mana pun 3. Tulis path lengkapnya di bawah, lalu klik Aktifkan tunnel':
     '1. Download: github.com/cloudflare/cloudflared/releases (cloudflared-windows-amd64.exe) 2. Save it as cloudflared.exe in any folder 3. Enter the full path below, then click Enable tunnel',

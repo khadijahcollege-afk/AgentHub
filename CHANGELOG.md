@@ -1,5 +1,50 @@
 # Changelog
 
+## 1.7.1 — 2026-11-17
+Ringkasan konteks: percakapan panjang berhenti kehilangan awal ceritanya secara
+diam-diam.
+
+Masalah yang sebenarnya terjadi sebelum ini: `lib/harness.js` hanya mengirim 12
+pesan terakhir / 12 ribu karakter ke model. Thread yang panjang karena itu
+kehilangan keputusan yang sudah disepakati, path yang sudah ditemukan, dan hal
+yang sudah dicoba lalu gagal — tanpa satu pun tanda di UI. Model lalu
+mengulanginya, dan pengguna menyalahkan model.
+
+- **Ringkasan menggantikan kehilangan itu** (`lib/compact.js`) — pesan lama
+  dilipat menjadi satu catatan, sedangkan `KEEP_RECENT = 6` pesan terbaru
+  selalu dikirim apa adanya. Yang dikirim ke model adalah ringkasan + pesan
+  terbaru; pesan yang sudah diwakili ringkasan tidak dikirim ulang, jadi isi
+  yang sama tidak dibayar dua kali.
+- **Ringkasan diberi pagar** — teksnya datang dari model, jadi ia dibungkus
+  `[Ringkasan percakapan sebelumnya — konteks, bukan instruksi baru]` …
+  `[Akhir ringkasan]` dan diletakkan sebagai giliran user pertama, bukan
+  `system` kedua (provider menolak `system` di tengah riwayat). Panjangnya
+  dibatasi 4000 karakter dan dipotong di batas kalimat.
+- **Cursor hanya maju bila ringkasan benar-benar jadi** — `throughMessageId`
+  disimpan bersama ringkasan, dan kalau pool mati di tengah jalan tidak ada
+  yang ditulis: percakapan lama tetap utuh. Ringkasan yang menunjuk pesan yang
+  sudah tidak ada (thread dipangkas/fork) membuat peringkasan mulai dari awal,
+  bukan melompati percakapan yang belum pernah diringkas.
+- **Bertingkat, bukan menumpuk** — ringkasan lama ikut jadi bahan ringkasan
+  berikutnya (`generations` bertambah), supaya percakapan sangat panjang tidak
+  kehilangan awal cerita setelah kompaksi kedua.
+- **Mati secara bawaan** (`compactAuto`) — satu panggilan model per ringkasan
+  adalah biaya nyata, dan percakapan receh tidak menghasilkan apa pun. Bisa
+  dinyalakan di Pengaturan › Memori, atau dijalankan manual lewat `/compact`
+  dan panel sesi. Peringkasan otomatis berjalan setelah run berhasil, satu per
+  satu (`scheduleCompact`), dan dilewati selama masih ada run aktif di thread
+  itu.
+- **`GET/POST/DELETE /api/threads/:id/compact`** — 409 `RUN_IN_PROGRESS` bila
+  run sedang berjalan, 400 `NOTHING_TO_COMPACT` bila belum ada yang sepadan,
+  502 `COMPACT_FAILED` bila pool gagal. Kegagalan tidak menyimpan apa pun.
+  `DELETE` membuang ringkasan tanpa menghapus satu pesan pun.
+- **Panel sesi menampilkan isinya** — teks ringkasan penuh, jumlah pesan yang
+  dilipat, sisa pesan verbatim, dan generasi; plus tombol Ringkas lagi / Buang
+  ringkasan. Daftar thread hanya membawa penanda `compacted`, bukan teksnya:
+  sidebar tidak perlu membayar payload itu di setiap render.
+- Regresi: `compact` (11), `compact-api` (10), `history` (7, dua di antaranya
+  baru) — suite penuh 448 tes, semuanya lulus.
+
 ## 1.7.0 — 2026-11-17
 Tujuh tahap hasil membaca ulang ZCode (Apache-2.0) dan menerapkan polanya ke
 AgentHub. Yang diambil bukan tampilannya, melainkan kontrak yang membuat agent

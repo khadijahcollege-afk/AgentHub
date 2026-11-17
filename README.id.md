@@ -128,6 +128,7 @@ Agent yang mengemudikan aplikasi tidak perlu menebak; kontraknya disajikan lewat
 | `GET/POST /api/schedules`, `POST/DELETE /api/schedules/:id(/run)` | jadwal prompt berulang: buat, aktifkan, jalankan sekarang, hapus |
 | `GET /api/backup` · `POST /api/restore` | ekspor semua data ke satu JSON & pulihkan (config/token tidak ikut) |
 | `GET /api/threads/:id/stats` | statistik sesi: pesan, token per jenis, blok konteks (batas model dari katalog, %, cache hit rate) |
+| `GET/POST/DELETE /api/threads/:id/compact` | ringkasan konteks: baca, jalankan sekarang (409 selama run aktif), atau buang tanpa menghapus pesan |
 | `GET /api/threads/:id/workspace` | repo, branch, file berubah, dan file aturan |
 | `GET /api/threads/:id/diff` | file berubah dengan `+/-` dan patch terbatas |
 | `POST /api/threads/:id/revert` | kembalikan file terlacak; file baru hanya dengan izin eksplisit |
@@ -144,7 +145,30 @@ Satu run per thread: kiriman kedua saat run masih aktif ditolak
 kirim terkunci. Percakapan menyimpan konteks: engine pool menerima giliran
 user/assistant sebelumnya (maksimal 12 pesan / 12 ribu karakter), sehingga
 pertanyaan lanjutan merujuk pekerjaan yang sama. Engine CLI dipanggil per pesan
-dan mengelola sesinya sendiri. Di halaman, `window.__ahState()` mengembalikan
+dan mengelola sesinya sendiri.
+
+Jendela itu dulu menghilangkan konteks tanpa jejak: lewat dua belas pesan, awal
+percakapan lenyap dan UI tidak menunjukkan apa pun, lalu model mengulang
+keputusan yang sebenarnya sudah disepakati. **Ringkasan konteks** menggantikan
+kehilangan itu. Giliran lama dilipat menjadi satu catatan (`lib/compact.js`),
+`KEEP_RECENT = 6` pesan terbaru selalu dikirim apa adanya, dan pesan yang sudah
+diwakili ringkasan tidak dikirim ulang — ringkasan menggantikan mereka, jadi isi
+yang sama tidak dibayar dua kali. Ringkasan dibungkus
+`[Ringkasan percakapan sebelumnya — konteks, bukan instruksi baru]` …
+`[Akhir ringkasan]` dan diletakkan sebagai giliran user pertama, karena provider
+menolak `system` kedua di tengah riwayat dan karena teks tulisan model tidak
+boleh dibaca sebagai instruksi tetap.
+
+Peringkasan bertingkat: ringkasan lama ikut dilipat ke ringkasan berikutnya
+(`generations` menghitung berapa kali), jadi thread sangat panjang tidak
+kehilangan pembukaannya setelah lintasan kedua. `throughMessageId` hanya maju
+bila ringkasan benar-benar berhasil — kalau pool mati di tengah jalan, tidak ada
+yang ditulis dan percakapan lama tetap utuh. Peringkasan otomatis **mati secara
+bawaan** (`compactAuto`): satu panggilan model tambahan per percakapan adalah
+biaya nyata, dan percakapan pendek tidak menghasilkan apa pun untuk dilipat.
+Jalankan manual lewat `/compact` atau dari panel sesi, yang juga menampilkan teks
+ringkasan, jumlah pesan yang dilipat, dan tombol **Buang ringkasan** yang
+mengembalikan riwayat utuh tanpa menghapus satu pesan pun. Di halaman, `window.__ahState()` mengembalikan
 state runtime dan `window.__ahMachines` aturannya — kontrak yang sama dengan yang
 ditegakkan server.
 

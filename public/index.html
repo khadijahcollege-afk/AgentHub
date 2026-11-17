@@ -714,6 +714,10 @@
               <span class="muted small" id="mem-extract-status"></span>
             </div>
             <p class="muted small" id="mem-extract-last"></p>
+
+            <h3>Ringkasan konteks</h3>
+            <label class="mem-toggle"><input type="checkbox" id="set-compact-auto"><span>Ringkas konteks percakapan panjang secara otomatis</span></label>
+            <p class="muted small mem-hint">Percakapan panjang hanya mengirim 12 pesan terakhir ke model, sehingga keputusan di awal thread hilang tanpa jejak. Ringkasan menggantikannya: pesan lama dilipat menjadi satu catatan, sedangkan pesan terbaru tetap dikirim apa adanya. Satu panggilan model per ringkasan, berjalan setelah run selesai dan hanya bila percakapannya sudah cukup panjang. Bisa juga dijalankan manual lewat /compact.</p>
           </div>
 
           <div class="settings-pane" data-pane="instructions">
