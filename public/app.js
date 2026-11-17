@@ -8883,3 +8883,6 @@ Jangan mengarang — bila data tidak ada di folder, katakan tidak ada.`;
     },
   });
 })();
+
+
+// 1794934352424
