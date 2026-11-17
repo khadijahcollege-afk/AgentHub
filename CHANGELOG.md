@@ -423,6 +423,9 @@ ditunggu, dan apa yang harus bisa dipulihkan setelah gagal.
   `share`, `port-helper` — 424 tes, semuanya lulus.
 
 ## 1.6.14 — 2026-11-17
+- **Fix toko plugin**: loadStore kini dijalankan saat pane Plugin dibuka
+  (grid kartu sebelumnya kosong), toast pasang menampilkan nama plugin
+  (bukan template mentah), dan kartu yang terpotong ditulis ulang utuh.
 - **Toko Plugin bawaan (ala halaman Plugins Claude)** — folder store/ berisi
   10 plugin skill kurasi yang BENAR-BENAR BISA DIPASANG (Commit Master,
   Error Hunter, Weekly Report, PPT Outline, Web Research, Meeting Notes,

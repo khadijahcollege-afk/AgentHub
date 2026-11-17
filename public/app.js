@@ -6427,7 +6427,7 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
     if (id === 'orchestra') { renderOrchestra(); renderOrchestraEngines(); }
     if (id === 'memory') renderMemory();
     if (id === 'instructions') renderInstructions();
-    if (id === 'plugins') renderPlugins();
+    if (id === 'plugins') { renderPlugins(); loadStore(); }
     if (id === 'mcp') { renderMcp(); syncMcpTransport(); }
     if (id === 'hooks') renderHooks();
   }
@@ -7108,7 +7108,7 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
     btn.disabled = true;
     try {
       await api('/api/plugins/install', { method: 'POST', body: JSON.stringify({ name: btn.dataset.storeInstall, marketplace: btn.dataset.storeMarket }) });
-      toast('Plugin ${String(btn.dataset.storeInstall)} terpasang — skill aktif otomatis');
+      toast('Plugin ' + btn.dataset.storeInstall + ' terpasang — skill aktif otomatis');
       await loadStore();
       await renderPlugins();
     } catch (err) { toast('Gagal memasang: ' + err.message); btn.disabled = false; }
