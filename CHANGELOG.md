@@ -423,6 +423,16 @@ ditunggu, dan apa yang harus bisa dipulihkan setelah gagal.
   `share`, `port-helper` — 424 tes, semuanya lulus.
 
 ## 1.6.14 — 2026-11-17
+- **Tampilan depan ala ZCode + panel Translucensi ala Kybern + tray menu** —
+  judul hero kini sapaan per jam (Pagi/Siang/Sore/Malam, kerja bagus hari
+  ini) dengan 4 quick chips (Ringkasan mingguan, Perbaiki error, Riset web,
+  Tugas terjadwal). Pane Tampilan dapat seksi Translucensi: Jendela
+  Solid/Translucent, Hanya sidebar, opasitas sidebar/konten/permukaan
+  (slider 30-100%), Backdrop Mica/Acrylic khusus desktop Windows 11 (IPC
+  setBackgroundMaterial), Reset ke bawaan; kaca lewat variabel CSS. Tray
+  ikon diperluas ala ZCode: Task baru, Buka folder kerja, Tentang,
+  Ekspor log (diagnostik JSON). Fix: tiga forEach $ tunggal (guard error
+  boot menangkapnya). SW cache v16, aset v1.8.4.
 - **Bagikan percakapan sebagai tautan baca-saja (REA app ZCode 3.18.2,
   fitur conversationShare)** — tombol bagikan di header chat membuat tautan
   publik /share/<id> (pilih berlaku 7/30 hari via dialog), isi dibaca tanpa
