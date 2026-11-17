@@ -133,6 +133,8 @@ Agent yang mengemudikan aplikasi tidak perlu menebak; kontraknya disajikan lewat
 | `GET /api/threads/:id/diff` | file berubah dengan `+/-` dan patch terbatas |
 | `POST /api/threads/:id/revert` | kembalikan file terlacak; file baru hanya dengan izin eksplisit |
 | `POST /api/threads/:id/rules` | tulis satu file aturan yang diizinkan (`AGENTS.md`, `CLAUDE.md`, …) |
+| `GET /api/threads/:id/git/graph` | grafik commit read-only: commit beserta lane siap-gambar, edge, rail, dan ukuran halaman |
+| `GET /api/threads/:id/git/branches` · `POST …/git/checkout` | daftar cabang lokal + remote, atau pindah cabang (git menolak worktree kotor → `409`) |
 | `GET /api/terminal?workspace=` · `POST /api/terminal` | tab terminal milik satu workspace, dan jalankan perintah di sebuah tab (tanpa `tabId` = tab baru) |
 | `GET/DELETE /api/terminal/tabs/:id` · `POST /api/terminal/tabs` | buka tab lengkap dengan transkrip, tutup tab, atau buat tab kosong |
 | `GET/DELETE /api/terminal/:id` | satu perintah: status + keluaran, atau hentikan prosesnya (tab tetap ada) |
@@ -190,6 +192,30 @@ judul & isi pesan thread, judul tugas, judul/isi catatan, serta nama/folder proy
 dalam satu permintaan. Hasil tetap terkelompok dengan cuplikan di sekitar
 kecocokan, jadi Anda bisa langsung menuju percakapan atau catatan yang memutuskan
 sesuatu — tanpa indeks terpisah yang harus dibangun ulang.
+
+**Git: ditinjau, bukan ditulis ulang.** Drawer **Perubahan** menjawab "apa yang
+sebenarnya diubah run ini", dan tombol git di sebelahnya menjawab "dari mana kode
+ini datang". Chip cabang di header drawer memindahkan cabang, dan caranya sama
+dengan git: bila pemindahan akan menimpa pekerjaan yang belum Anda commit, git
+menolak dan UI menampilkan penolakan itu — tidak ada stash, tidak ada paksaan. Itu
+justru intinya. Pemindah cabang yang diam-diam membuang edit Anda agar checkout
+berhasil lebih buruk daripada yang berhenti dan menyebutkan file mana yang
+menghalangi.
+
+**Grafik commit** sengaja read-only. Ia menggambar lane dan garis merge dari
+`git log --all --topo-order`, dihitung di server oleh fungsi murni, jadi klien hanya
+mewarnai koordinat yang diberikan. Orang tua di luar halaman digambar putus-putus,
+bukan disembunyikan — orang tua yang hilang membuat commit terlihat seperti akar
+repo. Satu halaman 50 commit (**Muat commit lain**), dan lane dihitung per halaman
+alih-alih disambung antar-halaman: menyambungkan lane ke rel yang salah menggambar
+garis percaya diri yang keliru, dan grafik yang tidak bisa dipercaya lebih buruk
+daripada grafik pendek. Tidak ada commit, push, atau reset di panel ini. Riwayat
+diubah dengan sengaja dari terminal, bukan lewat tombol di drawer.
+
+Tiap baris file di drawer sekarang membuka patch file itu sendiri saat diklik, dan
+klik-kanan menawarkan dua hal yang benar-benar berguna saat meninjau (salin path
+relatif, salin path lengkap) plus "tampilkan patch file ini". Tidak ada "buka di
+editor" atau "tampilkan di file manager", karena aplikasi ini tidak punya keduanya.
 
 **Tab terminal** adalah gagasan yang sama untuk pekerjaan shell. Terminal ini bukan
 PTY: setiap perintah adalah proses baru yang selesai saat perintahnya selesai. Yang

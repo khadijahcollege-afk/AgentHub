@@ -62,6 +62,7 @@ const PERMISSION_INPUTS = [...PERMISSION_MODES, 'ask', 'edits', 'full'];
 import {
   resolveWorkspace, workspaceSummary, diffReport, revertPaths, listRules, writeRule,
 } from './lib/workspace.js';
+import { readGraph, listBranches, checkoutBranch } from './lib/gitgraph.js';
 import { toast } from './lib/notify.js';
 import {
   TASK_MACHINE, RUN_MACHINE, KEY_MACHINE, AGENT_MACHINE, CONNECTION_MACHINE,
@@ -1575,6 +1576,48 @@ ${msgs || '<p class="meta">Percakapan kosong.</p>'}
     } catch (error) {
       return sendJson(res, error.statusCode || 400, { error: error.message, code: error.code });
     }
+  }
+
+  // ---- git: grafik commit + pindah cabang ----
+  // Grafik hanya dibaca; satu-satunya aksi tulis adalah `checkout`, dan git
+  // sendiri yang menolak bila ada perubahan yang akan tertimpa. Tidak ada
+  // commit/push/reset dari sini: itu tetap keputusan pengguna di terminal.
+  if ((m = p.match(/^\/api\/threads\/([a-f0-9]+)\/git\/(graph|branches)$/)) && method === 'GET') {
+    const t = threads.getThread(m[1]);
+    if (!t) return sendJson(res, 404, { error: 'Thread tidak ditemukan' });
+    if (!t.cwd) return sendJson(res, 400, { error: 'Thread belum punya folder kerja', code: 'WORKSPACE_MISSING' });
+    let dir;
+    try { dir = resolveWorkspace(t.cwd); } catch (error) {
+      return sendJson(res, error.statusCode || 400, { error: error.message, code: error.code });
+    }
+    watchWorkspace(dir);
+    if (m[2] === 'branches') return sendJson(res, 200, await listBranches(dir));
+    const count = url.searchParams.get('maxCount');
+    const skip = url.searchParams.get('skip');
+    return sendJson(res, 200, await readGraph(dir, { maxCount: count ?? undefined, skip: skip ?? undefined }));
+  }
+
+  if ((m = p.match(/^\/api\/threads\/([a-f0-9]+)\/git\/checkout$/)) && method === 'POST') {
+    const t = threads.getThread(m[1]);
+    if (!t) return sendJson(res, 404, { error: 'Thread tidak ditemukan' });
+    if (!t.cwd) return sendJson(res, 400, { error: 'Thread belum punya folder kerja', code: 'WORKSPACE_MISSING' });
+    let dir;
+    try { dir = resolveWorkspace(t.cwd); } catch (error) {
+      return sendJson(res, error.statusCode || 400, { error: error.message, code: error.code });
+    }
+    const b = await readBody(req);
+    const r = await checkoutBranch(dir, b.branch);
+    if (!r.ok) {
+      // 409 untuk keadaan yang bisa diperbaiki pengguna (worktree kotor),
+      // 400 untuk permintaan yang memang salah (nama cabang tidak dikenal).
+      const status = r.code === 'WORKTREE_DIRTY' || r.code === 'CHECKOUT_FAILED' ? 409 : 400;
+      return sendJson(res, status, { error: r.message, code: r.code });
+    }
+    // Pindah cabang mengubah berkas di disk, jadi drawer Perubahan dan grafik
+    // harus disegarkan di semua klien — bukan hanya di tab yang menekan tombol.
+    broadcast('workspace');
+    broadcast('threads');
+    return sendJson(res, 200, { ok: true, branch: r.branch });
   }
 
   // tulis aturan proyek (AGENTS.md / CLAUDE.md / …) — satu-satunya file yang

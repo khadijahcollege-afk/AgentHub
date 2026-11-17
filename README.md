@@ -155,6 +155,8 @@ Agents driving the app do not have to guess. The contract is served over HTTP:
 | `GET /api/threads/:id/diff` | changed files with `+/-` and a bounded patch |
 | `POST /api/threads/:id/revert` | restore tracked files; untracked only with an explicit flag |
 | `POST /api/threads/:id/rules` | write one allow-listed rule file (`AGENTS.md`, `CLAUDE.md`, …) |
+| `GET /api/threads/:id/git/graph` | read-only commit graph: commits with pre-computed lanes, edges, rails, and page size |
+| `GET /api/threads/:id/git/branches` · `POST …/git/checkout` | list local + remote branches, or switch branch (git refuses a dirty worktree → `409`) |
 | `GET /api/threads/:id/export(?format=json)` | ekspor percakapan: markdown siap-baca atau arsip JSON lengkap |
 | `POST /api/threads/:id/fork` | cabang percakapan: salin sampai pesan acuan (include/exclude untuk alur edit) |
 | `GET/POST /api/memory` · `DELETE /api/memory/:id` · `POST /api/memory/clear` | memori jangka panjang: fakta yang disuntikkan otomatis ke setiap prompt |
@@ -215,6 +217,29 @@ thread titles and message bodies, task titles, note titles/bodies, and project
 names/folders in one request. Results keep their group and a snippet around the
 match, so you can jump straight to the conversation or note that decided
 something — no separate index to rebuild.
+
+**Git, reviewed not rewritten.** The **Perubahan** drawer answers "what did this run
+actually do", and the git entry beside it answers "where did this code come from".
+The branch chip in the drawer header switches branches, and it does so the way git
+does: if switching would overwrite work you have not committed, git refuses and the
+UI shows the refusal — nothing is stashed, nothing is forced. That is the whole
+point. A switcher that quietly discards your edits to make the checkout succeed is
+worse than one that stops and tells you which file is in the way.
+
+The **commit graph** is read-only on purpose. It draws lanes and merge edges from
+`git log --all --topo-order`, computed on the server by a pure function, so the
+client only paints coordinates it is given. Parents outside the loaded page are
+dashed instead of hidden — a hidden parent makes a commit look like a root. Pages
+are 50 commits (**Muat commit lain**) and lanes are computed per page rather than
+spliced across pages: connecting a lane to the wrong rail draws a confident line
+that is simply false, and a graph you cannot trust is worse than a short one. There
+is no commit, push, or reset here. History is changed deliberately from the
+terminal, not by a button in a drawer.
+
+Each file row in the drawer now opens its own patch on click, and right-click
+offers the two things that are actually useful while reviewing (copy the relative
+path, copy the full path) plus "show this file's patch". There is no "open in
+editor" or "reveal in file manager", because this app has neither.
 
 **Terminal tabs** are the same idea applied to shell work. The terminal is not a
 PTY: each command is a new process that ends when it ends. What the tabs add is

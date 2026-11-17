@@ -1,5 +1,54 @@
 # Changelog
 
+## 1.7.3 — 2026-11-17
+Grafik commit, pemindah cabang yang menolak membuang pekerjaan, dan patch per file
+di drawer Perubahan.
+
+Stage ini menjawab pertanyaan yang tidak dijawab drawer Perubahan: "dari mana kode
+ini datang". Yang diambil dari ZCode (`docs/git/git-graph.md`,
+`docs/ui/header-git-branch-switcher.md`, `docs/git-review-file-context-menu.md`)
+adalah bentuk fiturnya; batasnya dibuat lebih ketat di sini — grafik read-only, dan
+tidak ada commit/push/reset dari UI sama sekali.
+
+- **Grafik commit read-only** — `GET /api/threads/:id/git/graph` membaca
+  `git log --all --topo-order --date-order` dan mengembalikan commit beserta
+  `lane` yang sudah dihitung, `edges`, `rails`, dan lebar pita. Tata letak adalah
+  fungsi murni (`layoutGitGraph`) di server, sehingga klien hanya menggambar
+  koordinat yang diberikan dan posisinya bisa diuji tanpa repo.
+- **Orang tua yang sama memakai satu rel** — setiap merge tidak lagi menambah rel
+  permanen. Tanpa aturan ini grafik melebar tanpa isi setelah beberapa merge.
+- **Orang tua di luar halaman digambar putus-putus** — bukan dihilangkan; orang
+  tua yang hilang membuat commit terlihat seperti akar repo.
+- **Paging 50 commit** dengan tombol **Muat commit lain**, dan batas keras 200 dari
+  server (klien tidak bisa meminta seluruh riwayat). Lane halaman kedua dihitung
+  dari halaman itu sendiri: menyambung lane antar-halaman butuh konteks orang tua
+  yang tidak ada di halaman baru, dan garis "penyambung" yang salah lebih buruk
+  daripada grafik yang memulai relnya sendiri.
+- **Pemindah cabang** di header drawer (`GET …/git/branches`,
+  `POST …/git/checkout`). Tidak ada `--force` dan tidak ada stash otomatis: bila
+  pemindahan akan menimpa perubahan yang belum disimpan, git menolak dan
+  penolakan itu ditampilkan (`409 WORKTREE_DIRTY`, pesan git apa adanya). Pemindah
+  cabang yang diam-diam membuang edit pengguna lebih buruk daripada yang berhenti.
+  Pindah cabang menyiarkan SSE `workspace` + `threads` agar tab lain tidak
+  menampilkan cabang lama.
+- **Patch per file** — klik baris file membuka patch file itu saja (dari patch yang
+  sudah ada di memori, tanpa permintaan tambahan), dengan `aria-expanded` yang ikut
+  berubah. Klik-kanan menawarkan salin path relatif, salin path lengkap, dan
+  tampilkan patch. Tidak ada "buka di editor" atau "tampilkan di file manager":
+  aplikasi ini tidak punya keduanya, dan menu yang menawarkan hal yang tidak ada
+  lebih buruk daripada menu pendek.
+- **Bug tata letak yang ditemukan audit, bukan tes** — modal grafik sempat hanya
+  setinggi 322px dari 748px yang tersedia (7 baris terlihat, bukan 23). Penyebabnya
+  dua lapis: `flex: 1` membuat body menyusut ke basis 0, dan `workspace.css` memuat
+  aturan `.pop` sesudah `style.css` yang menimpa `max-height`/`padding`/`overflow`.
+  Ketiga popover sekarang memakai selektor id, dan `flex-basis: auto`.
+- Regresi: `gitgraph` (12, murni), `gitgraph-repo` (9, git sungguhan),
+  `gitgraph-api` (10, HTTP + SSE) — suite penuh 490 tes, semuanya lulus. Audit UI di
+  1440/1024/390/320 dua bahasa: lane dan merge tergambar, node sejajar barisnya,
+  popover cabang tidak meluber, pindah cabang berhasil saat bersih dan ditolak saat
+  kotor (perubahan pengguna utuh), paging 50→67 commit, menu file menyalin path
+  yang benar, dan tidak ada emoji.
+
 ## 1.7.2 — 2026-11-17
 Tab terminal: satu tab satu sesi, dan perintah yang berjalan tidak mati hanya
 karena halaman dimuat ulang.

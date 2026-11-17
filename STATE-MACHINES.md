@@ -194,6 +194,33 @@ matters and one cursor that must never lie. Owner: `lib/compact.js`.
 disagree. `POST` returns `409 RUN_IN_PROGRESS`, `400 NOTHING_TO_COMPACT`, or
 `502 COMPACT_FAILED`; the failure path writes nothing.
 
+## Git branch checkout (read-only graph, refusing checkout)
+
+Owner: `lib/gitgraph.js`. Two operations, deliberately asymmetric: reading history
+and moving HEAD. Only the second writes anything, and it never forces.
+
+```
+GET  …/git/graph     → { repo, commits[], edges[], rails[], lanes, truncated }
+GET  …/git/branches  → { repo, branches[], current }
+POST …/git/checkout  → 200 { ok, branch } | 400 BRANCH_{REQUIRED,INVALID,UNKNOWN}
+                     | 409 WORKTREE_DIRTY | 409 CHECKOUT_FAILED
+```
+
+| Invariant | Why |
+| --- | --- |
+| The graph never mutates anything | It answers "where did this code come from". A graph that can rewrite history is a graph you stop trusting. |
+| Layout is a pure function, computed on the server | Lane geometry is the part that is easy to get subtly wrong and hard to see wrong on screen. Pure means it is testable without a repo, and the client never invents coordinates. |
+| A parent that already owns a rail is reused, never given a second one | Otherwise every merge adds a permanent lane and the graph widens with no content. |
+| Parents outside the loaded page are dashed, not dropped | A hidden parent makes a commit look like a repository root. |
+| Lanes are computed per page, not spliced across pages | Splicing needs parent context that is not in the new page; a wrong connecting line is worse than a graph that restarts its rails. |
+| `checkout` never forces and never stashes | Forcing or stashing discards work the user did not agree to lose. git's own refusal is the correct answer, surfaced verbatim. |
+| Only `checkout` writes; there is no commit/push/reset route at all | A UI bug, or a hostile page, cannot rewrite history if the endpoint does not exist. |
+| Checkout broadcasts `workspace` + `threads` | Every other client is looking at the same folder; a branch switch changes files on disk. |
+
+The UI adds no state of its own: the branch chip renders `workspaceInfo.branch`, the
+popover re-reads `/git/branches` on open, and the graph modal re-reads page 0 on
+open. Closing the modal or reloading loses nothing.
+
 ## Terminal tab lifecycle (server-owned)
 
 A terminal tab is not a state machine, but it owns two invariants that a page
@@ -312,6 +339,9 @@ Never infer status from a button's disabled state or from `thread.running`. Quer
 | `test/compact.test.js` | summary selection: nothing folded below the thresholds, the newest messages stay verbatim, an empty/short/refusal reply is rejected, a dead pool does not advance the cursor, the summary is length-capped at a sentence boundary, and the second pass folds the previous summary (`generations`) |
 | `test/compact-api.test.js` | the same promises over the real server: saved to the thread, `compacted` flag only in the list, the next run really receives the summary and not the folded turns, `DELETE` restores history without deleting messages, `409` during a run, `502` writes nothing, automatic mode via settings |
 | `test/terminal.test.js` | tab contract: numbering (`folder`, `folder 2`, `folder 3`), smallest-free reuse without renaming open tabs, separate transcripts per tab, empty tabs from `+`, per-workspace numbering, close stops and releases the session, second command in a busy tab is `409`, the 4-process ceiling spans tabs, invalid folders rejected, closing line and real exit code in the transcript |
+| `test/gitgraph.test.js` | pure layout without a repo: straight line, input not mutated, parallel branches, a shared parent getting exactly one rail, out-of-page parents dashed, root has no downward edge, lane width bounded by commit count, empty/non-array input, rails continuing across rows, every edge pointing downwards, one edge per parent |
+| `test/gitgraph-repo.test.js` | against real git: plain folder vs empty repo, ref decoration cleaned, merge commit with two parents ordered below them, paging without repeats, `maxCount` clamp, branch list marking the current branch, successful checkout, invalid/unknown names rejected before git runs, and a dirty worktree refused with the user's edits intact |
+| `test/gitgraph-api.test.js` | route contract: response shape with server-computed lanes, `repo:false` for a plain folder, `400 WORKSPACE_MISSING`, `maxCount` clamped, branches, checkout reflected in the workspace summary, `400 BRANCH_UNKNOWN`, `409 WORKTREE_DIRTY` leaving files untouched, and a `workspace` SSE broadcast on checkout |
 
 ## Wiring
 

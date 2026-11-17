@@ -311,6 +311,7 @@ window.__ahMachines = {
     pause: '<rect x="8" y="5.5" width="3" height="13" rx="1"/><rect x="13.5" y="5.5" width="3" height="13" rx="1"/>',
     plug: '<path d="M9 4v5M15 4v5"/><path d="M7 9h10v3a5 5 0 0 1-10 0z"/><path d="M12 17v3"/>',
     trash: '<path d="M4 7h16"/><path d="M9 7V5h6v2"/><path d="M6 7l1 13h10l1-13"/><path d="M10 11v6M14 11v6"/>',
+    code: '<path d="M9 8 4.5 12 9 16"/><path d="M15 8l4.5 4-4.5 4"/>',
   };
   const icon = (id) => `<svg class="ico" viewBox="0 0 24 24">${ICON_PATHS[id] || ICON_PATHS.robot}</svg>`;
   // Tanda centang & silang sebagai SVG, bukan karakter ✓/✕: bentuknya sama di
@@ -2389,6 +2390,260 @@ window.__ahMachines = {
   });
   $('#git-open-projects').addEventListener('click', () => { setLayer(null); renderProjectPicker(); setLayer('project'); });
 
+  // ---------- git: cabang, grafik commit, aksi baris file ----------
+  // Tiga hal yang diambil dari ZCode: pemilih cabang yang menolak memindahkan
+  // pekerjaan yang belum disimpan, grafik commit read-only, dan menu klik-kanan
+  // di baris file. Server yang memutuskan (git yang menolak), UI hanya menampilkan.
+
+  let gitGraphState = null;   // { commits, edges, rails, lanes, truncated }
+  let ggraphBusy = false;
+
+  function cdBranchLabel() {
+    const btn = $('#cd-branch');
+    const label = $('#cd-branch-label');
+    const branch = workspaceInfo?.branch || null;
+    if (btn) btn.classList.toggle('hidden', !branch);
+    if (label) label.textContent = branch || '';
+  }
+
+  async function toggleBranchMenu() {
+    const existing = $('#cd-branch-pop');
+    if (existing) { existing.remove(); return; }
+    if (!curThread) return;
+    let b;
+    try { b = await api(`/api/threads/${curThread.id}/git/branches`); }
+    catch (err) { toast(tr('Gagal membaca cabang: ') + err.message); return; }
+    const pop = document.createElement('div');
+    pop.id = 'cd-branch-pop';
+    pop.className = 'pop branch-pop';
+    pop.setAttribute('role', 'listbox');
+    pop.setAttribute('aria-label', tr('Pilih cabang'));
+    if (!b.repo || !b.branches?.length) {
+      pop.innerHTML = `<p class="muted small" style="padding:8px 10px">${esc(tr('Folder ini bukan repo git.'))}</p>`;
+    } else {
+      pop.innerHTML = b.branches.map((x) => `
+        <button class="branch-row${x.current ? ' active' : ''}" type="button" data-branch="${esc(x.name)}"
+                ${x.current ? 'aria-current="true"' : ''}>
+          <span class="branch-name" title="${esc(x.name)}">${esc(x.name)}</span>
+          ${x.remote ? `<span class="branch-tag">${esc(tr('remote'))}</span>` : ''}
+          ${x.current ? `<span class="branch-tag ok">${esc(tr('aktif'))}</span>` : ''}
+        </button>`).join('');
+    }
+    const anchor = $('#cd-branch');
+    const r = anchor.getBoundingClientRect();
+    pop.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 300)) + 'px';
+    pop.style.top = (r.bottom + 6) + 'px';
+    document.body.appendChild(pop);
+    pop.addEventListener('click', async (e) => {
+      const row = e.target.closest('[data-branch]');
+      if (!row) return;
+      const name = row.dataset.branch;
+      if (row.classList.contains('active')) { pop.remove(); return; }
+      pop.remove();
+      await switchBranch(name);
+    });
+  }
+
+  async function switchBranch(name) {
+    if (!curThread) return;
+    // Tidak ada paksaan: bila ada perubahan yang akan tertimpa, git menolak dan
+    // kita tampilkan alasannya. Memaksa pindah berarti membuang pekerjaan tanpa
+    // pernah ditanyakan.
+    try {
+      await api(`/api/threads/${curThread.id}/git/checkout`, {
+        method: 'POST', body: JSON.stringify({ branch: name }),
+      });
+      toast(tr('Cabang aktif: ') + name);
+      await refreshWorkspace();
+      if (changesOpen) await refreshDiff();
+      if (!document.querySelector('#gitgraph-pop')?.classList.contains('hidden')) await loadGitGraph();
+    } catch (err) { toast(tr('Gagal pindah cabang: ') + err.message, 6000); }
+  }
+
+  $('#cd-branch')?.addEventListener('click', (e) => { e.stopPropagation(); toggleBranchMenu(); });
+
+  // Grafik commit. Read-only: tidak ada checkout, diff, atau aksi tulis dari
+  // sini — grafik menjawab "dari mana kode ini datang", bukan "ubah riwayat".
+  async function loadGitGraph({ append = false } = {}) {
+    if (!curThread) return;
+    const body = $('#gitgraph-body');
+    if (!body) return;
+    if (!append) {
+      gitGraphState = null;
+      body.innerHTML = `<p class="cd-empty">${esc(tr('Membaca riwayat…'))}</p>`;
+    }
+    try {
+      const skip = append ? (gitGraphState?.commits.length || 0) : 0;
+      const g = await api(`/api/threads/${curThread.id}/git/graph?maxCount=50&skip=${skip}`);
+      if (!g.repo) {
+        body.innerHTML = `<p class="cd-empty">${esc(tr('Folder ini bukan repo git.'))}</p>`;
+        gitGraphState = null;
+        return;
+      }
+      // Halaman berikutnya digabung ke daftar, dan lane-nya milik halaman itu
+      // sendiri. Itu jujur: menyambung lane antar-halaman butuh konteks orang
+      // tua yang tidak ada di halaman baru, dan garis yang "menyambung" secara
+      // salah lebih buruk daripada mulai dari relnya sendiri.
+      if (append && gitGraphState) {
+        const base = gitGraphState.commits.length;
+        gitGraphState = {
+          commits: [...gitGraphState.commits, ...g.commits],
+          edges: [...gitGraphState.edges, ...g.edges.map((e) => ({ ...e, row: e.row + base, toRow: e.toRow + base }))],
+          rails: [...gitGraphState.rails, ...g.rails.map((r) => ({ ...r, row: r.row + base }))],
+          // Pita selebar halaman terlebar: menggabungkan nomor lane antar-halaman
+          // akan menumpuk dua rel berbeda di kolom yang sama.
+          lanes: Math.max(gitGraphState.lanes, g.lanes),
+          truncated: g.truncated,
+        };
+      } else {
+        gitGraphState = g;
+      }
+      renderGitGraph();
+    } catch (err) {
+      body.innerHTML = `<p class="cd-empty">${esc(tr('Gagal membaca riwayat: ') + err.message)}</p>`;
+    }
+  }
+
+  function fmtShortDate(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    const min = Math.round((Date.now() - d.getTime()) / 60000);
+    if (min < 60) return tr('{n} mnt lalu').replace('{n}', String(Math.max(1, min)));
+    const hr = Math.round(min / 60);
+    if (hr < 24) return tr('{n} jam lalu').replace('{n}', String(hr));
+    const day = Math.round(hr / 24);
+    if (day < 30) return tr('{n} hari lalu').replace('{n}', String(day));
+    return d.toLocaleDateString();
+  }
+
+  function renderGitGraph() {
+    const body = $('#gitgraph-body');
+    if (!body || !gitGraphState) return;
+    const { commits, edges, lanes } = gitGraphState;
+    if (!commits.length) {
+      body.innerHTML = `<p class="cd-empty">${esc(tr('Belum ada commit di repo ini.'))}</p>`;
+      $('#gitgraph-more')?.classList.add('hidden');
+      return;
+    }
+    const ROW = 26;
+    const LANE = 14;
+    const DOT = 5;
+    const TOP = 16;
+    const LEFT = 12;
+    const width = LEFT + Math.max(1, lanes) * LANE + 6;
+    const height = TOP + commits.length * ROW;
+    const laneX = (lane) => LEFT + lane * LANE;
+    const rowY = (row) => TOP + row * ROW;
+
+    // Garis dulu, node sesudah: node harus selalu terlihat di atas garisnya.
+    const paths = [];
+    for (const e of edges) {
+      const x1 = laneX(e.lane);
+      const y1 = rowY(e.row);
+      const last = Math.min(e.toRow, commits.length - 1);
+      const y2 = e.toRow >= commits.length ? rowY(last) + ROW : rowY(last);
+      const x2 = laneX(e.toLane);
+      const cls = e.kind === 'merge' ? 'gg-merge' : e.kind === 'truncated' ? 'gg-trunc' : 'gg-line';
+      if (x1 === x2) {
+        paths.push(`<path class="${cls}" d="M${x1} ${y1 + DOT}L${x2} ${y2 - DOT}"/>`);
+      } else {
+        // Bezier: sudut tajam pada merge terbaca seperti garis patah, bukan cabang.
+        const mid = (y1 + y2) / 2;
+        paths.push(`<path class="${cls}" d="M${x1} ${y1 + DOT}C${x1} ${mid},${x2} ${mid},${x2} ${y2 - DOT}"/>`);
+      }
+    }
+
+    const dots = commits.map((c, i) => {
+      const tagged = c.refs?.length ? ' tagged' : '';
+      return `<circle class="gg-node${tagged}" cx="${laneX(c.lane)}" cy="${rowY(i)}" r="${DOT}"${(c.refs || []).length ? `<title>${esc(c.refs.join(', '))}</title>` : ''}/>`;
+    }).join('');
+
+    const rows = commits.map((c, i) => {
+      const refs = (c.refs || []).slice(0, 3).map((r) => `<span class="gg-ref">${esc(r)}</span>`).join('');
+      const more = (c.refs || []).length > 3 ? `<span class="gg-ref">+${c.refs.length - 3}</span>` : '';
+      const tip = `${c.sha.slice(0, 8)} · ${c.author} · ${c.date}`;
+      return `<div class="gg-row" style="top:${rowY(i) - ROW / 2}px" title="${esc(tip)}">
+        <span class="gg-subject">${esc(c.subject || tr('(tanpa pesan)'))}</span>${refs}${more}
+        <span class="gg-sha">${esc(c.sha.slice(0, 7))}</span>
+        <span class="gg-date">${esc(fmtShortDate(c.date))}</span>
+      </div>`;
+    }).join('');
+
+    body.innerHTML = `<div class="gg-canvas" style="height:${height}px">
+      <svg class="gg-svg" width="${width}" height="${height}" aria-hidden="true">${paths.join('')}${dots}</svg>
+      <div class="gg-rows" style="margin-left:${width}px">${rows}</div>
+    </div>`;
+    const count = $('#gitgraph-count');
+    if (count) count.textContent = tr('{n} commit').replace('{n}', String(commits.length));
+    $('#gitgraph-more')?.classList.toggle('hidden', !gitGraphState.truncated);
+  }
+
+  function openGitGraph() {
+    const pop = $('#gitgraph-pop');
+    if (!pop) return;
+    pop.classList.remove('hidden');
+    loadGitGraph();
+  }
+  $('#cd-graph')?.addEventListener('click', openGitGraph);
+  $('#gitgraph-close')?.addEventListener('click', () => $('#gitgraph-pop')?.classList.add('hidden'));
+  $('#gitgraph-more')?.addEventListener('click', async () => {
+    if (ggraphBusy) return;
+    ggraphBusy = true;
+    try { await loadGitGraph({ append: true }); } finally { ggraphBusy = false; }
+  });
+
+  // Menu klik-kanan baris file: tiga hal yang benar-benar dibutuhkan saat
+  // meninjau perubahan — salin path, buka foldernya, dan lihat patch file itu.
+  // Tidak ada "buka di editor": AgentHub tidak memiliki editor, dan menu yang
+  // menawarkan hal yang tidak ada lebih buruk daripada menu yang pendek.
+  function fileMenu(items, x, y) {
+    hideFileMenu();
+    const menu = document.createElement('div');
+    menu.id = 'file-menu';
+    menu.className = 'pop file-menu';
+    menu.setAttribute('role', 'menu');
+    menu.innerHTML = items.map((it) => `
+      <button class="file-menu-item" type="button" role="menuitem" data-menu-act="${esc(it.act)}"
+              ${it.disabled ? 'disabled aria-disabled="true"' : ''}>
+        ${icon(it.icon)}<span>${esc(it.label)}</span>
+      </button>`).join('');
+    menu.style.left = Math.max(8, Math.min(x, window.innerWidth - 230)) + 'px';
+    menu.style.top = Math.max(8, Math.min(y, window.innerHeight - 130)) + 'px';
+    document.body.appendChild(menu);
+    menu.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-menu-act]');
+      if (!b || b.disabled) return;
+      const item = items.find((it) => it.act === b.dataset.menuAct);
+      hideFileMenu();
+      item?.run?.();
+    });
+    return menu;
+  }
+
+  function hideFileMenu() { document.querySelector('#file-menu')?.remove(); }
+
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#file-menu')) hideFileMenu();
+    if (!e.target.closest('#cd-branch-pop') && !e.target.closest('#cd-branch')) document.querySelector('#cd-branch-pop')?.remove();
+  }, true);
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    hideFileMenu();
+    document.querySelector('#cd-branch-pop')?.remove();
+    // Grafik commit adalah dialog: Esc harus menutupnya, sama seperti dialog
+    // lain di aplikasi ini.
+    const g = $('#gitgraph-pop');
+    if (g && !g.classList.contains('hidden')) g.classList.add('hidden');
+  });
+
+  async function copyText(text, label) {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast(tr('Disalin: ') + (label || text));
+    } catch { toast(text, 6000); }
+  }
+
   // ---------- drawer Perubahan (workspace thread) ----------
   // Satu thread = satu folder kerja. Drawer menampilkan apa yang benar-benar
   // berubah di folder itu (git status/diff) dan hanya mengubah file saat user
@@ -2431,10 +2686,9 @@ window.__ahMachines = {
 
   function renderWorkspace() {
     const host = $('#cd-workspace');
-    const br = $('#cd-branch');
     if (!host) return;
-    if (!curThread) { host.innerHTML = '<span class="muted">Buka thread dulu.</span>'; br.classList.add('hidden'); return; }
-    if (!workspaceInfo) { host.innerHTML = '<span class="muted">Membaca workspace…</span>'; br.classList.add('hidden'); return; }
+    if (!curThread) { host.innerHTML = '<span class="muted">Buka thread dulu.</span>'; cdBranchLabel(); return; }
+    if (!workspaceInfo) { host.innerHTML = '<span class="muted">Membaca workspace…</span>'; cdBranchLabel(); return; }
     if (!workspaceInfo.cwd) {
       host.innerHTML = '<span class="muted">Belum ada folder kerja.</span> <button class="link-btn" id="cd-pick">Pilih proyek</button>';
       $('#cd-pick')?.addEventListener('click', (e) => {
@@ -2442,12 +2696,13 @@ window.__ahMachines = {
         renderProjectPicker();
         setLayer('project');
       });
-      br.classList.add('hidden');
+      cdBranchLabel();
       return;
     }
     host.innerHTML = `<div class="cd-path-line" title="${esc(workspaceInfo.cwd)}"><b>${esc(baseName(workspaceInfo.cwd))}</b> <span class="muted">${esc(workspaceInfo.cwd)}</span></div>`;
-    br.classList.toggle('hidden', !workspaceInfo.branch);
-    if (workspaceInfo.branch) br.textContent = workspaceInfo.branch;
+    // Tombol cabang digambar oleh cdBranchLabel(): satu tempat yang tahu kapan
+    // chip harus tampil (hanya bila ada cabang) dan apa isinya.
+    cdBranchLabel();
   }
 
   function colorPatch(text) {
@@ -2536,7 +2791,7 @@ window.__ahMachines = {
       const stat = f.added == null && f.removed == null ? ''
         : `<span class="cd-add">+${f.added ?? 0}</span> <span class="cd-del">−${f.removed ?? 0}</span>`;
       return `<div class="cd-file" data-path="${esc(f.path)}">
-        <div class="cd-file-head">
+        <div class="cd-file-head" role="button" tabindex="0" aria-expanded="false">
           <span class="cd-status ${esc(f.status)}" title="${esc(f.status)}">${mark}</span>
           <span class="cd-path" title="${esc(f.path)}">${esc(f.path)}</span>
           <span class="cd-stat">${stat}</span>
@@ -2555,6 +2810,69 @@ window.__ahMachines = {
 
     $$('#cd-files [data-revert]').forEach((b) => b.addEventListener('click', () => revertFile(b.dataset.revert, false)));
     $$('#cd-files [data-del]').forEach((b) => b.addEventListener('click', () => revertFile(b.dataset.del, true)));
+
+    // Klik baris = buka/tutup patch file itu saja. Tanpa ini, meninjau satu
+    // berkas berarti membuka patch lengkap dan mencari namanya di dalam teks
+    // panjang — padahal pertanyaannya hampir selalu "apa yang berubah DI FILE INI".
+    $$('#cd-files .cd-file').forEach((row) => {
+      const head = row.querySelector('.cd-file-head');
+      const toggle = () => toggleFilePatch(row);
+      head?.addEventListener('click', (e) => {
+        if (e.target.closest('[data-revert],[data-del]')) return;
+        toggle();
+      });
+      head?.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        if (e.target.closest('[data-revert],[data-del]')) return;
+        e.preventDefault();
+        toggle();
+      });
+      // Menu klik-kanan: hanya tiga hal yang benar-benar ada di aplikasi ini.
+      // "Buka di editor" dan "tampilkan di file manager" tidak ditawarkan karena
+      // AgentHub bukan editor dan tidak punya rute untuk membuka folder.
+      row.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        const rel = row.dataset.path;
+        fileMenu([
+          { act: 'copy-rel', icon: 'copy', label: tr('Salin path relatif'), run: () => copyText(rel, rel) },
+          { act: 'copy-abs', icon: 'file', label: tr('Salin path lengkap'), run: () => copyText(absolutePath(rel), absolutePath(rel)) },
+          { act: 'patch', icon: 'code', label: tr('Tampilkan patch file ini'), run: () => { if (!row.classList.contains('open')) toggleFilePatch(row); } },
+        ], e.clientX, e.clientY);
+      });
+    });
+  }
+
+  function absolutePath(rel) {
+    const root = diffInfo?.cwd || workspaceInfo?.cwd || '';
+    if (!root) return rel;
+    const sep = root.includes('\\') ? '\\' : '/';
+    return root.replace(/[\\/]+$/, '') + sep + String(rel).split('/').join(sep);
+  }
+
+  // Patch satu file diambil dari patch lengkap yang sudah ada di memori: tidak
+  // ada permintaan tambahan per klik, dan isinya sama persis dengan yang dilihat
+  // di patch lengkap.
+  function filePatchFor(relPath) {
+    const patch = diffInfo?.patch || '';
+    if (!patch) return '';
+    const chunks = patch.split(/^diff --git /m).filter(Boolean);
+    const hit = chunks.find((c) => c.includes(` b/${relPath}`) || c.includes(` "${relPath}"`));
+    return hit ? 'diff --git ' + hit : '';
+  }
+
+  function toggleFilePatch(row) {
+    const open = row.classList.contains('open');
+    const head = row.querySelector('.cd-file-head');
+    row.querySelector('.cd-file-patch')?.remove();
+    row.classList.toggle('open', !open);
+    head?.setAttribute('aria-expanded', String(!open));
+    if (open) return;
+    const text = filePatchFor(row.dataset.path);
+    const pre = document.createElement('pre');
+    pre.className = 'cd-patch cd-file-patch';
+    if (text) pre.innerHTML = colorPatch(text);
+    else pre.innerHTML = `<span class="muted">${esc(tr('Patch untuk file ini tidak tersedia (mungkin dipotong).'))}</span>`;
+    row.appendChild(pre);
   }
 
   async function revertFile(path, deleteUntracked) {
@@ -7838,6 +8156,14 @@ Jangan mengarang — bila data tidak ada di folder, katakan tidak ada.`;
       branch: workspaceInfo.branch || null,
       changes: workspaceInfo.changes || 0,
     } : null,
+    // Grafik commit: terbuka atau tidak, dan berapa commit yang sudah dimuat.
+    // Audit UI memakai ini alih-alih menghitung node SVG sendiri.
+    gitGraph: {
+      open: !!$('#gitgraph-pop') && !$('#gitgraph-pop').classList.contains('hidden'),
+      commits: gitGraphState?.commits?.length || 0,
+      lanes: gitGraphState?.lanes || 0,
+      truncated: !!gitGraphState?.truncated,
+    },
     thread: curThread?.id || null,
     threadRunState: curThread?.runState || (curThread?.running ? 'running' : 'idle'),
   });
