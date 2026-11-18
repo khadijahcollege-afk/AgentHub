@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.9.9 — 2026-11-18
+Statistik pemakaian berhenti menyalahkan model yang sehat.
+
+Di 1.9.8 kelambatan model gratis sudah diperlakukan sebagai kelambatan di
+rotasi. Tetapi angka yang dilihat pengguna belum ikut berubah: `engine-stats.json`
+tetap mencatat setiap abort sebagai `failed`, termasuk abort karena model belum
+mengeluarkan apa pun sampai tenggat. Pane Pemakaian lalu menampilkan "4 gagal"
+untuk model yang sebenarnya menjawab normal — angka itulah yang memicu
+investigasi ini pada awalnya.
+
+- **`slow` jadi angka sendiri** (`lib/harness.js`) — abort dengan alasan `slow`
+  dihitung `slow: 1`, bukan `failed: 1`. Kegagalan sungguhan (exit bukan nol,
+  CLI hilang, batas 10 menit) tetap `failed`.
+- **Alasan pembatalan dibawa, bukan ditebak** — `AbortSignal.abort('slow')`
+  diteruskan ke `killTree()`, lalu ke `abortError(reason)`. Tanpa alasan ini
+  harness tidak bisa membedakan "pengguna menekan Stop" dari "model terlalu
+  lama diam", dan keduanya tercatat sama.
+- **UI dan CSV ikut jujur** — `/api/usage` melaporkan `slow`, baris pemakaian
+  menampilkan "N lambat" hanya bila ada, dan header CSV bertambah kolom `slow`.
+- **Penjaga diperluas** (`test/freerot.test.js`) — tes server sekarang memeriksa
+  `engine-stats.json` di disk, `/api/usage`, dan header CSV. Diuji dengan 3
+  mutasi: 3/3 tertangkap.
+
+Suite: 672 tes, hijau.
+
 ## 1.9.8 — 2026-11-18
 Free Auto berhenti membuang model yang sehat hanya karena ia lambat.
 

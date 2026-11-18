@@ -1313,7 +1313,7 @@ async function handleSend(threadId, b, res, { onStarted = null } = {}) {
         let gotFirst = false;
         let firstAt = 0;
         const t0 = Date.now();
-        const killTimer = setTimeout(() => { if (!gotFirst) attemptCtrl.abort(); }, budget);
+        const killTimer = setTimeout(() => { if (!gotFirst) attemptCtrl.abort('slow'); }, budget);
         const wrappedDelta = (chunk) => {
           if (!gotFirst) { gotFirst = true; firstAt = Date.now() - t0; clearTimeout(killTimer); }
           runOpts.onDelta(chunk);
@@ -2963,9 +2963,9 @@ ${msgs || '<p class="meta">Percakapan kosong.</p>'}
   // ekspor pemakaian engine sebagai CSV (dibuka dengan parameter token)
   if (p === '/api/usage.csv' && method === 'GET') {
     const rows = usageStats();
-    const lines = ['engine,label,type,runs,ok,failed,avg_ms'];
+    const lines = ['engine,label,type,runs,ok,failed,slow,avg_ms'];
     for (const u of rows) {
-      lines.push([u.id, '"' + String(u.label).replace(/"/g, '""') + '"', u.type, u.runs, u.ok, u.failed, u.avgMs].join(','));
+      lines.push([u.id, '"' + String(u.label).replace(/"/g, '""') + '"', u.type, u.runs, u.ok, u.failed, u.slow || 0, u.avgMs].join(','));
     }
     res.writeHead(200, {
       'content-type': 'text/csv; charset=utf-8',

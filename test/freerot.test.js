@@ -223,4 +223,29 @@ test('free-auto: SLOW menggantung -> otomatis pindah ke BB', async () => {
   const jeda = (slow.cooldownUntil || 0) - Date.now();
   assert.ok(jeda > 0, 'tetap dijeda supaya permintaan pindah ke model berikutnya');
   assert.ok(jeda < 9 * 60 * 1000, `BUKAN karantina 10 menit, ternyata ${Math.round(jeda / 1000)} detik`);
+
+  // Statistik pemakaian juga harus jujur. Dulu harness mencatat SETIAP abort
+  // sebagai `failed`, termasuk abort karena model terlalu lama diam — jadi
+  // pane Pemakaian menampilkan engine sehat sebagai gagal, dan itulah angka
+  // yang memicu investigasi ini.
+  const stats = JSON.parse(fs.readFileSync(path.join(dataDir, 'engine-stats.json'), 'utf8'));
+  const sSlow = stats['opencode-free-slow-free'] || {};
+  assert.equal(sSlow.slow, 1, 'model lambat dihitung "lambat" di statistik');
+  assert.equal(sSlow.failed || 0, 0, 'model lambat TIDAK dihitung gagal di statistik');
+  const sBb = stats['opencode-free-bb-free'] || {};
+  assert.equal(sBb.ok, 1, 'model yang menjawab tercatat ok');
+
+  // Dan angka itu harus SAMPAI ke UI lewat /api/usage — bukan hanya tersimpan
+  // di disk. Kalau usageStats berhenti melaporkan `slow`, pane Pemakaian
+  // kembali menyembunyikan alasan sebenarnya.
+  const usage = await (await api('/api/usage')).json();
+  const uSlow = usage.find((u) => u.id === 'opencode-free-slow-free');
+  assert.ok(uSlow, 'engine lambat ada di /api/usage');
+  assert.equal(uSlow.slow, 1, '/api/usage melaporkan jumlah "lambat"');
+  assert.equal(uSlow.failed, 0, '/api/usage tidak menyebutnya gagal');
+
+  // CSV ikut membawa kolom yang sama, supaya ekspor tidak menghilangkan
+  // perbedaan yang sudah dibuat di UI.
+  const csv = await (await api('/api/usage.csv')).text();
+  assert.match(csv.split('\n')[0], /,slow,/, 'header CSV punya kolom slow');
 });

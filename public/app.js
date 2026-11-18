@@ -6140,7 +6140,7 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
 
     api('/api/usage').then((usage) => {
       $('#usage-list').innerHTML = usage.map((u) => `
-        <div class="mini-item"><span>${icon(u.id)} <b>${esc(u.label)}</b> <span class="muted small">${u.runs} run · ${u.failed} gagal${u.ok ? ' · avg ' + Math.round(u.avgMs / 100) / 10 + 's' : ''}</span></span><span class="chip">${u.type === 'pool' ? 'gateway' : 'CLI'}</span></div>`).join('');
+        <div class="mini-item"><span>${icon(u.id)} <b>${esc(u.label)}</b> <span class="muted small">${u.runs} run · ${u.failed} gagal${u.slow ? ` · ${u.slow} ` + tr('lambat') : ''}${u.ok ? ' · avg ' + Math.round(u.avgMs / 100) / 10 + 's' : ''}</span></span><span class="chip">${u.type === 'pool' ? 'gateway' : 'CLI'}</span></div>`).join('');
     }).catch(() => {});
   }
 
@@ -8979,7 +8979,7 @@ Jangan mengarang — bila data tidak ada di folder, katakan tidak ada.`;
       return `<div class="usage-row">
         <div class="u-top"><span class="u-name"><span class="u-ico">${icon(u.id)}</span><b>${esc(u.label)}</b></span><span class="u-num">${u.runs} run</span></div>
         <div class="u-bar"><i style="width:${pct}%"></i></div>
-        <div class="u-sub"><span>${u.ok} ok · ${u.failed} gagal</span><span>${u.ok ? 'avg ' + Math.round(u.avgMs / 100) / 10 + 's' : '—'}</span></div>
+        <div class="u-sub"><span>${u.ok} ok · ${u.failed} gagal${u.slow ? ` · ${u.slow} ` + tr('lambat') : ''}</span><span>${u.ok ? 'avg ' + Math.round(u.avgMs / 100) / 10 + 's' : '—'}</span></div>
       </div>`;
     }).join('') + (!activeUsage.length ? '<p class="muted small">Belum ada pemakaian. Jalankan tugas dari Studio untuk melihat statistik.</p>' : '');
   });

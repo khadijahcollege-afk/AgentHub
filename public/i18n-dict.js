@@ -49,6 +49,7 @@ export const EN = {
   'Dihentikan': 'Stopped',
   'Selesai': 'Finished',
   'Gagal': 'Failed',
+  'lambat': 'slow',
   'Siap': 'Ready',
   'Sebagian transkrip lama dipangkas': 'Older transcript was trimmed',
   'Jalankan perintah untuk memulai.': 'Run a command to start.',
