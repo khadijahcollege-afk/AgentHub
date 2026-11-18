@@ -9,8 +9,8 @@ sama: `server harus hidup`, setelah menunggu 20 detik. Pesan itu tidak menyebut
 sebab apa pun, sehingga kegagalan nyata (bug di server) tidak bisa dibedakan dari
 gangguan lingkungan (port dipakai proses lain) — dan satu-satunya cara memastikan
 adalah menjalankan ulang seluruh suite. Ketika sebabnya akhirnya dilacak, ada
-empat cacat terpisah di balik satu gejala, dan dua di antaranya ada di kode
-produksi.
+tiga cacat di balik gejala itu — satu di kode produksi — ditambah satu cacat
+produksi lain yang ketahuan di jalan yang sama.
 
 - **Server tidak lagi diam-diam pindah port** (`server.js`) — bila port yang
   dikonfigurasi terpakai, server memundurkan diri ke `port + 1` dan menyimpan port
