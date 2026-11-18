@@ -366,6 +366,80 @@ test('gateway routes selected upstream formats and normalizes Responses JSON', a
   assert.deepEqual(JSON.parse(routed.body).input, [{ role: 'user', content: 'hello' }]);
 });
 
+test('gateway: penolakan KLIEN tidak membuang key yang sah', async (t) => {
+  // Regresi nyata: sebuah gateway membalas 403 `client_not_allowed` karena
+  // hanya menerima klien tertentu. Key-nya sendiri sah — /models menjawab 200.
+  // Kode lama menandai SEMUA 403 sebagai "key invalid" dan membuang key itu
+  // dari pool selamanya, lalu agent melaporkan "key ditolak" padahal yang
+  // ditolak adalah identitas aplikasinya.
+  const upstream = createServer(async (req, res) => {
+    for await (const _ of req) { /* habiskan body */ }
+    res.setHeader('content-type', 'application/json');
+    if (req.method === 'GET' && req.url === '/v1/models') {
+      res.end(JSON.stringify({ data: [{ id: 'client-gated-model' }] }));
+      return;
+    }
+    res.writeHead(403);
+    res.end(JSON.stringify({
+      error: { code: 'client_not_allowed', message: '本站仅支持编程客户端使用：Codex、Claude Code、OpenCode', type: 'permission_error' },
+    }));
+  });
+  await new Promise((resolve) => upstream.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise((resolve, reject) => upstream.close((error) => error ? reject(error) : resolve())));
+
+  const baseUrl = `http://127.0.0.1:${upstream.address().port}/v1`;
+  const created = await api('/api/keys', {
+    method: 'POST',
+    body: JSON.stringify({ preset: 'custom', name: 'klien dibatasi', baseUrl, key: 'sk-client-gated', pool: true, poolModel: 'client-gated-model' }),
+  });
+  assert.equal(created.status, 200);
+  const createdBody = await created.json();
+  const keyId = createdBody.entry.id;
+  // Probe lewat /models berhasil, jadi key memang sah.
+  assert.equal(createdBody.entry.status, 'valid');
+
+  const res = await api('/v1/chat/completions', {
+    method: 'POST',
+    body: JSON.stringify({ model: 'auto', messages: [{ role: 'user', content: 'halo' }], max_tokens: 10 }),
+  });
+  assert.equal(res.status, 502, 'permintaan tetap gagal — tidak berpura-pura berhasil');
+  const body = await res.json();
+  // Bentuk galat gateway: { error: { attempts: [...] } }, bukan di akar.
+  const attempts = body.error?.attempts || body.attempts || [];
+  const attempt = attempts.find((a) => a.entry === 'klien dibatasi');
+  assert.ok(attempt, 'percobaan ke gateway itu tercatat: ' + JSON.stringify(attempts));
+  assert.match(attempt.note, /klien ditolak|client/i);
+  assert.doesNotMatch(attempt.note, /key invalid/i, 'penolakan klien bukan alasan menyebut key salah');
+
+  // Inti perbaikan: status key TIDAK diubah menjadi invalid.
+  const st = await (await api('/api/state')).json();
+  const entry = st.keys.find((k) => k.id === keyId);
+  assert.equal(entry.status, 'valid', 'key yang sah tidak boleh dibuang gara-gara klien ditolak');
+  assert.match(entry.statusText, /menolak klien/i);
+
+  // Key tetap sah tapi dipakai berhenti sebentar: tanpa jeda, setiap permintaan
+  // agent menabrak penolakan yang sama, dan gateway yang membatasi klien bisa
+  // memperlakukan itu sebagai penyalahgunaan.
+  assert.ok(entry.cooldownUntil > Date.now(), 'key yang ditolak kliennya diberi jeda, bukan ditinggalkan tanpa batas');
+  const pool = st.pool || {};
+  const member = (pool.members || []).find((m) => m.id === keyId);
+  assert.ok(member, 'key tetap ada di daftar pool — hanya dijeda');
+  assert.equal(member.cooling, true, 'key yang dijeda ditandai cooling');
+  assert.equal(member.status, 'valid', 'jeda bukan alasan mengubah status key');
+
+  // Bukti bahwa jedanya benar-benar berlaku: panggilan berikutnya melewati key
+  // ini tanpa menabrak gateway lagi.
+  const again = await api('/v1/chat/completions', {
+    method: 'POST',
+    body: JSON.stringify({ model: 'auto', messages: [{ role: 'user', content: 'halo' }], max_tokens: 10 }),
+  });
+  const againBody = await again.json();
+  const againAttempts = againBody.error?.attempts || againBody.attempts || [];
+  const skipped = againAttempts.find((a) => a.entry === 'klien dibatasi');
+  assert.ok(skipped, 'percobaan kedua tetap tercatat: ' + JSON.stringify(againAttempts));
+  assert.match(skipped.note, /cooldown/i, 'key yang dijeda dilewati, bukan dipanggil ulang: ' + skipped.note);
+});
+
 test('models: katalog berisi auto dan menolak mask sebagai key', async () => {
   const r = await api('/api/models');
   assert.equal(r.status, 200);

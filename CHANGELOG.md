@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.9.6 — 2026-11-18
+Gateway berhenti membuang key yang sah hanya karena aplikasinya ditolak.
+
+Saat mencoba alur key sungguhan, sebuah gateway membalas HTTP 403
+`client_not_allowed` — "hanya klien tertentu yang didukung". Key-nya sendiri
+sah: `/models` menjawab 200 dengan key yang sama. Kode lama memperlakukan
+**setiap** 401/403 sebagai key salah: ditandai `invalid`, dikeluarkan dari pool,
+tidak pernah dicoba lagi. Key yang benar hilang tanpa jalan kembali, dan agent
+melaporkan "key ditolak" padahal yang ditolak adalah identitas aplikasinya.
+
+- **403 dibedakan menjadi dua** (`lib/pool.js`) — penolakan yang menyebut klien
+  (`client_not_allowed`, `仅支持`, `unsupported client`, `third-party client`)
+  tidak lagi mengubah status key.
+- **Key yang ditolak kliennya dijeda 10 menit** (`lib/pool.js`) — tanpa jeda,
+  setiap permintaan agent menabrak penolakan yang sama, dan gateway yang
+  membatasi klien bisa membaca pola itu sebagai penyalahgunaan.
+- **Penolakan yang tidak menyebut klien tetap `invalid`** — key yang salah harus
+  berhenti dicoba. Menyamar sebagai klien lain sengaja tidak dilakukan.
+- **Laporan menyebut sebab sebenarnya** — "klien ditolak gateway (403), key tidak
+  diubah", bukan "key invalid".
+
 ## 1.9.5 — 2026-11-18
 Preset Z.ai berhenti menagih dua kali.
 
