@@ -3,13 +3,12 @@
 // engine, dan hook prompt bisa menolak/mengubah sebelum pesan ditulis.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { pickFreePort } from './helpers/port.js';
-import { stopTestServer } from './helpers/server.js';
+import { removeDir, startTestServer, stopTestServer } from './helpers/server.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = await pickFreePort(7980, 40);
@@ -24,15 +23,6 @@ const api = (p, opts = {}) => fetch(API + p, {
   ...opts,
   headers: { authorization: `Bearer ${TOKEN}`, ...(opts.body ? { 'content-type': 'application/json' } : {}) },
 });
-
-async function waitUp(ms = 20000) {
-  const t0 = Date.now();
-  while (Date.now() - t0 < ms) {
-    try { const r = await fetch(`${API}/healthz`); if (r.ok) return true; } catch { /* belum */ }
-    await new Promise((r) => setTimeout(r, 150));
-  }
-  return false;
-}
 
 // Harness yang memantulkan prompt persis seperti diterima CLI, sebagai JSON.
 async function runSink(threadId, prompt, extra = {}) {
@@ -77,14 +67,14 @@ test.before(async () => {
   ]));
   fs.writeFileSync(path.join(repo, 'AGENTS.md'), '# Aturan proyek\n- Jangan pernah ubah berkas lockfile\n');
 
-  child = spawn(process.execPath, ['server.js'], {
-    cwd: ROOT, env: { ...process.env, AGENTHUB_DATA: dataDir, AGENTHUB_NO_TOAST: '1', AGENTHUB_STRICT_PORT: '1' },
-    stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true,
-  });
-  let bootLog = '';
-  child.stdout.on('data', (d) => { bootLog += d; });
-  child.stderr.on('data', (d) => { bootLog += d; });
-  assert.equal(await waitUp(), true, `server harus hidup\n${bootLog.slice(-600)}`);
+  // Server dijalankan lewat helper, bukan `spawn` langsung. Berkas ini pernah
+  // gagal mati ~98 ms tanpa satu pun pesan yang menyebut sebabnya, karena
+  // `spawn` dengan keluaran yang tidak lengkap membuat kegagalan boot terlihat
+  // sama dengan kegagalan asersi. Helper menyimpan stdout/stderr dan
+  // menerjemahkan kode keluar Windows menjadi nama yang bisa dicari.
+  const started = await startTestServer({ root: ROOT, port: PORT, dataDir });
+  child = started.child;
+  assert.equal(started.alive, true, started.failure());
 });
 
 test.after(async () => {
@@ -92,7 +82,7 @@ test.after(async () => {
   // yang masih hidup memegang port dan masih bisa menulis ke dataDir.
   await stopTestServer(child);
   for (const d of [dataDir, repo]) {
-    try { fs.rmSync(d, { recursive: true, force: true }); } catch { /* noop */ }
+    if (d) removeDir(d);
   }
 });
 

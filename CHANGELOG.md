@@ -1,5 +1,44 @@
 # Changelog
 
+## 1.9.11 — 2026-11-19
+Satu BOM di `config.json` tidak lagi menghapus token dan port pengguna.
+
+Ditemukan saat menguji paket portable 1.9.10: config uji ditulis oleh PowerShell
+(`Set-Content -Encoding utf8`, yang menambahkan BOM di PowerShell 5.1), dan server
+mengabaikannya sepenuhnya — hidup di port 7788 dengan token yang baru dibuat.
+Penelusurannya pendek dan tidak enak: `readJson` menolak BOM karena `JSON.parse`
+memang menolaknya, lalu `loadConfig()` menyimpulkan "belum ada config", membuat
+config baru, dan **menimpa** berkas pengguna.
+
+Akibatnya bukan kosmetik. Token akses dan port yang sudah diatur hilang, dan
+gejalanya menyesatkan: server tetap hidup dan tampak normal, hanya di alamat lain
+dengan token lain. Pengguna akan mengira pengaturannya diabaikan atau UI-nya rusak,
+bukan mengira berkasnya tidak terbaca.
+
+BOM bukan hal eksotis di Windows: Notepad menuliskannya, dan begitu juga
+`Set-Content -Encoding utf8` di PowerShell 5.1. Berkas JSON yang pernah disunting
+tangan sangat mungkin memilikinya. Karena BOM tidak pernah sah di dalam JSON
+(RFC 8259), membuangnya di pembaca adalah penanganan yang benar.
+
+- **BOM dibuang sebelum `JSON.parse`** (`lib/store.js`) — satu tempat, berlaku untuk
+  semua berkas yang dibaca lewat `readJson`: config, koleksi, thread, key.
+- **Berkas tidak ditulis ulang hanya karena dibaca.** Membaca config bukan alasan
+  untuk menyentuh berkasnya.
+- **Config yang benar-benar rusak disisihkan, bukan dihapus.** Bila `config.json`
+  ada tetapi tidak bisa diurai, isinya disalin ke `config.json.rusak-<waktu>` lebih
+  dulu, baru config baru ditulis. Server tetap harus bisa jalan — tetapi satu-satunya
+  bukti yang bisa dipakai memulihkan token tidak boleh ikut lenyap.
+- **JSON rusak tetap dianggap rusak.** BOM dimaafkan; `{"a": 1,, }` tidak. Menelan
+  kerusakan nyata akan menyembunyikannya.
+
+Bukti: penyimpanan diuji langsung (token dan port bertahan, berkas tidak ditimpa),
+lalu ujung-ke-ujung lewat server sungguhan dengan `config.json` ber-BOM — server
+hidup di port 9771, port 7788 kosong, token pengguna diterima, token acak ditolak,
+dan tidak ada berkas sisihan karena confignya memang terbaca. Empat mutasi diuji:
+4/4 tertangkap.
+
+Suite: 677 tes, hijau.
+
 ## 1.9.10 — 2026-11-18
 Rotasi Free Auto akhirnya terlihat di layar, dan statistiknya berhenti
 menyalahkan model yang sehat.

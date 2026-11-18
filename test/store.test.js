@@ -101,3 +101,62 @@ test('store: config baru menyimpan autoUpdate sebagai nilai, bukan tebakan', () 
   store.saveConfig({ ...fresh, autoUpdate: false });
   assert.equal(store.loadConfig().autoUpdate, false);
 });
+
+test('store: config berawalan BOM tidak menghapus token dan port pengguna', () => {
+  // Regresi nyata, ditemukan saat menguji paket portable: config yang ditulis
+  // dengan BOM (Notepad, atau `Set-Content -Encoding utf8` di PowerShell 5.1)
+  // ditolak `JSON.parse`, sehingga `loadConfig()` menyimpulkan "belum ada
+  // config" lalu MENIMPA berkasnya. Token dan port pengguna hilang, dan
+  // gejalanya menyesatkan: server hidup di port lain dengan token lain.
+  const cfgPath = path.join(DATA, 'config.json');
+  const token = 'token-asli-0123456789';
+  const isi = JSON.stringify({ port: 9761, token, notify: false }, null, 2);
+  fs.writeFileSync(cfgPath, '\uFEFF' + isi, 'utf8');
+
+  const cfg = store.loadConfig();
+  assert.equal(cfg.token, token, 'token pengguna tidak diganti token acak');
+  assert.equal(cfg.port, 9761, 'port pengguna tidak kembali ke 7788');
+  // Berkas TIDAK boleh ditulis ulang hanya karena ia dibaca: menulis ulang
+  // menghapus BOM-nya, dan pengguna lain yang membuka berkas yang sama tidak
+  // perlu melihat perubahan yang tidak ia minta.
+  assert.equal(fs.readFileSync(cfgPath, 'utf8'), '\uFEFF' + isi, 'berkas tidak ditimpa saat dibaca');
+});
+
+test('store: BOM juga dimaafkan pada berkas koleksi, bukan hanya config', () => {
+  // BOM adalah sifat berkas, bukan sifat config. Bila hanya config yang
+  // dimaafkan, daftar thread atau key yang tersunting tangan tetap bisa
+  // terlihat "kosong" lalu ditimpa.
+  fs.writeFileSync(path.join(DATA, 'bom-coll.json'), '\uFEFF[{"id":"a"},{"id":"b"}]', 'utf8');
+  const arr = store.loadCollection('bom-coll.json', []);
+  assert.deepEqual(arr.map((x) => x.id), ['a', 'b'], 'isi koleksi terbaca walau ada BOM');
+});
+
+test('store: berkas yang benar-benar rusak tetap memakai fallback', () => {
+  // BOM dimaafkan, tetapi JSON yang betul-betul rusak tidak boleh diam-diam
+  // dianggap sah: itu akan menyembunyikan kerusakan yang nyata.
+  fs.writeFileSync(path.join(DATA, 'rusak.json'), '{"a": 1,, }', 'utf8');
+  assert.equal(store.readJson('rusak.json', 'cadangan'), 'cadangan');
+});
+
+test('store: config rusak disisihkan, bukan ditimpa tanpa jejak', () => {
+  // Bila `config.json` ada tetapi tidak bisa diurai, `loadConfig` tetap harus
+  // jalan — tetapi menimpanya langsung menghapus token dan port pengguna
+  // beserta satu-satunya bukti yang bisa dipakai untuk memulihkannya.
+  const cfgPath = path.join(DATA, 'config.json');
+  fs.rmSync(cfgPath, { force: true });
+  for (const f of fs.readdirSync(DATA)) {
+    if (f.startsWith('config.json.rusak-')) fs.rmSync(path.join(DATA, f), { force: true });
+  }
+  fs.writeFileSync(cfgPath, '{"token": "rusak-tapi-berharga"', 'utf8');
+
+  const cfg = store.loadConfig();
+  assert.equal(cfg.port, 7788, 'config baru tetap dibuat supaya server bisa jalan');
+
+  const sisa = fs.readdirSync(DATA).filter((f) => f.startsWith('config.json.rusak-'));
+  assert.equal(sisa.length, 1, 'berkas rusak disisihkan, bukan dihapus');
+  assert.equal(
+    fs.readFileSync(path.join(DATA, sisa[0]), 'utf8'),
+    '{"token": "rusak-tapi-berharga"',
+    'isi asli masih utuh di berkas sisihan',
+  );
+});

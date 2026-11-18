@@ -6,13 +6,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { pickFreePort } from './helpers/port.js';
-import { stopTestServer } from './helpers/server.js';
+import { removeDir, startTestServer, stopTestServer } from './helpers/server.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = await pickFreePort(8260, 40);
@@ -29,15 +28,6 @@ const api = (p, opts = {}) => fetch(API + p, {
   ...opts,
   headers: { authorization: `Bearer ${TOKEN}`, ...(opts.body ? { 'content-type': 'application/json' } : {}) },
 });
-
-async function waitUp(ms = 20000) {
-  const t0 = Date.now();
-  while (Date.now() - t0 < ms) {
-    try { const r = await fetch(`${API}/healthz`); if (r.ok) return true; } catch { /* belum */ }
-    await new Promise((r) => setTimeout(r, 150));
-  }
-  return false;
-}
 
 const upstreamHandler = (req, res) => {
   let raw = '';
@@ -111,14 +101,12 @@ test.before(async () => {
   upstream = http.createServer(upstreamHandler);
   await new Promise((r) => upstream.listen(0, '127.0.0.1', r));
 
-  child = spawn(process.execPath, ['server.js'], {
-    cwd: ROOT, env: { ...process.env, AGENTHUB_DATA: dataDir, AGENTHUB_NO_TOAST: '1', AGENTHUB_STRICT_PORT: '1' },
-    stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true,
-  });
-  let bootLog = '';
-  child.stdout.on('data', (d) => { bootLog += d; });
-  child.stderr.on('data', (d) => { bootLog += d; });
-  assert.equal(await waitUp(), true, `server harus hidup\n${bootLog.slice(-600)}`);
+  // Lewat helper, bukan `spawn` langsung: berkas ini pernah mati ~100 ms tanpa
+  // sebab yang terlihat. Helper menyimpan keluaran server dan menyebut
+  // penyebabnya (port terpakai, crash setelah boot, modul gagal dimuat).
+  const started = await startTestServer({ root: ROOT, port: PORT, dataDir });
+  child = started.child;
+  assert.equal(started.alive, true, started.failure());
 
   const r = await api('/api/keys', {
     method: 'POST',
@@ -136,7 +124,7 @@ test.after(async () => {
   await stopTestServer(child);
   try { upstream?.close(); } catch { /* noop */ }
   for (const d of [dataDir, work]) {
-    try { fs.rmSync(d, { recursive: true, force: true }); } catch { /* noop */ }
+    if (d) removeDir(d);
   }
 });
 
