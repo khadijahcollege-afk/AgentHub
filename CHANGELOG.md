@@ -1,29 +1,84 @@
 # Changelog
 
-## 1.9.9 — 2026-11-18
-Statistik pemakaian berhenti menyalahkan model yang sehat.
+## 1.9.10 — 2026-11-18
+Rotasi Free Auto akhirnya terlihat di layar, dan statistiknya berhenti
+menyalahkan model yang sehat.
 
-Di 1.9.8 kelambatan model gratis sudah diperlakukan sebagai kelambatan di
-rotasi. Tetapi angka yang dilihat pengguna belum ikut berubah: `engine-stats.json`
-tetap mencatat setiap abort sebagai `failed`, termasuk abort karena model belum
-mengeluarkan apa pun sampai tenggat. Pane Pemakaian lalu menampilkan "4 gagal"
-untuk model yang sebenarnya menjawab normal — angka itulah yang memicu
-investigasi ini pada awalnya.
+Dua perbaikan ini berasal dari satu pengukuran yang sama: token pertama model
+gratis di mesin ini datang pada 11–39 detik, sementara ambang "tanpa output"
+saat itu 30 detik.
 
-- **`slow` jadi angka sendiri** (`lib/harness.js`) — abort dengan alasan `slow`
-  dihitung `slow: 1`, bukan `failed: 1`. Kegagalan sungguhan (exit bukan nol,
-  CLI hilang, batas 10 menit) tetap `failed`.
-- **Alasan pembatalan dibawa, bukan ditebak** — `AbortSignal.abort('slow')`
-  diteruskan ke `killTree()`, lalu ke `abortError(reason)`. Tanpa alasan ini
-  harness tidak bisa membedakan "pengguna menekan Stop" dari "model terlalu
-  lama diam", dan keduanya tercatat sama.
+Catatan nomor: 1.9.9 tidak pernah terbit. Perbaikan statistik sudah ditulis dan
+di-commit di bawah nomor itu, tetapi belum sempat di-tag ketika cacat chip
+rotasi ditemukan. Keduanya diterbitkan bersama sebagai 1.9.10 — bukan sebagai
+1.9.9 — karena `index.html` sudah pernah menunjuk `app.js?v=1.9.9`, sehingga
+memakai ulang nomor itu akan membuat peramban menyajikan `app.js` lama dari
+cache.
+
+### Statistik berhenti menyalahkan model sehat
+
+`lib/harness.js` mencatat **setiap** abort sebagai kegagalan. Abort bisa datang
+dari tiga sebab berbeda — pengguna menekan Stop, run dibatalkan karena percakapan
+diganti, atau model belum mengeluarkan apa pun sampai tenggat — dan ketiganya
+tercatat sama. Di mesin ini hasilnya `flint-40b-free: { runs: 1, ok: 0, failed: 1 }`,
+padahal Flint menjawab dalam 26,7 detik saat dijalankan manual.
+
+- **`slow` jadi angka sendiri** — abort beralasan `slow` dihitung `slow: 1`, bukan
+  `failed: 1`. Kegagalan sungguhan (exit bukan nol, CLI hilang, batas 10 menit)
+  tetap `failed`.
+- **Alasan pembatalan dibawa** — `AbortSignal.abort('slow')` diteruskan ke
+  `killTree()`, lalu ke `abortError(reason)`. Tanpa ini harness tidak bisa
+  membedakan Stop dari model yang diam.
 - **UI dan CSV ikut jujur** — `/api/usage` melaporkan `slow`, baris pemakaian
-  menampilkan "N lambat" hanya bila ada, dan header CSV bertambah kolom `slow`.
-- **Penjaga diperluas** (`test/freerot.test.js`) — tes server sekarang memeriksa
-  `engine-stats.json` di disk, `/api/usage`, dan header CSV. Diuji dengan 3
-  mutasi: 3/3 tertangkap.
+  menampilkan "N lambat" hanya bila ada, header CSV bertambah kolom `slow`.
 
-Suite: 672 tes, hijau.
+### Rotasi akhirnya terlihat di layar
+
+Server sudah mengirim event `rotate` sejak Free Auto ada: setiap model yang
+dilewati dilaporkan beserta alasannya. Klien tidak punya cabang untuk event itu,
+jadi semuanya dibuang tanpa jejak. Akibatnya di 1.9.8 — yang justru memperbaiki
+rotasi di server — pengalaman pengguna tetap terasa macet: kirim pesan, lalu
+"Working" diam 30–75 detik tanpa penjelasan, dan jawaban datang dari model yang
+tidak pernah disebut.
+
+- **Chip status memakai ulang `#chat-tool`** (`public/app.js`) — tidak ada baris
+  status baru. Saat rotasi terjadi, chip menampilkan catatan server apa adanya,
+  mis. *"SLOW palsu terlalu lama tanpa jawaban (8 dtk) — otomatis coba model lain"*.
+- **Chip dibersihkan saat jawaban mengalir.** Penanda `data-rotate` memastikan
+  yang dihapus hanya chip milik rotasi — chip tool biasa tidak tersentuh. Tanpa
+  ini catatan rotasi menetap di atas jawaban yang sudah selesai.
+- **Dibersihkan juga saat run berakhir** dan saat chip tool baru mulai, sehingga
+  tidak ada sisa teks dari run sebelumnya.
+- **Teks cadangan masuk kamus** — "Mencoba model lain" / "Trying another model".
+
+### Bukti
+
+Perilaku chip tidak bisa dibuktikan dengan membaca kode, jadi diuji di Chrome
+sungguhan lewat CDP: server menjalankan model pertama yang menggantung, memutar
+ke model kedua yang butuh 4 detik, dan chip dipantau setiap 80 ms. Hasilnya:
+
+```
+TAMPIL   "SLOW palsu terlalu lama tanpa jawaban (8 dtk) — otomatis coba model lain"
+sembunyi ""
+jawaban server: "jawaban dari BB" | engine: opencode-free-bb-free
+```
+
+Dua probe pertama gagal, dan keduanya kesalahan alat uji — bukan produk: model
+kedua menjawab seketika sehingga chip hanya hidup beberapa milidetik; dan
+`ah_engine` disetel setelah `app.js` dimuat, padahal `currentEngine` dibaca saat
+modul dievaluasi. Keduanya diperbaiki di alat ujinya, bukan dengan melonggarkan
+pemeriksaan.
+
+### Penjaga
+
+- **Statistik** — tes server memeriksa `engine-stats.json` di disk, `/api/usage`,
+  dan header CSV. 3 mutasi, 3/3 tertangkap.
+- **Kontrak `rotate`** — event harus ada di stream, menyebut model yang
+  ditinggalkan, dan datang **sebelum** delta pertama. 4 mutasi, 4/4 tertangkap.
+  Satu mutasi sempat lolos karena pemeriksaan lama `/dataset\.rotate/` masih
+  cocok dengan `dataset.rotateOff`; regex-nya diperketat.
+
+Suite: 673 tes, hijau.
 
 ## 1.9.8 — 2026-11-18
 Free Auto berhenti membuang model yang sehat hanya karena ia lambat.

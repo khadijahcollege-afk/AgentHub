@@ -186,6 +186,28 @@ test('free-auto: tenggat "tanpa output" cukup panjang untuk model gratis nyata',
   assert.match(src, /freerot\.markSlow\(/, 'model lambat harus dijeda singkat, bukan ditandai gagal');
 });
 
+test('free-auto: UI mendengarkan event rotate yang dikirim server', () => {
+  // Cacat nyata: server mengirim `rotate` sejak Free Auto ada, tetapi app.js
+  // tidak punya cabang untuk itu — event dibuang diam-diam. Pengguna menunggu
+  // 30-75 detik melihat "Working" tanpa penjelasan, lalu jawaban datang dari
+  // model lain tanpa disebut. Kontrak ini dijaga di sumber karena perilakunya
+  // sudah dibuktikan terpisah di browser sungguhan (chip muncul lalu hilang).
+  const ui = fs.readFileSync(path.join(ROOT, 'public/app.js'), 'utf8');
+  assert.match(ui, /ev\.type === 'rotate'/, 'app.js harus menangani event rotate');
+  // Chip rotasi tidak boleh menetap setelah jawaban mulai mengalir: harus ada
+  // penghapusan penanda yang EKSAK, bukan sekadar nama yang mirip. Regex lama
+  // (`/dataset\.rotate/`) masih cocok dengan `dataset.rotateOff`, sehingga
+  // mutasi yang mengganti nama penanda lolos tanpa tertangkap.
+  assert.match(ui, /delete\s+\w+\.dataset\.rotate;/,
+    'chip rotasi harus benar-benar dibersihkan (delete …dataset.rotate)');
+  assert.match(ui, /if\s*\(\s*tchip\s*&&\s*tchip\.dataset\.rotate === '1'\s*\)/,
+    'pembersihan hanya untuk chip yang memang milik rotasi');
+  // Dan teksnya harus ada di kamus supaya UI Inggris tidak menampilkan
+  // kalimat Indonesia di tengah antarmuka berbahasa Inggris.
+  const dict = fs.readFileSync(path.join(ROOT, 'public/i18n-dict.js'), 'utf8');
+  assert.ok(dict.includes('Mencoba model lain'), 'fallback teks rotasi ada di kamus');
+});
+
 test('free-auto: SLOW menggantung -> otomatis pindah ke BB', async () => {
   // engine virtual terdaftar di /api/engines
   const engines = await (await api('/api/engines')).json();
@@ -197,6 +219,36 @@ test('free-auto: SLOW menggantung -> otomatis pindah ke BB', async () => {
   assert.ok(t.id);
   const s = await api(`/api/threads/${t.id}/send`, { method: 'POST', body: JSON.stringify({ prompt: 'halo' }) });
   assert.ok(s.ok, 'send sukses');
+  // Baca seluruh stream SSE: rotasi harus TERLIHAT oleh klien, bukan hanya
+  // terjadi di server. Sebelum ini server mengirim event `rotate` tetapi UI
+  // tidak punya cabang untuk menerimanya, sehingga pengguna menunggu puluhan
+  // detik melihat "Working" tanpa penjelasan lalu jawaban datang dari model
+  // lain tanpa disebut. Membaca stream di sini mengunci kontraknya.
+  const events = [];
+  {
+    const dec = new TextDecoder();
+    let buf = '';
+    for await (const chunk of s.body) {
+      buf += dec.decode(chunk, { stream: true });
+      const parts = buf.split('\n\n');
+      buf = parts.pop() || '';
+      for (const part of parts) {
+        const line = part.trim();
+        if (!line.startsWith('data: ')) continue;
+        try { events.push(JSON.parse(line.slice(6))); } catch { /* abaikan */ }
+      }
+    }
+  }
+  const rotate = events.filter((e) => e.type === 'rotate');
+  assert.ok(rotate.length >= 1, 'server mengirim event `rotate` saat pindah model');
+  assert.match(String(rotate[0].note || ''), /model lain/, 'catatan rotasi menjelaskan apa yang terjadi');
+  assert.match(String(rotate[0].note || ''), /SLOW/, 'catatan rotasi menyebut model yang ditinggalkan');
+  // Urutan penting: rotasi datang SEBELUM jawaban, supaya chip status tampil
+  // saat pengguna masih menunggu — bukan sesudah run selesai.
+  const iRotate = events.findIndex((e) => e.type === 'rotate');
+  const iDelta = events.findIndex((e) => e.type === 'delta');
+  assert.ok(iRotate >= 0 && iDelta > iRotate, 'rotate dikirim sebelum delta pertama');
+
   // tunggu run selesai
   for (let i = 0; i < 100; i++) {
     await new Promise((r) => setTimeout(r, 150));

@@ -216,7 +216,11 @@ window.__ahMachines = {
     // Chip tool ikut hilang ketika run berakhir; menyisakan teks tool terakhir
     // setelah selesai membuat status run terlihat menggantung.
     const toolChip = $('#chat-tool');
-    if (toolChip && next !== 'running') { toolChip.classList.add('hidden'); toolChip.textContent = ''; }
+    if (toolChip && next !== 'running') {
+      toolChip.classList.add('hidden');
+      toolChip.textContent = '';
+      delete toolChip.dataset.rotate;
+    }
     // Kartu subagent hanya milik run aktif: menyisakannya setelah run selesai
     // membuat baris "bekerja" terus berdetak padahal tidak ada yang berjalan.
     if (next !== 'running') { clearRunSubs(); clearAsks(); }
@@ -4537,6 +4541,14 @@ window.__ahMachines = {
       let outcome = 'done';
       await parseSSE(res, (ev) => {
         if (ev.type === 'delta') {
+          // Jawaban sudah mulai mengalir: catatan rotasi ("coba model lain")
+          // tidak boleh menetap, karena run ini nyata-nyata sudah dijawab.
+          const tchip = $('#chat-tool');
+          if (tchip && tchip.dataset.rotate === '1') {
+            tchip.classList.add('hidden');
+            tchip.textContent = '';
+            delete tchip.dataset.rotate;
+          }
           acc += ev.text;
           const el = $('#chat-messages .msg.assistant:last-child .msg-body');
           if (el) { el.innerHTML = md(acc); scrollChatToBottom(); }
@@ -4551,6 +4563,7 @@ window.__ahMachines = {
           const who = ev.subagent ? `${ev.subagent} › ` : '';
           if (ev.phase === 'start') {
             chip.classList.remove('hidden', 'tool-err');
+            delete chip.dataset.rotate;
             if (ev.decision !== 'allow') chip.classList.add('tool-err');
             const hint = ev.reason ? ` — ${ev.reason}` : '';
             chip.textContent = `${who}${ev.name} · ${ev.decision === 'allow' ? 'jalan' : ev.decision}${hint}`;
@@ -4582,6 +4595,19 @@ window.__ahMachines = {
             if (lbl) lbl.textContent = PERMISSION_LABELS[normalizePermission(permission)] || PERMISSION_LABELS.full;
             renderHeroContext();
             toast(ev.planActive ? tr('Agent masuk plan mode') : tr('Rencana disetujui — agent boleh mengubah berkas'));
+          }
+        } else if (ev.type === 'rotate') {
+          // Rotasi Free Auto: server sudah meninggalkan model yang lambat/kena
+          // limit dan mencoba model berikutnya. Tanpa ini pengguna hanya melihat
+          // "Working" diam selama puluhan detik, lalu jawaban yang entah dari
+          // mana — padahal engine asli tercatat di pesan. Chip yang sama dipakai
+          // chip tool supaya tidak menambah baris status baru.
+          const chip = $('#chat-tool');
+          if (chip) {
+            chip.classList.remove('hidden', 'tool-err');
+            chip.dataset.rotate = '1';
+            chip.textContent = ev.note || tr('Mencoba model lain');
+            chip.title = chip.textContent;
           }
         } else if (ev.type === 'task') {
           // Perintah latar dimulai. Barisnya muncul di panel tanpa menunggu

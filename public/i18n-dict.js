@@ -50,6 +50,7 @@ export const EN = {
   'Selesai': 'Finished',
   'Gagal': 'Failed',
   'lambat': 'slow',
+  'Mencoba model lain': 'Trying another model',
   'Siap': 'Ready',
   'Sebagian transkrip lama dipangkas': 'Older transcript was trimmed',
   'Jalankan perintah untuk memulai.': 'Run a command to start.',
