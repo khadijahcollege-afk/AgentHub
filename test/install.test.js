@@ -16,7 +16,7 @@ import { stopTestServer } from './helpers/server.js';
 import {
   parseChecksums, hashFile, verifyFile, detectInterception, readMagic, preflight,
   firstSuccess, retry, installDecision, installGate, pickWritableDir, uninstallPlan, redact,
-  diagnosticsBundle, bundleToText,
+  canWrite, diagnosticsBundle, bundleToText,
 } from '../lib/install.js';
 import { CHECKSUM_ASSET, fetchChecksums, launchInstaller } from '../lib/update.js';
 import { INSTALL_MACHINE, canTransition, MACHINE_VERSION } from '../lib/machines.js';
@@ -238,6 +238,23 @@ test('install: preflight menolak platform/arsitektur/disk yang tidak layak', () 
   const unknown = preflight({ platform: 'win32', arch: 'arm64', nodeVersion: '20.0.0', freeBytes: null, dataWritable: true });
   assert.equal(unknown.ok, true);
   assert.ok(unknown.checks.some((c) => c.id === 'disk' && c.level === 'warn'));
+});
+
+test('install: canWrite membuktikan dengan menulis, bukan hanya bertanya', () => {
+  // Regresi nyata: `accessSync(W_OK)` di Windows hanya memeriksa atribut
+  // read-only, bukan ACL yang menolak. Folder `Program Files` lolos pemeriksaan
+  // itu lalu gagal `EPERM` saat benar-benar ditulis — sesudah 78 MB terunduh.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agenthub-canwrite-'));
+  try {
+    assert.equal(canWrite(dir), true, 'folder biasa bisa ditulis');
+    // Buktinya harus dengan benar-benar menulis; berkas percobaan tidak boleh
+    // tertinggal, karena preflight dipanggil berulang kali.
+    assert.deepEqual(fs.readdirSync(dir), [], 'tidak ada berkas percobaan yang tertinggal');
+
+    assert.equal(canWrite(path.join(dir, 'tidak-ada')), false, 'folder yang tidak ada bukan "bisa ditulis"');
+  } finally {
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* noop */ }
+  }
 });
 
 test('install: preflight menolak folder unduhan yang tidak bisa ditulis', () => {  // Regresi nyata: di instalasi per-machine (`Program Files`), folder data ada

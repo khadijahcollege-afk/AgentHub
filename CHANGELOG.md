@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.9.4 — 2026-11-18
+Pemeriksaan "folder bisa ditulis" sekarang menulis.
+
+1.9.3 memindahkan unduhan ke folder yang bisa ditulis, dan memeriksanya sebelum
+78 MB diambil. Pemeriksaannya memakai `accessSync(W_OK)`, yang di Windows hanya
+membaca atribut read-only, bukan ACL yang menolak. Pada folder yang izinnya
+dicabut — persis `Program Files` untuk akun pengguna biasa — pemeriksaan
+menjawab "bisa ditulis", unduhan dimulai, lalu gagal di byte terakhir dengan
+`EPERM`.
+
+- **`canWrite` membuktikan dengan benar-benar menulis** (`lib/install.js`) — satu
+  berkas kecil ditulis lalu dihapus. `accessSync` tetap dipakai sebagai saringan
+  cepat, tetapi jawaban akhir datang dari percobaan tulis. Berkas percobaan tidak
+  tertinggal, dan kegagalan menghapusnya tidak membuat folder dinyatakan
+  read-only.
+- **Pemilihan folder unduhan jadi lebih disiplin karenanya** — di instalasi
+  per-machine, server benar-benar melewati `dist/` di `Program Files` dan memakai
+  `dist/` di dalam folder data.
+
 ## 1.9.3 — 2026-11-18
 Unduhan otomatis sekarang punya tempat menulis.
 
