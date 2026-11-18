@@ -423,6 +423,10 @@ ditunggu, dan apa yang harus bisa dipulihkan setelah gagal.
   `share`, `port-helper` — 424 tes, semuanya lulus.
 
 ## 1.6.14 — 2026-11-17
+- **Marketplace & kartu toko berikon** — ikon folder untuk tiap marketplace,
+  ikon huruf berwarna (hue dari nama) untuk tiap plugin tersedia & kartu
+  toko, baris marketplace dirapikan (nama + jumlah plugin + path + hapus);
+  return ganda di renderPlugins dibuang.
 - **Fix toko plugin**: loadStore kini dijalankan saat pane Plugin dibuka
   (grid kartu sebelumnya kosong), toast pasang menampilkan nama plugin
   (bukan template mentah), dan kartu yang terpotong ditulis ulang utuh.

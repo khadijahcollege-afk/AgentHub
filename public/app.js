@@ -7058,7 +7058,7 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
   let storeQuery = '';
   function storeIcon(name) {
     const letter = String(name || '?').trim().charAt(0).toUpperCase();
-    return `<span class="store-ico">${esc(letter)}</span>`;
+    return `<span class="store-ico" style="background:hsl(${hueOf(name)} 62% 52%)">${esc(letter)}</span>`;
   }
   function renderStore(data) {
     const grid = document.querySelector('#store-grid');
@@ -7195,7 +7195,8 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
       const markets = data.marketplaces || [];
       mkHost.innerHTML = markets.length ? markets.map((m) => `
         <div class="plug-market">
-          <div>
+          <span class="plug-market-ico">${svgIco('<path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H9l2 2h7.5A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5z"/>')}</span>
+          <div class="plug-market-main">
             <b>${esc(m.name)}</b>
             <span class="muted small">${m.error ? esc(m.error) : `${m.available} plugin tersedia`}</span>
             <div class="muted small plug-path">${esc(m.path)}</div>
@@ -7208,7 +7209,8 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
       const avail = (data.available || []).filter((p) => !p.installed);
       avHost.innerHTML = avail.length ? avail.map((p) => `
         <div class="plug-market">
-          <div>
+          <span class="store-ico" style="background:hsl(${hueOf(p.name)} 62% 52%)">${esc((p.name || '?').charAt(0).toUpperCase())}</span>
+          <div class="plug-market-main">
             <b>${esc(p.name)}</b>${p.version ? ` <span class="muted small">v${esc(p.version)}</span>` : ''}
             <div class="muted small">${esc(p.description || p.marketplace)}</div>
           </div>
@@ -7228,7 +7230,6 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
       // composer harus ikut dibuang, kalau tidak perintah baru tetap ditolak.
       pluginCommandsLoaded = false;
       await renderPlugins();
-      return r;
       return r;
     } catch (err) {
       if (status) status.textContent = `Gagal: ${err.message}`;
