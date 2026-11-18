@@ -10,7 +10,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { pickFreePort } from './helpers/port.js';
 import { stopTestServer } from './helpers/server.js';
-import { ladder, markFail, looksLimited, cooling, _setState } from '../lib/freerot.js';
+import { ladder, markFail, markOk, looksLimited, cooling, _setState, _state, markSlow, noteFirst, firstTimeoutFor } from '../lib/freerot.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 // Blok port sendiri, bukan `9030 + Math.random() * 30`. Port acak dalam rentang
@@ -69,6 +69,73 @@ test('freerot unit: ladder urut gagal, cooling dilewati, deteksi limit', () => {
   }
 });
 
+test('freerot unit: model lambat dijeda sebentar, bukan dikarantina', () => {
+  // Regresi nyata: ambang "tanpa output" 30 detik lebih pendek daripada waktu
+  // jawab model gratis yang sebenarnya (11-39 detik), sehingga model SEHAT
+  // ditandai gagal dan dikarantina 10 menit. Free Auto lalu kehilangan anggota
+  // tangganya sendiri. Model lambat harus dijeda singkat, bukan dibuang.
+  _setState({});
+  process.env.AGENTHUB_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'agenthub-rot-slow-'));
+  try {
+    const id = 'opencode-free-slow-free';
+    markSlow(id, 75000);
+    assert.equal(cooling(id), true, 'model lambat tetap dijeda supaya permintaan pindah');
+    const st = _state();
+    const jeda = st[id].cooldownUntil - Date.now();
+    assert.ok(jeda <= 3 * 60 * 1000 + 1000, `jeda harus singkat (3 menit), ternyata ${Math.round(jeda / 1000)} detik`);
+    assert.ok(jeda > 60 * 1000, 'jeda tetap ada, bukan nol');
+    assert.equal(st[id].fails, 0, 'lambat bukan kegagalan: hitungan gagal tidak naik');
+    assert.match(st[id].lastError, /lambat/, 'alasan jujur: lambat, bukan gagal');
+
+    // model yang benar-benar gagal tetap dikarantina penuh
+    const bad = 'opencode-free-bad-free';
+    markFail(bad, 'keluar dengan kode 1');
+    const jedaBad = _state()[bad].cooldownUntil - Date.now();
+    assert.ok(jedaBad > 5 * 60 * 1000, `gagal nyata harus 10 menit, ternyata ${Math.round(jedaBad / 1000)} detik`);
+    assert.equal(_state()[bad].fails, 1, 'gagal nyata menaikkan hitungan');
+  } finally {
+    fs.rmSync(process.env.AGENTHUB_DATA, { recursive: true, force: true });
+    if (SAVED_DATA === undefined) delete process.env.AGENTHUB_DATA; else process.env.AGENTHUB_DATA = SAVED_DATA;
+  }
+});
+
+test('freerot unit: tenggat per model menyesuaikan kecepatan yang teramati', () => {
+  // Model yang terbukti butuh 39 detik tidak boleh dipotong di 30 detik pada
+  // percobaan berikutnya. Tenggat = 2x kecepatan teramati, minimal bawaan.
+  _setState({});
+  process.env.AGENTHUB_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'agenthub-rot-budget-'));
+  try {
+    const id = 'opencode-free-x-free';
+    assert.equal(firstTimeoutFor(id, 75000), 75000, 'belum ada riwayat: pakai bawaan');
+
+    noteFirst(id, 38800);
+    assert.equal(firstTimeoutFor(id, 75000), 77600, 'model lambat dapat 2x kecepatannya');
+
+    // model cepat tidak boleh menurunkan tenggat di bawah bawaan
+    const fast = 'opencode-free-fast-free';
+    noteFirst(fast, 9000);
+    assert.equal(firstTimeoutFor(fast, 75000), 75000, 'model cepat tetap pakai bawaan');
+
+    // model yang berhasil menjawab TIDAK boleh kehilangan catatan kecepatannya
+    markOk(id);
+    assert.equal(_state()[id].firstMs, 38800, 'markOk mempertahankan firstMs');
+    assert.equal(firstTimeoutFor(id, 75000), 77600, 'tenggat tetap menyesuaikan setelah sukses');
+    assert.equal(_state()[id].fails, 0, 'sukses mereset hitungan gagal');
+
+    // rata-rata bergerak: nilai simpanan berada DI ANTARA dua pengamatan, jadi
+    // satu percobaan yang kebetulan sangat lambat tidak melonjakkan tenggat ke
+    // nilai pengamatan terakhir.
+    noteFirst(id, 40000);
+    const simpan = _state()[id].firstMs;
+    assert.ok(simpan > 38800 && simpan < 40000,
+      `rata-rata bergerak harus di antara 38800 dan 40000, ternyata ${simpan}`);
+    assert.ok(firstTimeoutFor(id, 75000) < 40000 * 2, 'tenggat tidak melonjak ke pengamatan terakhir');
+  } finally {
+    fs.rmSync(process.env.AGENTHUB_DATA, { recursive: true, force: true });
+    if (SAVED_DATA === undefined) delete process.env.AGENTHUB_DATA; else process.env.AGENTHUB_DATA = SAVED_DATA;
+  }
+});
+
 test.before(async () => {
   dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agenthub-rot-srv-'));
   fs.writeFileSync(path.join(dataDir, 'config.json'), JSON.stringify({
@@ -105,6 +172,20 @@ test.after(async () => {
   try { fs.rmSync(dataDir, { recursive: true, force: true }); } catch { /* noop */ }
 });
 
+test('free-auto: tenggat "tanpa output" cukup panjang untuk model gratis nyata', () => {
+  // Angka ini berasal dari pengukuran di mesin ini: token pertama model gratis
+  // datang pada 11-39 detik. Ambang 30 detik memotong model yang SEHAT.
+  const src = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+  const m = /AGENTHUB_FREE_FIRST_TIMEOUT_MS\)\s*\|\|\s*(\d+)/.exec(src);
+  assert.ok(m, 'ambang "tanpa output" harus terbaca dari kode');
+  const ms = Number(m[1]);
+  assert.ok(ms >= 60000, `ambang bawaan ${ms} ms terlalu pendek: model gratis yang sehat akan dipotong`);
+  assert.ok(ms <= 180000, `ambang bawaan ${ms} ms terlalu panjang: run yang benar-benar macet menahan terlalu lama`);
+  // model yang pernah teramati lambat mendapat tenggat lebih longgar
+  assert.match(src, /firstTimeoutFor\(eng\.id/, 'tenggat harus menyesuaikan kecepatan model');
+  assert.match(src, /freerot\.markSlow\(/, 'model lambat harus dijeda singkat, bukan ditandai gagal');
+});
+
 test('free-auto: SLOW menggantung -> otomatis pindah ke BB', async () => {
   // engine virtual terdaftar di /api/engines
   const engines = await (await api('/api/engines')).json();
@@ -129,4 +210,17 @@ test('free-auto: SLOW menggantung -> otomatis pindah ke BB', async () => {
   assert.match(last.content || '', /jawaban dari BB/, 'jawaban datang dari engine BB (bukan SLOW)');
   assert.equal(last.engine, 'opencode-free-bb-free', 'engine asli tercatat jujur');
   assert.equal(th.runState, 'done', 'run selesai');
+
+  // Model yang lambat tapi tidak error harus DIPERLAKUKAN BEDA dari model yang
+  // gagal: dijeda singkat, bukan dikarantina 10 menit, dan hitungan gagal tidak
+  // naik. Diperiksa dari freerot.json di disk — bukan dari kode — supaya yang
+  // diuji perilaku server sungguhan.
+  const rot = JSON.parse(fs.readFileSync(path.join(dataDir, 'freerot.json'), 'utf8'));
+  const slow = rot['opencode-free-slow-free'];
+  assert.ok(slow, 'SLOW tercatat di freerot.json');
+  assert.match(String(slow.lastError || ''), /lambat/, 'alasan jujur: lambat, bukan gagal');
+  assert.equal(slow.fails, 0, 'lambat bukan kegagalan — hitungan gagal tidak naik');
+  const jeda = (slow.cooldownUntil || 0) - Date.now();
+  assert.ok(jeda > 0, 'tetap dijeda supaya permintaan pindah ke model berikutnya');
+  assert.ok(jeda < 9 * 60 * 1000, `BUKAN karantina 10 menit, ternyata ${Math.round(jeda / 1000)} detik`);
 });

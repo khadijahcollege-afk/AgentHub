@@ -1,5 +1,34 @@
 # Changelog
 
+## 1.9.8 — 2026-11-18
+Free Auto berhenti membuang model yang sehat hanya karena ia lambat.
+
+Ambang "tanpa output" di rotasi model gratis adalah 30 detik. Saya ukur waktu
+tunggu sungguhan di mesin ini: token pertama model gratis datang pada 11–39
+detik. Jadi ambang itu lebih pendek daripada waktu jawab yang normal. Big Pickle
+selalu dipotong di 30 detik padahal butuh 38,8 detik — lalu karena dianggap
+gagal, ia dikarantina 10 menit. Rotasi otomatis kehilangan anggotanya sendiri,
+dan catatannya berbunyi "gagal", padahal modelnya sehat.
+
+- **Lambat bukan gagal** (`lib/freerot.js`) — `markSlow()` baru: model yang belum
+  mengeluarkan apa pun sampai tenggat dijeda **3 menit**, bukan 10, dan hitungan
+  gagalnya tidak naik. Model yang benar-benar error tetap dikarantina penuh.
+- **Tenggat menyesuaikan kecepatan model** — `noteFirst()` mencatat waktu token
+  pertama yang benar-benar teramati (rata-rata bergerak 60/40), dan
+  `firstTimeoutFor()` memberi tenggat 2× kecepatan itu. Model yang terbukti butuh
+  39 detik tidak dipotong di 30 detik lagi.
+- **Ambang bawaan 75 detik** (`server.js`) — di atas puncak 39 detik yang terukur,
+  masih jauh di bawah batas run 10 menit, jadi run yang benar-benar macet tetap
+  berakhir.
+- **Dua cacat ikut ditemukan saat menguji** — `markOk()` menulis objek baru tanpa
+  `firstMs`, sehingga catatan kecepatan model yang justru **berhasil** menjawab
+  langsung terhapus; dan waktu token pertama diukur saat run selesai, bukan saat
+  token pertama keluar. Keduanya membatalkan penyesuaian tenggat.
+- **Penjaga baru** (`test/freerot.test.js`) — 2 tes unit dan 1 tes server yang
+  membaca `freerot.json` di disk, bukan kode. Diuji dengan 5 mutasi: 5/5 tertangkap.
+
+Suite: 672 tes, hijau.
+
 ## 1.9.7 — 2026-11-18
 Warna AgentHub bisa diganti sesuka hati, seperti di Discord.
 

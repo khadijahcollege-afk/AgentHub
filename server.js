@@ -1296,20 +1296,35 @@ async function handleSend(threadId, b, res, { onStarted = null } = {}) {
       r = null;
       let lastError = null;
       // Rotasi juga menangani "respons lama": bila engine tidak mengeluarkan
-      // output sama sekali dalam batas waktu (bawaan 30 detik), ia dianggap
-      // macet dan permintaan pindah ke model berikutnya. Output yang sudah
-      // mulai mengalir tidak pernah dibunuh.
-      const FIRST_MS = Number(process.env.AGENTHUB_FREE_FIRST_TIMEOUT_MS) || 30000;
+      // output sama sekali dalam batas waktu, ia dianggap macet dan permintaan
+      // pindah ke model berikutnya. Output yang sudah mulai mengalir tidak
+      // pernah dibunuh.
+      //
+      // Ambang bawaan 75 detik, bukan 30. Diukur di mesin ini: token pertama
+      // model gratis datang pada 11-39 detik, jadi ambang 30 detik memotong
+      // model yang SEHAT — Big Pickle selalu dipotong padahal butuh 39 detik,
+      // lalu dikarantina 10 menit. Model yang pernah teramati lebih lambat
+      // mendapat tenggat 2x kecepatannya sendiri.
+      const FIRST_MS = Number(process.env.AGENTHUB_FREE_FIRST_TIMEOUT_MS) || 75000;
       for (const eng of tries) {
         if (engineType(eng.id) === null) continue; // fixture tidak dikenal
         const attemptCtrl = new AbortController();
+        const budget = freerot.firstTimeoutFor(eng.id, FIRST_MS);
         let gotFirst = false;
-        const killTimer = setTimeout(() => { if (!gotFirst) attemptCtrl.abort(); }, FIRST_MS);
-        const wrappedDelta = (chunk) => { gotFirst = true; clearTimeout(killTimer); runOpts.onDelta(chunk); };
+        let firstAt = 0;
+        const t0 = Date.now();
+        const killTimer = setTimeout(() => { if (!gotFirst) attemptCtrl.abort(); }, budget);
+        const wrappedDelta = (chunk) => {
+          if (!gotFirst) { gotFirst = true; firstAt = Date.now() - t0; clearTimeout(killTimer); }
+          runOpts.onDelta(chunk);
+        };
         const combinedSignal = AbortSignal.any([ctrl.signal, attemptCtrl.signal]);
         try {
           const rr = await runEngine(eng.id, modelPrompt, { ...runOpts, signal: combinedSignal, onDelta: wrappedDelta });
           clearTimeout(killTimer);
+          // Diukur pada token PERTAMA, bukan saat proses selesai: yang menentukan
+          // tenggat "tanpa output" adalah lama menunggu, bukan panjang jawaban.
+          if (gotFirst) freerot.noteFirst(eng.id, firstAt);
           if (freerot.looksLimited(rr.text)) {
             freerot.markFail(eng.id, 'limit terdeteksi di jawaban');
             send({ type: 'rotate', note: `${eng.label} kena limit — otomatis coba model lain` });
@@ -1322,8 +1337,13 @@ async function handleSend(threadId, b, res, { onStarted = null } = {}) {
         } catch (e) {
           clearTimeout(killTimer);
           const lambat = !gotFirst && !ctrl.signal.aborted && attemptCtrl.signal.aborted;
-          freerot.markFail(eng.id, lambat ? `lambat: tanpa output ${Math.round(FIRST_MS / 1000)} detik` : e.message);
-          send({ type: 'rotate', note: `${eng.label} ${lambat ? 'terlalu lama tanpa jawaban' : 'gagal (' + String(e.message || '').slice(0, 60) + ')'} — otomatis coba model lain` });
+          if (lambat) {
+            // Jeda pendek saja: model ini mungkin cuma dingin, bukan rusak.
+            freerot.markSlow(eng.id, budget);
+          } else {
+            freerot.markFail(eng.id, e.message);
+          }
+          send({ type: 'rotate', note: `${eng.label} ${lambat ? `terlalu lama tanpa jawaban (${Math.round(budget / 1000)} dtk)` : 'gagal (' + String(e.message || '').slice(0, 60) + ')'} — otomatis coba model lain` });
           lastError = e;
         }
       }
