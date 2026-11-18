@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.9.3 — 2026-11-18
+Unduhan otomatis sekarang punya tempat menulis.
+
+1.9.2 menyambung rantai cek → unduh → verifikasi → pasang, dan ujinya hijau.
+Yang tidak ikut teruji: **dari mana** berkas 78 MB itu ditulis. Folder unduhan
+adalah `dist/` di samping `server.js`; di instalasi per-machine folder itu ada
+di `C:\Program Files\AgentHub` dan read-only untuk user biasa. Unduhan berjalan
+sampai byte terakhir lalu gagal, sementara preflight menyatakan "lolos" karena
+ia hanya memeriksa folder data di `%APPDATA%`. Satu-satunya keadaan yang
+dilaporkan layak justru keadaan yang tidak bisa menyimpan hasil unduhannya.
+
+- **Folder unduhan dipilih saat boot, bukan diasumsikan** (`server.js`) —
+  `pickWritableDir` mencoba `AGENTHUB_DIST`, lalu `dist/` di samping server, lalu
+  `dist/` di dalam folder data, dan memakai yang pertama bisa ditulis. Kandidat
+  terakhir selalu berhasil karena config sudah ditulis ke folder yang sama saat
+  boot.
+- **Preflight memeriksa folder unduhan sebagai syarat sendiri**
+  (`lib/install.js`) — `distWritable` terpisah dari `dataWritable`. Read-only di
+  sini **menghentikan** pemasangan sebelum 78 MB diunduh, dengan pesan yang
+  menyebut path persisnya, bukan sesudah user menunggu.
+- **Diagnostik menyebut folder yang benar-benar dipakai** — laporan bug tidak
+  lagi menunjuk folder yang tidak pernah disentuh.
+
 ## 1.9.2 — 2026-11-18
 Cek pembaruan menyelesaikan pekerjaannya sendiri: cek → unduh → verifikasi →
 pasang.

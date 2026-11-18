@@ -15,7 +15,7 @@ import { pickFreePort } from './helpers/port.js';
 import { stopTestServer } from './helpers/server.js';
 import {
   parseChecksums, hashFile, verifyFile, detectInterception, readMagic, preflight,
-  firstSuccess, retry, installDecision, installGate, uninstallPlan, redact,
+  firstSuccess, retry, installDecision, installGate, pickWritableDir, uninstallPlan, redact,
   diagnosticsBundle, bundleToText,
 } from '../lib/install.js';
 import { CHECKSUM_ASSET, fetchChecksums, launchInstaller } from '../lib/update.js';
@@ -238,6 +238,58 @@ test('install: preflight menolak platform/arsitektur/disk yang tidak layak', () 
   const unknown = preflight({ platform: 'win32', arch: 'arm64', nodeVersion: '20.0.0', freeBytes: null, dataWritable: true });
   assert.equal(unknown.ok, true);
   assert.ok(unknown.checks.some((c) => c.id === 'disk' && c.level === 'warn'));
+});
+
+test('install: preflight menolak folder unduhan yang tidak bisa ditulis', () => {  // Regresi nyata: di instalasi per-machine (`Program Files`), folder data ada
+  // di %APPDATA% dan bisa ditulis, sedangkan `dist/` di samping server.js TIDAK.
+  // Preflight lama hanya memeriksa folder data, jadi ia menyatakan "lolos" lalu
+  // unduhan 78 MB gagal di byte terakhir — tepat setelah user menunggu.
+  const base = { platform: 'win32', arch: 'x64', nodeVersion: '22.0.0', freeBytes: 10 * 1024 ** 3, dataWritable: true };
+  const ok = preflight({ ...base, distWritable: true });
+  assert.equal(ok.ok, true);
+  assert.equal(ok.checks.find((c) => c.id === 'dist')?.level, 'ok');
+
+  const bad = preflight({ ...base, distWritable: false, distDir: 'C:\\Program Files\\AgentHub\\resources\\server\\dist' });
+  assert.equal(bad.ok, false, 'folder unduhan yang read-only harus MENGHENTIKAN, bukan sekadar dicatat');
+  assert.ok(bad.failed.includes('dist'));
+  // Pesannya menyebut path, supaya user tahu folder mana yang harus diperbaiki.
+  assert.match(bad.checks.find((c) => c.id === 'dist').detail, /Program Files/);
+});
+
+test('install: folder unduhan dipilih yang bisa ditulis, bukan yang pertama saja', () => {
+  // Regresi nyata: di instalasi per-machine, `dist/` di samping server.js ada di
+  // Program Files dan read-only. Server harus pindah ke folder data di %APPDATA%,
+  // bukan menunggu 78 MB terunduh lalu gagal.
+  const candidates = ['C:\\Program Files\\AgentHub\\resources\\server\\dist', 'C:\\Users\\x\\AppData\\Roaming\\AgentHub\\dist'];
+  const calls = [];
+  const r = pickWritableDir(candidates, {
+    mkdir: (d) => calls.push(['mkdir', d]),
+    writable: (d) => !/Program Files/.test(d),
+  });
+  assert.equal(r.dir, candidates[1], 'folder read-only harus dilewati');
+  assert.deepEqual(calls.map((c) => c[1]), candidates, 'keduanya dicoba, berurutan');
+  assert.equal(r.tried[0].ok, false);
+  assert.match(r.tried[0].reason, /tidak bisa ditulis/);
+  assert.equal(r.tried[1].ok, true);
+
+  // Bila folder bawaan bisa ditulis, ia yang dipakai — cadangan tidak disentuh.
+  const first = pickWritableDir(candidates, { mkdir: () => {}, writable: () => true });
+  assert.equal(first.dir, candidates[0]);
+  assert.equal(first.tried.length, 1, 'berhenti pada kandidat pertama yang berhasil');
+
+  // Tidak ada yang bisa ditulis: kembalikan kandidat pertama supaya pesan galat
+  // menyebut path yang memang diharapkan.
+  const none = pickWritableDir(candidates, { mkdir: () => {}, writable: () => false });
+  assert.equal(none.dir, candidates[0]);
+  assert.equal(none.tried.every((t) => !t.ok), true);
+
+  // Folder yang gagal dibuat (mis. izin ditolak) juga dilewati, bukan melempar.
+  const thrown = pickWritableDir(candidates, {
+    mkdir: (d) => { if (/Program Files/.test(d)) { const e = new Error('denied'); e.code = 'EACCES'; throw e; } },
+    writable: () => true,
+  });
+  assert.equal(thrown.dir, candidates[1]);
+  assert.match(thrown.tried[0].reason, /EACCES/);
 });
 
 // ---------- retry & sumber berantai ----------

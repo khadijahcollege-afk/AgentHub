@@ -51,8 +51,8 @@ import {
 } from './lib/update.js';
 import {
   parseChecksums, verifyFile, hashFile, detectInterception, readMagic, preflight,
-  freeSpace, canWrite, firstSuccess, retry, installDecision, installGate, uninstallPlan,
-  diagnosticsBundle, bundleToText,
+  freeSpace, canWrite, firstSuccess, retry, installDecision, installGate, pickWritableDir,
+  uninstallPlan, diagnosticsBundle, bundleToText,
 } from './lib/install.js';
 import * as runs from './lib/runs.js';
 import * as mcp from './lib/mcp.js';
@@ -94,7 +94,6 @@ import {
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(ROOT, 'public');
-const DIST_DIR = process.env.AGENTHUB_DIST ? path.resolve(process.env.AGENTHUB_DIST) : path.join(ROOT, 'dist');
 const startedAt = Date.now();
 const APP_VERSION = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
 
@@ -108,6 +107,19 @@ if (!config.instanceId) {
 }
 let alerts = readJson('alerts.json', []);
 let updateCache = { at: 0, data: null };
+
+// Folder unduhan installer. Default-nya di samping server.js, tetapi di
+// instalasi per-machine (`Program Files`) folder itu TIDAK bisa ditulis oleh
+// user biasa — dan justru di sanalah unduhan otomatis harus menyimpan 78 MB.
+// Sebelum ini, preflight menyatakan "lolos" (ia hanya memeriksa folder data di
+// %APPDATA%) lalu unduhan gagal di byte terakhir. Jadi foldernya dipilih sekali
+// saat boot: yang pertama bisa ditulis. Cadangan terakhir ada di folder data,
+// yang pasti bisa ditulis karena config sudah ditulis ke sana.
+const DIST_DIR = pickWritableDir([
+  process.env.AGENTHUB_DIST ? path.resolve(process.env.AGENTHUB_DIST) : null,
+  path.join(ROOT, 'dist'),
+  path.join(DATA_DIR, 'dist'),
+]).dir || path.join(ROOT, 'dist');
 
 // ---------- auto-update (cek berkala + unduh otomatis + pasang) ----------
 // Sumber kebenaran: GitHub Releases latest. Server memeriksa sendiri secara
@@ -431,7 +443,15 @@ runs.onIdle(() => {
 function installPreflight() {
   const dir = DIST_DIR;
   let free = null;
-  try { fs.mkdirSync(dir, { recursive: true }); free = freeSpace(dir); } catch { free = null; }
+  let writable = false;
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    free = freeSpace(dir);
+    writable = canWrite(dir);
+  } catch {
+    free = null;
+    writable = false;
+  }
   const result = preflight({
     platform: process.platform,
     arch: process.arch,
@@ -439,6 +459,8 @@ function installPreflight() {
     freeBytes: free,
     dataDir: DATA_DIR,
     dataWritable: canWrite(DATA_DIR),
+    distDir: dir,
+    distWritable: writable,
   });
   installPre = { ...result, at: Date.now() };
   return installPre;
