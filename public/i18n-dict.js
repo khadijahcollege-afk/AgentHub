@@ -978,4 +978,26 @@ export const EN = {
     'Until it is approved the agent cannot change files.',
   'Agent masuk plan mode': 'Agent entered plan mode',
   'Rencana disetujui — agent boleh mengubah berkas': 'Plan approved — the agent may now change files',
+  // --- pemasangan terverifikasi ---
+  'Periksa kelayakan': 'Check readiness',
+  'Unduh diagnostik': 'Download diagnostics',
+  'Apa yang dihapus saat uninstall': 'What uninstall removes',
+  'Mesin ini siap dipasang': 'This machine is ready to install',
+  'Ada yang menghalangi pemasangan': 'Something is blocking the install',
+  'Memeriksa…': 'Checking…',
+  'Mengunduh selesai — memeriksa checksum terhadap SHA256SUMS.txt rilis…':
+    'Download finished — checking the checksum against the release SHA256SUMS.txt…',
+  'Installer sedang berjalan — aplikasi akan ditutup dan dimulai ulang.':
+    'The installer is running — the app will close and restart.',
+  'SHA-256 cocok': 'SHA-256 matches',
+  'tanpa checksum': 'no checksum',
+  'Rilis ini tidak menyertakan SHA256SUMS.txt — berkas tidak bisa dibandingkan.':
+    'This release has no SHA256SUMS.txt — the file cannot be compared.',
+  'checksum beda': 'checksum differs',
+  'tidak akan dipasang': 'it will not be installed',
+  'Bundel diagnostik diunduh — lampirkan saat melaporkan masalah':
+    'Diagnostics bundle downloaded — attach it when reporting a problem',
+  'Uninstall akan menghapus': 'Uninstall will remove',
+  'Berkas tetap disimpan sebagai bukti — unduh ulang dari halaman rilis setelah jaringan/proxy diperbaiki.':
+    'The file is kept as evidence — download it again from the release page once the network or proxy is fixed.',
 };

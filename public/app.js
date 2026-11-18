@@ -8367,7 +8367,13 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
     inst?.classList.add('hidden');
     bar?.classList.add('hidden');
     if (!u.ok) {
-      host.innerHTML = `Gagal memeriksa: ${esc(u.error)} — coba lagi nanti (GitHub API berbagi batas 60 permintaan/jam per IP).`;
+      // Sumber yang sudah dicoba disebut satu per satu: "gagal" tanpa
+      // menyebut apa yang diblokir membuat user menebak apakah masalahnya
+      // jaringan, firewall, atau rate limit GitHub.
+      const tried = Array.isArray(u.sources) && u.sources.length
+        ? `<ul class="upd-sources">${u.sources.map((s) => `<li><code>${esc(s.source)}</code> — ${esc(s.error)}</li>`).join('')}</ul>`
+        : '';
+      host.innerHTML = `Gagal memeriksa: ${esc(u.error)} — coba lagi nanti (GitHub API berbagi batas 60 permintaan/jam per IP).${tried}`;
       open?.classList.add('hidden');
       return;
     }
@@ -8385,12 +8391,26 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
           bar.querySelector('i').style.width = (d.pct || 0) + '%';
           bar.querySelector('span').textContent = `mengunduh ${d.pct || 0}% · ${Math.round((d.bytes || 0) / 1024)} KB`;
         }
+      } else if (d?.status === 'verifying') {
+        host.innerHTML += `<div class="muted small">Mengunduh selesai — memeriksa checksum terhadap SHA256SUMS.txt rilis…</div>`;
       } else if (d?.status === 'ready') {
         inst?.classList.remove('hidden');
-        host.innerHTML += `<div class="muted small">Installer sudah terunduh otomatis — klik Pasang sekarang untuk memasang senyap & memulai ulang.</div>`;
+        host.innerHTML += verifyLine(u.verify)
+          + `<div class="muted small">Installer sudah terunduh otomatis — klik Pasang sekarang untuk memasang senyap & memulai ulang.</div>`;
+      } else if (d?.status === 'installing') {
+        host.innerHTML += `<div class="muted small">Installer sedang berjalan — aplikasi akan ditutup dan dimulai ulang.</div>`;
       } else if (d?.status === 'error') {
         dl?.classList.remove('hidden');
-        host.innerHTML += `<div class="muted small">Unduhan otomatis gagal: ${esc(d.error || '?')} — coba unduh manual.</div>`;
+        // Baris verifikasi ikut ditampilkan saat GAGAL. Tanpa ini, justru
+        // pada saat paling butuh penjelasan user hanya melihat "gagal" dan
+        // tidak tahu hash mana yang diharapkan versus yang diterima.
+        if (u.verify?.status === 'mismatch') {
+          host.innerHTML += verifyLine(u.verify)
+            + `<div class="muted small">Berkas tetap disimpan sebagai bukti — unduh ulang dari halaman rilis setelah jaringan/proxy diperbaiki.</div>`;
+        } else {
+          host.innerHTML += verifyLine(u.verify)
+            + `<div class="muted small">Unduhan otomatis gagal: ${esc(d.error || '?')} — coba unduh manual.</div>`;
+        }
       } else if (d?.status !== 'downloading' && u.autoUpdate === false) {
         dl?.classList.remove('hidden');
       }
@@ -8398,6 +8418,21 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
       host.innerHTML = `Sudah versi terbaru (${esc(u.current)}).`;
       open?.classList.add('hidden');
     }
+  }
+
+  // Satu baris tentang hasil verifikasi. Tiga keadaan dibedakan tegas:
+  // cocok, tidak ada pembanding (rilis tanpa SHA256SUMS.txt), dan tidak cocok.
+  // Menampilkan centang untuk "tidak ada pembanding" adalah kebohongan yang
+  // membuat verifikasi tidak berguna saat benar-benar dibutuhkan.
+  function verifyLine(v) {
+    if (!v || v.status === 'none') return '';
+    if (v.status === 'ok') {
+      return `<div class="upd-verify ok"><span class="upd-badge">SHA-256 cocok</span> <code>${esc((v.actual || '').slice(0, 16))}…</code></div>`;
+    }
+    if (v.status === 'unverified') {
+      return `<div class="upd-verify warn"><span class="upd-badge">tanpa checksum</span> Rilis ini tidak menyertakan SHA256SUMS.txt — berkas tidak bisa dibandingkan.</div>`;
+    }
+    return `<div class="upd-verify bad"><span class="upd-badge">checksum beda</span> Diharapkan <code>${esc((v.expected || '').slice(0, 16))}…</code>, berkas <code>${esc((v.actual || '').slice(0, 16))}…</code> — tidak akan dipasang.</div>`;
   }
 
   async function checkUpdates(silent = false) {
@@ -8437,6 +8472,62 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
     const latest = state?.update?.latest;
     if (latest) sessionStorage.setItem('ah_update_dismissed', latest);
     $('#update-banner')?.classList.add('hidden');
+  });
+
+  // ---------- kelayakan mesin, diagnostik, dan rencana uninstall ----------
+  // Ketiganya menjawab pertanyaan yang muncul TEPAT saat sesuatu gagal, jadi
+  // hasilnya ditampilkan di tempat, bukan lewat toast yang hilang.
+
+  async function runPreflight() {
+    const host = $('#preflight-host');
+    if (!host) return;
+    host.classList.remove('hidden');
+    host.innerHTML = '<span class="muted small">Memeriksa…</span>';
+    try {
+      const p = await api('/api/install/preflight');
+      const rows = (p.checks || []).map((c) => {
+        const cls = c.level === 'ok' ? 'ok' : c.level === 'warn' ? 'warn' : 'bad';
+        const mark = c.level === 'ok' ? '✓' : c.level === 'warn' ? '!' : '×';
+        return `<li class="pf-row ${cls}"><span class="pf-mark">${mark}</span><span>${esc(c.detail)}</span></li>`;
+      }).join('');
+      host.innerHTML = `<b>${p.ok ? 'Mesin ini siap dipasang' : 'Ada yang menghalangi pemasangan'}</b>`
+        + `<ul class="pf-list">${rows}</ul>`;
+    } catch (e) {
+      host.innerHTML = `<span class="muted small">Gagal memeriksa: ${esc(e.message)}</span>`;
+    }
+  }
+
+  async function loadUninstallPlan() {
+    const host = $('#uninstall-host');
+    if (!host) return;
+    host.classList.remove('hidden');
+    try {
+      const plan = await api('/api/install/uninstall-plan');
+      const steps = (plan.steps || []).map((s) => `<li><b>${esc(s.label)}</b>${s.path ? ` — <code>${esc(s.path)}</code>` : ''}</li>`).join('');
+      host.innerHTML = `<b>Uninstall akan menghapus</b><ul class="pf-list">${steps}</ul>`
+        + (plan.note ? `<div class="muted small">${esc(plan.note)}</div>` : '');
+    } catch (e) {
+      host.innerHTML = `<span class="muted small">Gagal membaca rencana: ${esc(e.message)}</span>`;
+    }
+  }
+
+  $('#btn-preflight')?.addEventListener('click', runPreflight);
+  $('#btn-uninstall-plan')?.addEventListener('click', loadUninstallPlan);
+  $('#btn-diagnostics')?.addEventListener('click', async () => {
+    try {
+      // Unduh sebagai berkas: user bisa langsung melampirkannya ke laporan
+      // bug tanpa menyalin apa pun dari layar.
+      const res = await fetch('/api/diagnostics?download=1', { headers: { authorization: `Bearer ${token}` } });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `agenthub-diagnostics-${state?.server?.version || 'x'}.txt`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+      toast('Bundel diagnostik diunduh — lampirkan saat melaporkan masalah', 5000);
+    } catch (e) { toast('Gagal membuat diagnostik: ' + e.message); }
   });
 
   // ---------- integrasi: satu tempat melihat & menghubungkan layanan ----------

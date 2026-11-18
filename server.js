@@ -47,7 +47,13 @@ import { listModelChoices, activateModel, isMaskedKey } from './lib/models.js';
 import { tunnelStatus, startTunnel, stopTunnel } from './lib/tunnel.js';
 import {
   fetchLatestRelease, updateInfo, fullUpdateInfo, assetFor, downloadAsset, launchInstaller,
+  fetchChecksums,
 } from './lib/update.js';
+import {
+  parseChecksums, verifyFile, hashFile, detectInterception, readMagic, preflight,
+  freeSpace, canWrite, firstSuccess, retry, installDecision, uninstallPlan,
+  diagnosticsBundle, bundleToText,
+} from './lib/install.js';
 import * as runs from './lib/runs.js';
 import * as mcp from './lib/mcp.js';
 import * as hooks from './lib/hooks.js';
@@ -81,6 +87,7 @@ import {
   TASK_MACHINE, RUN_MACHINE, KEY_MACHINE, AGENT_MACHINE, CONNECTION_MACHINE,
   PROMO_MACHINE, PROMO_PASS_MACHINE, VIEW_MACHINE, UI_MACHINE, SSE_SCOPES, VIEWS, TASK_STATUSES,
   STEP_MACHINE, DELEGATION_MACHINE, NOTE_EDITOR_MACHINE, MACHINE_VERSION,
+  INSTALL_MACHINE,
   KEY_POOL_CANDIDATE, KEY_POOL_ACTIVE, KEY_MODEL_VISIBLE, canTransition,
   CHANGE_STATUSES, RULE_FILES,
 } from './lib/machines.js';
@@ -109,6 +116,13 @@ let updateCache = { at: 0, data: null };
 // sekarang". Gagal jaringan dilaporkan apa adanya di /api/update.
 let updateDl = { status: 'idle', pct: 0, bytes: 0, total: 0, error: null, path: null, version: null, at: 0 };
 let updateBusy = false;
+// Hasil verifikasi terakhir. Terpisah dari `updateDl` karena punya umur
+// berbeda: unduhan boleh diulang, sedangkan "checksum berkas ini cocok"
+// adalah fakta tentang berkas yang ada di disk sekarang.
+let updateVerify = { status: 'none', expected: null, actual: null, reason: null, at: 0 };
+// Preflight terakhir untuk mesin ini. Dihitung ulang setiap kali diminta,
+// tetapi disimpan supaya UI bisa menampilkan temuan tanpa menunggu.
+let installPre = null;
 
 function updatePublic() {
   const info = updateCache.data;
@@ -120,18 +134,64 @@ function updatePublic() {
     installable: updateDl.status === 'ready' && fs.existsSync(updateDl.path || ''),
     installerPath: updateDl.status === 'ready' ? updateDl.path : null,
     asset: info?.ok && info.hasUpdate ? assetFor() : null,
+    // status verifikasi + keputusan langkah berikutnya, supaya UI tidak
+    // menghitung ulang aturan yang sama dengan cara berbeda.
+    verify: updateVerify,
+    decision: installDecision({
+      current: APP_VERSION,
+      latest: info?.latest || null,
+      hasUpdate: !!info?.hasUpdate,
+      downloadStatus: updateDl.status,
+    }),
   };
 }
 
 async function updateTick(force = false) {
   const now = Date.now();
   if (!force && updateCache.at && now - updateCache.at < 30 * 60 * 1000) return;
-  try {
-    // AGENTHUB_UPDATE_API memungkinkan pengujian tanpa menyentuh GitHub.
-    const release = await fetchLatestRelease(fetch, process.env.AGENTHUB_UPDATE_API || undefined);
-    updateCache = { at: now, data: fullUpdateInfo(APP_VERSION, release) };
-  } catch (e) {
-    updateCache = { at: now, data: fullUpdateInfo(APP_VERSION, null, { error: String(e.message || e) }) };
+  // Sumber berantai: API GitHub bisa diblokir jaringan kantor, tetapi
+  // halaman rilis biasa (tanpa API) sering tetap terbuka. Urutannya
+  // dicoba sampai satu berhasil, lalu kegagalan tiap sumber dicatat di
+  // `sources` supaya user tahu APA yang diblokir, bukan hanya "gagal".
+  const primary = process.env.AGENTHUB_UPDATE_API;
+  const sources = [
+    {
+      label: 'GitHub API',
+      fn: () => retry(() => fetchLatestRelease(fetch, primary || undefined), { attempts: 2, baseMs: 500 })
+        .then((r) => { if (!r.ok) throw new Error(r.error); return r.value; }),
+    },
+  ];
+  // Sumber kedua hanya dipakai bila yang pertama gagal, dan tidak pernah
+  // dipakai saat uji (`AGENTHUB_UPDATE_API` menunjuk fixture).
+  if (!primary) {
+    sources.push({
+      label: 'Host unduhan rilis',
+      fn: async () => {
+        const r = await fetchChecksums(assetFor().name);
+        if (!r.ok) throw new Error(r.error || 'tidak bisa membaca rilis');
+        // Isi SHA256SUMS.txt tidak memuat nomor versi, jadi keberadaannya
+        // hanya membuktikan host rilis terjangkau — bukan versi terbaru.
+        // Karena itu sumber ini menandai `partial`, bukan berpura-pura tahu
+        // nomor versi.
+        const e = new Error('host rilis terjangkau, nomor versi tidak diketahui');
+        e.partial = true;
+        throw e;
+      },
+    });
+  }
+  const cek = await firstSuccess(sources, {
+    onFallback: ({ from, to, error }) => console.warn(`[update] ${from} gagal (${error}); mencoba ${to}`),
+  });
+  if (cek.ok) {
+    updateCache = { at: now, data: { ...fullUpdateInfo(APP_VERSION, cek.value), source: cek.source } };
+  } else {
+    updateCache = {
+      at: now,
+      data: {
+        ...fullUpdateInfo(APP_VERSION, null, { error: String(cek.errors[0]?.error || 'gagal') }),
+        sources: cek.errors,
+      },
+    };
   }
   broadcast('update');
   // ada versi baru + autoUpdate aktif → unduh otomatis (sekali per versi)
@@ -139,6 +199,54 @@ async function updateTick(force = false) {
     && updateDl.version !== updateCache.data.latest && updateDl.status !== 'downloading') {
     startDownload();
   }
+}
+
+// Satu kali coba unduh + verifikasi. Dipisah dari `startDownload` supaya
+// `retry()` bisa mengulanginya tanpa mengulang pencatatan status.
+async function downloadAndVerify(info, dest) {
+  const r = await downloadAsset(info.asset.url, dest, {
+    onProgress: (p) => {
+      updateDl = { ...updateDl, status: 'downloading', pct: p.pct, bytes: p.bytes, total: p.total };
+      broadcast('update'); // throttle: onProgress sendiri sudah di-throttle 512KB
+    },
+  });
+  // Intersepsi proxy diperiksa SEBELUM checksum: halaman HTML dari captive
+  // portal tidak akan pernah cocok dengan hash, dan pesan "checksum tidak
+  // cocok" akan menyesatkan user tentang apa yang harus diperbaiki.
+  const magic = readMagic(r.path);
+  const intercepted = detectInterception({
+    contentType: '', bytes: r.bytes, expectedBytes: updateDl.total || 0, magic,
+  });
+  const notPe = info.asset.name.endsWith('.exe') && !magic.startsWith('MZ');
+  if (intercepted || notPe) {
+    const detail = intercepted
+      ? `${intercepted.detail} (${intercepted.hint})`
+      : `berkas .exe tidak diawali MZ — kemungkinan diganti proxy atau terpotong`;
+    const e = new Error(`Unduhan bukan paket installer: ${detail}`);
+    e.code = 'NOT_INSTALLER';
+    throw e;
+  }
+  // Checksum: bila rilis tidak menyertakan SHA256SUMS.txt, hasilnya
+  // `unverified` dan TETAP boleh dipasang — tetapi UI harus mengatakannya,
+  // bukan menampilkan centang palsu.
+  updateDl = { ...updateDl, status: 'verifying', pct: 100 };
+  broadcast('update');
+  let expected = null;
+  const sums = await fetchChecksums(info.asset.name);
+  if (sums.ok) {
+    const map = parseChecksums(sums.text);
+    expected = map.get(info.asset.name) || null;
+  }
+  const v = await verifyFile(r.path, expected, { hash: hashFile });
+  updateVerify = { status: v.status, expected: v.expected, actual: v.actual, reason: v.reason, at: Date.now() };
+  if (v.status === 'mismatch') {
+    // Berkas yang hash-nya beda TIDAK dihapus otomatis: menghapus bukti
+    // membuat laporan bug mustahil. Ia hanya tidak boleh dipasang.
+    const e = new Error(`Checksum tidak cocok — berkas ${info.asset.name} tidak akan dipasang`);
+    e.code = 'CHECKSUM_MISMATCH';
+    throw e;
+  }
+  return { ...r, verify: v };
 }
 
 function startDownload(force = false) {
@@ -150,23 +258,109 @@ function startDownload(force = false) {
   if (updateDl.version === info.latest && updateDl.status === 'ready' && !force) return;
   updateBusy = true;
   updateDl = { status: 'downloading', pct: 0, bytes: 0, total: 0, error: null, path: null, version: info.latest, at: Date.now() };
+  updateVerify = { status: 'none', expected: null, actual: null, reason: null, at: 0 };
   broadcast('update');
   const dest = path.join(DIST_DIR, info.asset.name);
-  downloadAsset(info.asset.url, dest, {
-    onProgress: (p) => {
-      updateDl = { ...updateDl, pct: p.pct, bytes: p.bytes, total: p.total };
-      broadcast('update'); // throttle: onProgress sendiri sudah di-throttle 512KB
-    },
-  }).then((r) => {
-    updateDl = { ...updateDl, status: 'ready', bytes: r.bytes, path: r.path, pct: 100, at: Date.now() };
-    broadcast('update');
-  }).catch((e) => {
-    updateDl = { ...updateDl, status: 'error', error: String(e.message || e), at: Date.now() };
+  // Retry hanya untuk gangguan jaringan. Checksum yang beda dan berkas yang
+  // bukan installer TIDAK diulang: mengunduh ulang berkas yang sama dari
+  // proxy yang sama hanya membuang waktu dan kuota user.
+  const transient = (e) => !['CHECKSUM_MISMATCH', 'NOT_INSTALLER'].includes(e?.code);
+  retry(() => downloadAndVerify(info, dest), {
+    attempts: 3, shouldRetry: transient,
+    sleep: async (ms) => { broadcast('update'); await new Promise((r) => setTimeout(r, ms)); },
+  }).then((out) => {
+    if (!out.ok) {
+      updateDl = { ...updateDl, status: 'error', error: out.error, at: Date.now() };
+      broadcast('update');
+      return;
+    }
+    updateDl = { ...updateDl, status: 'ready', bytes: out.value.bytes, path: out.value.path, pct: 100, at: Date.now() };
     broadcast('update');
   }).finally(() => {
     updateBusy = false;
   });
 }
+// Preflight dijalankan ulang setiap kali diminta (murah: satu statfs + satu
+// access). Hasil terakhir disimpan untuk dibaca UI tanpa menunggu, tetapi
+// keputusan selalu diambil dari jalankan baru — mesin bisa berubah di antara
+// dua klik (disk penuh, folder data jadi read-only).
+function installPreflight() {
+  const dir = DIST_DIR;
+  let free = null;
+  try { fs.mkdirSync(dir, { recursive: true }); free = freeSpace(dir); } catch { free = null; }
+  const result = preflight({
+    platform: process.platform,
+    arch: process.arch,
+    nodeVersion: process.versions.node,
+    freeBytes: free,
+    dataDir: DATA_DIR,
+    dataWritable: canWrite(DATA_DIR),
+  });
+  installPre = { ...result, at: Date.now() };
+  return installPre;
+}
+
+// Bundel diagnostik: fakta yang benar-benar dipakai saat melaporkan bug.
+// Rahasia disaring `redact()` di lib/install.js; di sini hanya dipilih APA
+// yang masuk, bukan bagaimana menyembunyikannya.
+async function buildDiagnostics() {
+  const snap = readJson('snapshot.json', null);
+  const keys = listKeys();
+  let engines = [];
+  try {
+    engines = (await listEngines()).map((e) => ({ id: e.id, type: e.type, available: e.available }));
+  } catch { /* daftar engine gagal bukan alasan bundel gagal */ }
+  return diagnosticsBundle({
+    appVersion: APP_VERSION,
+    uptimeMs: Date.now() - startedAt,
+    parts: {
+      dataDir: DATA_DIR,
+      distDir: DIST_DIR,
+      config: {
+        port: config.port, notify: config.notify, autoUpdate: config.autoUpdate !== false,
+        replyLang: config.replyLang || 'auto', token: config.token,
+      },
+      update: {
+        checkedAt: updateCache.at || null,
+        hasUpdate: updateCache.data?.hasUpdate ?? null,
+        latest: updateCache.data?.latest || null,
+        source: updateCache.data?.source || null,
+        sources: updateCache.data?.sources || [],
+        error: updateCache.data?.error || null,
+        download: updateDl.status,
+        verify: updateVerify,
+      },
+      preflight: installPre,
+      // Hanya bentuk ringkasnya: jumlah, status, dan jenis — bukan nilai key.
+      keys: keys.map((k) => ({ preset: k.preset, status: k.status, hasKey: !!k.key })),
+      engines,
+      snapshot: snap ? { source: snap.source || null, at: snap.at || null, models: (snap.models || []).length } : null,
+      counts: {
+        threads: threads.listThreads().length,
+        tasks: tasks.listTasks().length,
+        notes: notes.listNotes().length,
+      },
+    },
+    logs: recentLogs,
+  });
+}
+
+// Cincin log proses terakhir. Server tidak menulis berkas log sendiri (proses
+// dijalankan dari terminal/launcher), jadi yang bisa dibagikan adalah apa
+// yang tercetak ke stdout — ditangkap di sini supaya bundel tidak kosong.
+const recentLogs = [];
+const MAX_RECENT_LOGS = 300;
+function captureLog(line) {
+  recentLogs.push(String(line));
+  if (recentLogs.length > MAX_RECENT_LOGS) recentLogs.shift();
+}
+{
+  const origWarn = console.warn.bind(console);
+  const origError = console.error.bind(console);
+  console.warn = (...a) => { captureLog(`WARN ${a.join(' ')}`); origWarn(...a); };
+  console.error = (...a) => { captureLog(`ERR ${a.join(' ')}`); origError(...a); };
+}
+
 // ip → { count, firstAt }: percobaan token salah dalam 60 detik terakhir
 const authFailures = new Map();
 // folder kerja yang dipantau: perubahan berkas → SSE scope workspace
@@ -536,6 +730,7 @@ function machineContracts() {
     connection: CONNECTION_MACHINE,
     promo: PROMO_MACHINE,
     promoPass: PROMO_PASS_MACHINE,
+  install: INSTALL_MACHINE,
     ui: UI_MACHINE,
     viewsMachine: VIEW_MACHINE,
     keyPool: {
@@ -2594,7 +2789,10 @@ ${msgs || '<p class="meta">Percakapan kosong.</p>'}
   }
 
   if (p === '/api/update-check' && method === 'GET') {
-    await updateTick().catch(() => {});
+    // `?force=1` melewati cache 30 menit. Tombol "Cek pembaruan" memakai ini:
+    // menjawab dari cache membuat tombol itu terasa rusak saat user baru saja
+    // memperbaiki jaringan atau proxy.
+    await updateTick(url.searchParams.get('force') === '1').catch(() => {});
     return sendJson(res, 200, updateCache.data || updateInfo(APP_VERSION, null, { error: 'belum diperiksa' }));
   }
 
@@ -2616,13 +2814,62 @@ ${msgs || '<p class="meta">Percakapan kosong.</p>'}
     if (updateDl.status !== 'ready') return sendJson(res, 409, { error: 'Berkas installer belum siap — tunggu unduhan selesai atau panggil /api/update/download' });
     const exists = fs.existsSync(updateDl.path);
     if (!exists) return sendJson(res, 409, { error: 'Berkas installer hilang dari dist/ — unduh ulang' });
+    // Checksum yang beda adalah penolakan keras: berkas itu tidak boleh
+    // dijalankan. Preflight juga diperiksa di sini, bukan hanya di UI —
+    // endpoint ini bisa dipanggil agent atau curl, tanpa UI sama sekali.
+    if (updateVerify.status === 'mismatch') {
+      return sendJson(res, 409, {
+        error: 'Installer ditolak: checksum tidak cocok dengan SHA256SUMS.txt rilis',
+        code: 'CHECKSUM_MISMATCH',
+      });
+    }
+    const pre = installPreflight();
+    if (!pre.ok) {
+      return sendJson(res, 409, {
+        error: `Pemasangan dihalangi: ${pre.failed.join(', ')}`,
+        code: 'PREFLIGHT_FAILED',
+        preflight: pre,
+      });
+    }
     try {
       const r = launchInstaller(updateDl.path);
+      // `installing` bukan state akhir: bila proses pemasangan gagal
+      // dijalankan, status kembali ke `ready` supaya tombol tetap masuk akal.
+      updateDl = { ...updateDl, status: 'installing', error: null, at: Date.now() };
       broadcast('update');
       return sendJson(res, 200, { ok: true, ...r, path: updateDl.path });
     } catch (e) {
+      updateDl = { ...updateDl, status: 'ready', at: Date.now() };
+      broadcast('update');
       return sendJson(res, 500, { error: String(e.message || e) });
     }
+  }
+
+  // ---- preflight: kelayakan mesin SEBELUM 100 MB diunduh ----
+  if (p === '/api/install/preflight' && method === 'GET') {
+    return sendJson(res, 200, installPreflight());
+  }
+
+  // ---- siklus hidup: apa yang akan dihapus bila user uninstall ----
+  if (p === '/api/install/uninstall-plan' && method === 'GET') {
+    const startup = path.join(process.env.APPDATA || os.homedir(), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup');
+    return sendJson(res, 200, uninstallPlan({
+      platform: process.platform, root: ROOT, startupDir: startup, dataDir: DATA_DIR,
+    }));
+  }
+
+  // ---- bundel diagnostik: satu berkas untuk laporan bug ----
+  if (p === '/api/diagnostics' && method === 'GET') {
+    const bundle = await buildDiagnostics();
+    if (url.searchParams.get('format') === 'text' || url.searchParams.get('download') === '1') {
+      const text = bundleToText(bundle);
+      res.writeHead(200, {
+        'content-type': 'text/plain; charset=utf-8',
+        'content-disposition': `attachment; filename="agenthub-diagnostics-${APP_VERSION}.txt"`,
+      });
+      return res.end(text);
+    }
+    return sendJson(res, 200, bundle);
   }
 
   // notes

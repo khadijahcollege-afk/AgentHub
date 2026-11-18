@@ -3,7 +3,7 @@
 
 // Versi kontrak. Naikkan bila state/transisi berubah agar agent bisa memeriksa
 // kompatibilitas lewat /api/version sebelum mengemudikan UI.
-const MACHINE_VERSION = 4;
+const MACHINE_VERSION = 5;
 
 // Aturan yang dipakai semua mesin: transisi ke state yang sama selalu sah
 // (idempoten), selain itu hanya edge yang tercantum di `transitions`.
@@ -194,6 +194,46 @@ function backgroundTaskIsTerminal(status) {
   return BACKGROUND_TASK_MACHINE.terminal.includes(status || 'running');
 }
 
+// ---------- INSTALL (pemasangan terverifikasi) ----------
+// `update.js` mengunduh; mesin ini menjawab pertanyaan yang berbeda: apakah
+// berkas yang sudah ada di disk layak DIPASANG. Karena itu `verifying` dan
+// `blocked` adalah state tersendiri, bukan flag di dalam `ready`.
+//
+//   checking → eligible | blocked        (preflight mesin)
+//   eligible → downloading → verifying → ready → installing
+//   verifying → blocked                  (checksum beda / berkas bukan PE)
+//   blocked  → checking | downloading    (user memperbaiki lalu mengulang)
+//
+// `ready` bukan terminal: user boleh membatalkan sebelum memasang, dan
+// `installing` boleh kembali ke `ready` bila proses gagal dijalankan.
+const INSTALL_MACHINE = {
+  id: 'install',
+  initial: 'checking',
+  terminal: [],
+  states: {
+    checking: 'Memeriksa kelayakan',
+    eligible: 'Siap diunduh',
+    downloading: 'Mengunduh',
+    verifying: 'Memverifikasi',
+    ready: 'Siap dipasang',
+    installing: 'Memasang',
+    blocked: 'Terhalang',
+  },
+  transitions: {
+    checking: ['eligible', 'blocked', 'ready'],
+    eligible: ['downloading', 'checking', 'blocked'],
+    downloading: ['verifying', 'blocked', 'checking'],
+    verifying: ['ready', 'blocked'],
+    ready: ['installing', 'checking', 'downloading'],
+    installing: ['ready', 'checking'],
+    blocked: ['checking', 'downloading', 'eligible'],
+  },
+};
+
+function installIsBlocked(status) {
+  return status === 'blocked';
+}
+
 // ---------- WORKSPACE / PERUBAHAN FILE ----------
 // Status perubahan file berasal dari `git status`. Dideklarasikan di sini karena
 // UI (drawer Perubahan), server (revert), dan agent (kontrak) harus memakai
@@ -375,7 +415,9 @@ const SSE_SCOPES = {
   background: ['background'],
   workspace: ['workspace', 'threads'],
   memory: ['memory', 'threads'],
-  update: ['update', 'config'],
+  update: ['update', 'config', 'install'],
+  install: ['install'],
+  diagnostics: ['diagnostics'],
 };
 
 function scopeSlices(scope) {
@@ -383,4 +425,4 @@ function scopeSlices(scope) {
 }
 
 // ekspor eksplisit agar tetap bekerja sebagai ESM di browser
-export { MACHINE_VERSION, canTransition, allowedNext, transitionError, TASK_STATUSES, TASK_LABELS, TASK_MACHINE, taskCanMove, taskNext, RUN_MACHINE, runIsTerminal, RUN_STATES, runCanTransition, STEP_MACHINE, stepIsTerminal, DELEGATION_MACHINE, NOTE_EDITOR_MACHINE, noteEditorCanLeave, BACKGROUND_TASK_MACHINE, backgroundTaskIsTerminal, CHANGE_STATUSES, RULE_FILES, KEY_MACHINE, KEY_POOL_CANDIDATE, KEY_POOL_ACTIVE, KEY_MODEL_VISIBLE, KEY_POOL_ELIGIBLE, keyPoolCandidate, keyPoolActive, keyModelVisible, AGENT_MACHINE, CONNECTION_MACHINE, PROMO_MACHINE, PROMO_PASS_MACHINE, UI_LAYERS, UI_MACHINE, VIEWS, VIEW_MACHINE, SSE_SCOPES, scopeSlices };
+export { MACHINE_VERSION, canTransition, allowedNext, transitionError, TASK_STATUSES, TASK_LABELS, TASK_MACHINE, taskCanMove, taskNext, RUN_MACHINE, runIsTerminal, RUN_STATES, runCanTransition, STEP_MACHINE, stepIsTerminal, DELEGATION_MACHINE, NOTE_EDITOR_MACHINE, noteEditorCanLeave, BACKGROUND_TASK_MACHINE, backgroundTaskIsTerminal, INSTALL_MACHINE, installIsBlocked, CHANGE_STATUSES, RULE_FILES, KEY_MACHINE, KEY_POOL_CANDIDATE, KEY_POOL_ACTIVE, KEY_MODEL_VISIBLE, KEY_POOL_ELIGIBLE, keyPoolCandidate, keyPoolActive, keyModelVisible, AGENT_MACHINE, CONNECTION_MACHINE, PROMO_MACHINE, PROMO_PASS_MACHINE, UI_LAYERS, UI_MACHINE, VIEWS, VIEW_MACHINE, SSE_SCOPES, scopeSlices };

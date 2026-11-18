@@ -24,7 +24,10 @@ let dataDir;
 let distDir;
 let mockTag = 'v9.9.9';
 let mockServer;
-const FIXTURE = Buffer.from('AgentHub-fake-installer'.repeat(32768)); // ~716 KB
+// Fixture harus tampak seperti installer Windows sungguhan: verifikasi
+// menolak berkas `.exe` yang tidak diawali `MZ`, dan itu perilaku yang
+// diuji terpisah di install.test.js.
+const FIXTURE = Buffer.concat([Buffer.from('MZ'), Buffer.from('AgentHub-fake-installer'.repeat(32768))]); // ~716 KB
 const SPLIT_AT = 600 * 1024; // potong melewati ambang progres 512 KB
 
 const api = (p, opts = {}) => fetch(`http://127.0.0.1:${PORT}${p}`, {

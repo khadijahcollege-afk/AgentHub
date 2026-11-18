@@ -52,6 +52,7 @@ Free AI API tiers (Groq, Google AI Studio, OpenRouter `:free`, …) are great �
 - **Safe retries & small-screen payloads** — every send carries an idempotency id, so a retry after a dropped connection answers from the ledger instead of running twice. On a narrow screen or a data-saver connection the thread is requested with a byte budget: the largest reply comes back as a preview with a **show full message** button, and the composer offers **load earlier messages**. The desktop payload is unchanged.
 - <img src="assets/icons/file.svg" width="14" align="absmiddle"> **Plan mode the agent drives** — the agent can decide a task deserves planning, enter plan mode (read-only), and hand you a written plan to approve. Nothing else is touched until you approve: no writes, no commands. Approving stores the plan in `.agenthub/plans/` and re-opens the write tools for the rest of that run; asking for changes keeps the run in plan mode with your reason attached. Entering never asks, leaving always does — even in full access.
 - <img src="assets/icons/bolt.svg" width="14" align="absmiddle"> **Background commands** — long work no longer has to fit inside one answer. `npm install`, a dev server, or a whole test suite runs as a task that outlives the run, with output written to `.agenthub/tasks/` so it can be read again after the run ends, the tab closes, or the server restarts. The agent gets the tail, a panel shows the list with a stop button per running row, and one id is always one process.
+- <img src="assets/icons/shield.svg" width="14" align="absmiddle"> **Updates that prove themselves** — every download is checked against the release's `SHA256SUMS.txt` before it can be installed. A mismatch is refused with both hashes shown and the file kept as evidence; a release without a checksum file says *no checksum* in a warning badge instead of showing a green check nobody earned. A proxy page, a short body, or an `.exe` that does not start with `MZ` is named for what it is, before the checksum runs. Readiness (platform, arch, disk, writable data folder) is checked before 100 MB is fetched, the check also gates the API so `curl` cannot skip it, two sources are tried with retry and jitter, and one button produces a redacted diagnostics bundle for bug reports.
 - <img src="assets/icons/shield.svg" width="14" align="absmiddle"> **Local-first** — the server and data live on your machine. No AgentHub telemetry. Provider requests send your API key and prompt to the provider you select.
 - <img src="assets/icons/refresh.svg" width="14" align="absmiddle"> **Usage statistics & languages** — activity heatmap, 7/30/90-day charts, feature and engine breakdowns, plus separate Indonesian/English interface and agent reply-language settings.
 - <img src="assets/icons/snow.svg" width="14" align="absmiddle"> **Featherweight server** — pure Node.js, **zero npm dependencies** for the server itself; the desktop shell is a thin Electron wrapper (native window + tray, no browser).
@@ -115,11 +116,12 @@ Pushing a `v*` tag runs [.github/workflows/release.yml](.github/workflows/releas
 ## State machines & agent API
 
 Every status in AgentHub (task, run, delegation step, connection, key/agent probe,
-promo refresh, promo pass, overlay, view, note editor) is declared once in
-[`lib/machines.js`](lib/machines.js). `public/machines.js` is generated from it, so
-the server that enforces transitions and the UI that draws buttons can never
-disagree. The full inventory — owner, persistence, enforcement point, and the
-states left local on purpose — is in [`STATE-MACHINES.md`](STATE-MACHINES.md).
+promo refresh, promo pass, overlay, view, note editor, background task, install) is
+declared once in [`lib/machines.js`](lib/machines.js). `public/machines.js` is
+generated from it, so the server that enforces transitions and the UI that draws
+buttons can never disagree. The full inventory — owner, persistence, enforcement
+point, and the states left local on purpose — is in
+[`STATE-MACHINES.md`](STATE-MACHINES.md).
 
 ```bash
 npm run machines   # regenerate public/machines.js
@@ -174,7 +176,9 @@ Agents driving the app do not have to guess. The contract is served over HTTP:
 | `GET/DELETE /api/terminal/tabs/:id` · `POST /api/terminal/tabs` | buka tab lengkap dengan transkrip, tutup tab, atau buat tab kosong |
 | `GET/DELETE /api/terminal/:id` | satu perintah: status + keluaran, atau hentikan prosesnya (tab tetap ada) |
 | `GET /api/background?thread=` · `GET/DELETE /api/background/:id` | perintah latar milik satu thread: daftar + batas yang berlaku, satu tugas dengan `?output=1` untuk isi keluarannya, atau hentikan prosesnya |
-| `GET /api/update` · `POST /api/update/download` · `POST /api/update/install` | auto-update: status versi+unduhan, unduh manual, pasang senyap dari GitHub Releases latest |
+| `GET /api/update` · `POST /api/update/download` · `POST /api/update/install` | auto-update: version + download + verification status, manual download, silent install; installation is refused with `409 CHECKSUM_MISMATCH` or `409 PREFLIGHT_FAILED` |
+| `GET /api/install/preflight` · `GET /api/install/uninstall-plan` | machine readiness before a 100 MB download, and exactly what an uninstall removes (autostart entry, data folder, app) |
+| `GET /api/diagnostics` | one bug-report bundle: runtime, update and verification state, preflight findings, redacted config, engine/thread counts, last 200 log lines; `?format=text` for a file you can attach |
 
 Task movement is strictly linear: `inbox → todo → running → review → done`. A skip is
 rejected with `409` and a body containing `allowed`, so a client can correct itself

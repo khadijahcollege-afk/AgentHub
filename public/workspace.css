@@ -397,6 +397,42 @@ label { color: #b5b5bf; font-size: 12px; gap: 8px; }
 .updl i { position: absolute; left: 0; top: 0; height: 100%; }
 .updl span { white-space: nowrap; }
 
+/* ---------- pemasangan terverifikasi: verifikasi, preflight, diagnostik ---------- */
+/* Semua baris di bawah memakai `min-width: 0` + pembungkusan teks: nilai
+   checksum dan path folder panjang, dan tanpa itu baris meluber keluar
+   panel pada layar sempit. */
+.upd-verify { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; margin-top: 6px; font-size: 12px; min-width: 0; }
+.upd-verify code { font-family: ui-monospace, Consolas, monospace; font-size: 11px; color: #a7a7ae; overflow-wrap: anywhere; }
+.upd-badge { display: inline-block; padding: 1px 7px; border-radius: 99px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.upd-verify.ok .upd-badge { background: rgba(64, 192, 128, .16); color: #63d29a; }
+.upd-verify.warn .upd-badge { background: rgba(230, 180, 80, .16); color: #e0b95c; }
+.upd-verify.bad .upd-badge { background: rgba(230, 90, 90, .18); color: #ef7a7a; }
+.upd-verify.bad { color: #ef9a9a; }
+
+.upd-sources { margin: 6px 0 0; padding-left: 18px; }
+.upd-sources li { overflow-wrap: anywhere; }
+
+.upd-extra { margin-top: 4px; }
+.upd-preflight { margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: #17171a; border: 1px solid #2c2c32; }
+.pf-list { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+.pf-row { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; min-width: 0; }
+.pf-row span:last-child { min-width: 0; overflow-wrap: anywhere; }
+.pf-mark { flex-shrink: 0; width: 14px; text-align: center; font-weight: 700; }
+.pf-row.ok .pf-mark { color: #63d29a; }
+.pf-row.warn .pf-mark { color: #e0b95c; }
+.pf-row.bad .pf-mark { color: #ef7a7a; }
+
+/* Rencana uninstall memuat path absolut Windows (`C:\Users\...`) yang tidak
+   punya spasi untuk dipatahkan. Tanpa `overflow-wrap: anywhere` di <code>,
+   baris itu menembus panel di lebar 320 dan halaman ikut menggulung. */
+.upd-uninstall { margin-top: 8px; font-size: 12px; min-width: 0; }
+.upd-uninstall b { font-size: 12px; }
+.upd-uninstall code {
+  font-family: ui-monospace, Consolas, monospace; font-size: 11px; color: #a7a7ae;
+  overflow-wrap: anywhere; word-break: break-all;
+}
+.upd-uninstall .pf-list li { min-width: 0; overflow-wrap: anywhere; }
+
 /* ---------- bagikan thread ---------- */
 .share-block { margin-top: 10px; padding-top: 10px; border-top: 1px solid #26262b; }
 .share-list { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }

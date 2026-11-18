@@ -12,7 +12,7 @@ There are three audiences, and each one gets the same rules:
 | Developer (DX) | `lib/machines.js` + `public/machines.js` | server rejects illegal transitions with a structured `409`, tests assert invariants |
 | Agent (AX) | `GET /api/machines`, `GET /api/status`, `window.__ahState()` | machine contract version, `allowed` lists in every rejection, idempotent endpoints |
 
-Machine contract version: **3** (`MACHINE_VERSION`, surfaced by `GET /api/version`
+Machine contract version: **5** (`MACHINE_VERSION`, surfaced by `GET /api/version`
 and by the `version` field of `GET /api/machines`). Bump it whenever a state or
 transition changes; the tests and the generated browser copy follow it.
 
@@ -25,6 +25,7 @@ transition changes; the tests and the generated browser copy follow it.
 | `queueItem` | waiting ⇄ reserved → (gone) | `lib/queue.js` | `data/queue.json` | `POST …/queue/reserve` → `409 QUEUE_RESERVED`; item removed only after its run starts |
 | `planMode` | outside ⇄ plan → (approved, back to the pre-plan mode) | `lib/tools.js#executeTool` (writes `planRuntime`) | none per run; the durable trace is `<cwd>/.agenthub/plans/plan-<id>.md` | `ExitPlanMode` denies with `NOT_IN_PLAN_MODE` outside plan; approval requires a human, even in `yolo` |
 | `backgroundTask` | running → done/error/stopped | `lib/bg-runner.js` | thread fields in `data/background-tasks.json`, output in `<cwd>/.agenthub/tasks/<id>.log` | `start` refuses past the active limits; terminal states are sinks (no re-run, one id = one process) |
+| `install` | checking → eligible → downloading → verifying → ready → installing, ⇄ blocked | `server.js` (`startDownload`, `/api/update/install`) | `updateDl`/`updateVerify` in memory; the installer file in `dist/` | verification `mismatch` and preflight `error` refuse the install (`409 CHECKSUM_MISMATCH` / `409 PREFLIGHT_FAILED`) |
 | `step` | working → done/error/stopped | `server.js` (delegate), `lib/threads.js#updateSubrun` | message `status` on subrun messages | written only through `updateSubrun` |
 | `delegation` | idle → starting → running → done/error/stopped | `public/app.js` | none (client session) | button lock + `Hentikan`/`Batal` switch, server run outcome is the source of truth |
 | `noteEditor` | closed → editing ⇄ dirty → saving | `public/app.js` | none (draft in DOM) | close is confirmed while `dirty` |
@@ -378,6 +379,39 @@ outside the tracked tree (same reasoning as plan files). The UI panel
 (`#bg-panel`) reads the same routes the model uses, so what the agent sees and
 what the user sees cannot diverge.
 
+## Install lifecycle (the file that has to prove itself)
+
+A download finishing is not evidence that the file is the one the release
+published. Every release has carried `SHA256SUMS.txt` and nothing read it, so a
+truncated download or an HTML captive-portal page could be saved as
+`AgentHub-Setup.exe` and offered with an "Install now" button. Owner: `lib/install.js`
+(pure rules — checksums, interception, preflight, retry, lifecycle decisions) plus
+`server.js` (`downloadAndVerify`, `/api/update/install`). The split is what lets the
+rules be tested without downloading 100 MB or touching a real machine.
+
+```
+checking ──→ eligible ──→ downloading ──→ verifying ──→ ready ──→ installing
+    │            │             │              │           │
+    └────────────┴─────────────┴──→ blocked ←─┘           └──→ ready (spawn failed)
+                                       └──→ checking | downloading | eligible
+```
+
+`ready` is deliberately not terminal: the user may cancel before installing, and
+`installing` returns to `ready` when the installer cannot be spawned — a state the
+UI cannot leave is a dead end.
+
+| Invariant | Why |
+| --- | --- |
+| `unverified` is never rendered as verified | When a release has no `SHA256SUMS.txt`, the pane shows a warning badge, never a green check. A checkmark for a file nobody compared teaches the user to trust the checkmark, which is worse than having no checkmark at all. |
+| `mismatch` refuses the install but **keeps the file** | `POST /api/update/install` answers `409 CHECKSUM_MISMATCH` and both hashes are printed. Deleting the file would destroy the only evidence available for a bug report. |
+| Interception is diagnosed **before** the checksum | An HTML page will never match any hash, so "checksum mismatch" would send the user hunting a corrupt release when the real cause is an office proxy or a Wi-Fi login page. `text/html`, `application/json`, a short body, and a `.exe` without `MZ` are each named. |
+| A non-network failure is **not retried** | Re-fetching the same bytes from the same proxy costs time and quota and returns the same bad file. `retry` is given a `shouldRetry` that rejects `CHECKSUM_MISMATCH` and `NOT_INSTALLER`. |
+| Unknown free space is `warn`, not `error` | `statfs` is unavailable on some platforms. Blocking an install because the disk size could not be read would refuse a machine that is perfectly fine. |
+| Preflight gates the API, not just the button | `/api/update/install` can be called by an agent or `curl`, with no UI. Checking only in the client would make the rule optional. |
+| Retry uses jitter | Without it, every AgentHub instance alive at that moment hits the same host in the same millisecond after an outage. |
+| `installing` may fall back to `ready` | If the spawn throws, leaving the state at `installing` shows a spinner forever with no way to retry. |
+| Diagnostics redact, never omit | Tokens and keys become `[disembunyikan]`. Omitting the field would hide whether a key is even configured; printing it would leak it. |
+
 ## Why these are not machines (yet)
 
 Centralising everything costs more than it buys when the state is a single frame of
@@ -481,6 +515,8 @@ Never infer status from a button's disabled state or from `thread.running`. Quer
 | `test/background.test.js` | pure background rules: tool names, `sanitizeTaskId` unable to escape the folder, output path inside `.agenthub/tasks`, empty/oversize commands refused, `waitMs` odd values falling back to the default while negatives become 0, label trimming, tail selection reporting `truncated`, the two active limits, exit code → status mapping, the notices the model reads, and pruning (expired, per-thread cap, running never dropped) |
 | `test/bg-runner.test.js` | the same promises against **real processes**: output really lands in the file with a real byte count, non-zero exit becomes `error`, a large output read as a tail, `stop` killing the process and being idempotent, `stopThread` scoped to one thread, active counts split per thread, recovery turning a `running` record into `error` with its log kept, and prune never touching a live task |
 | `test/background-api.test.js` | routes over a real server: list needs `thread`, a task from the *previous* process still listed as `error` with `recovered: true` and its output readable, `output=1` required for the body, another thread seeing nothing, unknown ids 404 on read and delete, and stopping an already-finished task answering `already: true` instead of failing |
+| `test/install.test.js` | verified install: `SHA256SUMS.txt` parsing (binary `*` marker, malformed lines skipped), streamed hashing, the three verification states with `unverified` never reporting `ok`, proxy interception for HTML/JSON/short body/non-`MZ`, preflight levels including unknown disk as `warn`, `retry` honouring `shouldRetry` so permanent errors are not repeated, `firstSuccess` recording every source and notifying the fallback, `installDecision` per download status, `uninstallPlan` per platform, redaction keeping the key but not the value, and over a real server: a matching checksum reaching `ready` with `decision.action === 'install'`, a wrong checksum reaching `mismatch` with the install refused, an HTML body refused as "not an installer", preflight and uninstall-plan readable by the UI, and diagnostics never containing the access token |
+| `test/update.test.js` | release check and download progress against a local fixture server: the fixture is a real `MZ`-prefixed file, because the MZ check rejects anything that is not a Windows executable |
 
 ## Wiring
 

@@ -1,4 +1,4 @@
-# <img src="public/icon-512.png" width="28" alt="AgentHub" align="absmiddle"> AgentHub
+ <img src="public/icon-512.png" width="28" alt="AgentHub" align="absmiddle"> AgentHub
 
 **Control plane desktop ringan untuk token AI gratis.**
 
@@ -49,6 +49,7 @@ Screenshot menampilkan v1.6.13 dengan data contoh. Angka statistik hanya ilustra
 - **Kiriman aman diulang & muatan ringkas di HP** — setiap kiriman membawa id idempotensi, jadi percobaan ulang setelah koneksi putus menjawab dari catatan alih-alih menjalankan dua kali. Di layar sempit atau koneksi hemat data, thread diminta dengan anggaran byte: balasan terpanjang datang sebagai pratinjau dengan tombol **lihat pesan lengkap**, dan composer menawarkan **muat pesan sebelumnya**. Muatan desktop tidak berubah.
 - <img src="assets/icons/file.svg" width="14" align="absmiddle"> **Plan mode yang dipimpin agent** — agent bisa memutuskan sebuah tugas perlu direncanakan, masuk plan mode (hanya baca), lalu menyerahkan rencana tertulis untuk Anda setujui. Selama belum disetujui tidak ada yang disentuh: tidak ada tulisan, tidak ada perintah. Menyetujui menyimpan rencananya di `.agenthub/plans/` dan membuka kembali tool tulis untuk sisa run itu; meminta revisi menahan run di plan mode beserta alasan Anda. Masuk plan tidak pernah bertanya, keluar selalu bertanya — termasuk di akses penuh.
 - <img src="assets/icons/bolt.svg" width="14" align="absmiddle"> **Perintah latar** — pekerjaan panjang tidak lagi harus muat di dalam satu jawaban. `npm install`, dev server, atau seluruh suite tes berjalan sebagai tugas yang hidup lebih lama daripada run, dengan keluarannya ditulis ke `.agenthub/tasks/` sehingga bisa dibaca lagi setelah run selesai, tab ditutup, atau server dimulai ulang. Agent menerima ekor keluarannya, panel menampilkan daftar dengan tombol hentikan per baris yang berjalan, dan satu id selalu satu proses.
+- <img src="assets/icons/shield.svg" width="14" align="absmiddle"> **Pembaruan yang membuktikan dirinya** — setiap unduhan diperiksa terhadap `SHA256SUMS.txt` rilis sebelum boleh dipasang. Checksum yang beda ditolak dengan kedua hash ditampilkan dan berkasnya tetap disimpan sebagai bukti; rilis tanpa berkas checksum ditulis *tanpa checksum* di lencana peringatan, bukan centang hijau yang tidak pernah didapat. Halaman proxy, body yang terpotong, atau `.exe` yang tidak diawali `MZ` disebut apa adanya sebelum checksum diperiksa. Kelayakan mesin (platform, arsitektur, disk, folder data yang bisa ditulis) diperiksa sebelum 100 MB diunduh, pemeriksaan yang sama menjadi gerbang API sehingga `curl` tidak bisa melewatinya, dua sumber dicoba dengan retry dan jitter, dan satu tombol menghasilkan bundel diagnostik tersaring untuk laporan bug.
 - <img src="assets/icons/shield.svg" width="14" align="absmiddle"> **Lokal dulu** — server dan data berada di komputer Anda. Tanpa telemetri AgentHub. Permintaan ke provider mengirim API key dan prompt ke provider pilihan Anda.
 - <img src="assets/icons/refresh.svg" width="14" align="absmiddle"> **Statistik & bahasa** — heatmap aktivitas, grafik 7/30/90 hari, rincian fitur dan engine, serta pengaturan bahasa antarmuka Indonesia/Inggris yang terpisah dari bahasa balasan agent.
 - <img src="assets/icons/snow.svg" width="14" align="absmiddle"> **Server ringan** — Node.js murni, **nol dependency npm**; shell desktop-nya Electron tipis (jendela native + tray, tanpa browser).
@@ -100,11 +101,12 @@ Kuota habis → provider itu di-cooldown 5 menit dan request dilayani provider b
 ## Mesin state & API untuk agent
 
 Semua status di AgentHub (tugas, run, langkah delegation, koneksi, probe key/agent,
-refresh promo, overlay, view, editor catatan) dideklarasikan sekali di
-[`lib/machines.js`](lib/machines.js). `public/machines.js` dihasilkan dari file itu,
-jadi server yang menegakkan transisi dan UI yang menggambar tombol tidak bisa
-berbeda aturan. Inventaris lengkapnya — pemilik, penyimpanan, titik penegakan, dan
-state yang sengaja dibiarkan lokal — ada di [`STATE-MACHINES.md`](STATE-MACHINES.md).
+refresh promo, overlay, view, editor catatan, perintah latar, pemasangan)
+dideklarasikan sekali di [`lib/machines.js`](lib/machines.js).
+`public/machines.js` dihasilkan dari file itu, jadi server yang menegakkan transisi
+dan UI yang menggambar tombol tidak bisa berbeda aturan. Inventaris lengkapnya —
+pemilik, penyimpanan, titik penegakan, dan state yang sengaja dibiarkan lokal — ada
+di [`STATE-MACHINES.md`](STATE-MACHINES.md).
 
 ```bash
 npm run machines   # regenerasi public/machines.js
@@ -143,6 +145,9 @@ Agent yang mengemudikan aplikasi tidak perlu menebak; kontraknya disajikan lewat
 | `GET/DELETE /api/terminal/tabs/:id` · `POST /api/terminal/tabs` | buka tab lengkap dengan transkrip, tutup tab, atau buat tab kosong |
 | `GET/DELETE /api/terminal/:id` | satu perintah: status + keluaran, atau hentikan prosesnya (tab tetap ada) |
 | `GET /api/background?thread=` · `GET/DELETE /api/background/:id` | perintah latar milik satu thread: daftar + batas yang berlaku, satu tugas dengan `?output=1` untuk isi keluarannya, atau hentikan prosesnya |
+| `GET /api/update` · `POST /api/update/download` · `POST /api/update/install` | auto-update: status versi + unduhan + verifikasi, unduh manual, pasang senyap; pemasangan ditolak dengan `409 CHECKSUM_MISMATCH` atau `409 PREFLIGHT_FAILED` |
+| `GET /api/install/preflight` · `GET /api/install/uninstall-plan` | kelayakan mesin sebelum 100 MB diunduh, dan persis apa yang dihapus saat uninstall (entri autostart, folder data, aplikasi) |
+| `GET /api/diagnostics` | satu bundel laporan bug: runtime, keadaan update dan verifikasi, temuan preflight, config tersaring, jumlah engine/thread, 200 baris log terakhir; `?format=text` untuk berkas yang bisa dilampirkan |
 | `GET/POST /api/threads/:id/queue` | antrean pesan: daftar item yang menunggu, atau masukkan satu (FIFO, maksimal 20 per thread) |
 | `POST /api/threads/:id/queue/(reserve\|release\|commit)` | ambil item paling depan, kembalikan bila start gagal, atau hapus setelah run-nya dimulai |
 | `DELETE /api/threads/:id/queue/:itemId` | hapus satu item yang masih menunggu (item yang sedang dijalankan ditolak) |

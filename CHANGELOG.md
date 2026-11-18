@@ -1,5 +1,66 @@
 # Changelog
 
+## 1.9.0 — 2026-11-18
+Pemasangan yang bisa membuktikan berkasnya benar — atau mengatakan dengan jujur
+bahwa ia tidak bisa membuktikannya.
+
+`release.yml` sudah lama menghasilkan `SHA256SUMS.txt` di setiap rilis, dan tidak
+ada satu baris kode yang membacanya. Selama itu, updater mengunduh berkas lalu
+menyebutnya "siap dipasang" hanya karena unduhannya selesai. Unduhan yang dipotong
+proxy, atau halaman login Wi-Fi yang dikembalikan sebagai "installer", tersimpan
+sebagai `AgentHub-Setup.exe` dan ditawarkan dengan tombol "Pasang sekarang".
+Kegagalannya lalu terlihat seperti rilis yang rusak. Yang diambil dari Claude Setup
+(`win32-bootstrapper`, Anthropic) adalah PEMISAHAN empat hal yang di AgentHub masih
+dicampur: kelayakan mesin, kesahihan berkas, sumber cadangan, dan cara melaporkan
+kegagalan. Yang tidak diambil adalah jalur MSIX/Appx-nya — AgentHub memasang NSIS
+lewat electron-builder, jadi yang relevan adalah pemeriksaan sebelum dan sesudah
+unduhan, bukan cara memasang paket.
+
+- **Berkas tanpa pembanding TIDAK ditampilkan sebagai terverifikasi**
+  (`lib/install.js`) — `verifyFile` mengembalikan tiga keadaan: `ok`, `mismatch`,
+  `unverified`. Bila rilis tidak menyertakan `SHA256SUMS.txt`, panel menampilkan
+  lencana peringatan "tanpa checksum", bukan centang hijau. Centang untuk berkas
+  yang tidak pernah dibandingkan adalah kebohongan yang sama berbahayanya dengan
+  menerima berkas rusak — dan lebih buruk, karena ia mengajari user untuk percaya
+  pada centang itu.
+- **Checksum yang beda DITOLAK, berkasnya tidak dihapus** — `POST
+  /api/update/install` menjawab `409 CHECKSUM_MISMATCH`, dan panel menuliskan kedua
+  hash (diharapkan versus berkas). Berkasnya sengaja dibiarkan di disk: menghapus
+  bukti membuat laporan bug mustahil. Hanya unduhan yang diulang, dan hanya untuk
+  gangguan jaringan — mengunduh ulang byte yang sama dari proxy yang sama hanya
+  membuang waktu dan kuota.
+- **Intersepsi proxy didiagnosis SEBELUM checksum** — `text/html`,
+  `application/json`, atau body yang lebih pendek dari `content-length` dilaporkan
+  sebagai proxy/portal login lengkap dengan jumlah byte diterima versus diharapkan;
+  `.exe` yang tidak diawali `MZ` disebut apa adanya. Urutannya penting: halaman HTML
+  tidak akan pernah cocok dengan hash apa pun, dan "checksum tidak cocok" akan
+  membuat user mencari rilis yang rusak padahal masalahnya firewall kantor.
+- **Preflight berjalan sebelum 100 MB diunduh** — platform, arsitektur, versi Node,
+  ruang disk, dan apakah folder data bisa ditulis; masing-masing `ok`/`warn`/`error`.
+  Ruang disk yang tidak terbaca adalah `warn`, bukan `error`: menolak pemasangan
+  hanya karena `statfs` gagal di satu platform akan menghalangi mesin yang sehat.
+  Pemeriksaan yang sama menjadi gerbang `POST /api/update/install`, karena endpoint
+  itu bisa dipanggil agent atau `curl` tanpa UI sama sekali.
+- **Dua sumber, lalu kegagalannya disebut satu per satu** — cek rilis mencoba
+  GitHub API dengan retry (backoff eksponensial + jitter, supaya banyak instance
+  tidak menabrak host yang sama pada milidetik yang sama), lalu host unduhan rilis.
+  Bila semuanya gagal, panel mendaftar tiap sumber yang dicoba beserta sebabnya,
+  bukan satu kata "gagal" yang membiarkan user menebak antara jaringan, firewall,
+  dan batas laju GitHub.
+- **Diagnostik dan uninstall adalah jawaban, bukan dokumentasi** — `GET
+  /api/diagnostics` menghasilkan satu berkas untuk dilampirkan ke laporan bug:
+  runtime, keadaan update, hasil verifikasi, temuan preflight, config yang sudah
+  disaring, jumlah engine/thread, dan 200 baris log terakhir. Token dan API key
+  diganti `[disembunyikan]`, tidak dihilangkan, supaya keberadaannya tetap terlihat
+  tanpa bocor. `GET /api/install/uninstall-plan` mengembalikan persis apa yang
+  dihapus saat uninstall: entri autostart, folder data, aplikasi. Keduanya tampil di
+  panel — rencana yang hanya bisa dibaca di kode bukan rencana.
+- **Siklus pemasangan adalah mesin yang dideklarasikan** — `checking → eligible →
+  downloading → verifying → ready → installing`, dengan `blocked` dari `verifying`
+  dan jalan keluar lagi. `installing` boleh kembali ke `ready` bila proses gagal
+  dijalankan, karena state yang tidak bisa ditinggalkan UI adalah jalan buntu.
+  Versi kontrak mesin **5**.
+
 ## 1.8.0 — 2026-11-17
 Perintah yang berjalan lebih lama daripada run-nya sendiri, dengan keluarannya
 tersimpan sebagai berkas sehingga bisa dibaca lagi kapan pun.
