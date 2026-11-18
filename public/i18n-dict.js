@@ -665,6 +665,19 @@ export const EN = {
   'Tampilkan toast Windows saat ada promo atau perubahan status':
     'Show Windows toasts for promos or status changes',
   Tema: 'Theme',
+  // --- tema & palet warna ---
+  // Nama palet sengaja dibiarkan puitis (Midnight, Aurora), tetapi pilihan
+  // Bawaan/Ungu/Senja diterjemahkan karena itu kata biasa.
+  Bawaan: 'Default',
+  Gelap: 'Dark',
+  Terang: 'Light',
+  Kaca: 'Glass',
+  Sistem: 'System',
+  Ungu: 'Violet',
+  Senja: 'Dusk',
+  'Palet warna': 'Color palette',
+  'Mengubah warna latar, kartu, dan garis. Warna status (berhasil, peringatan, gagal) tetap sama di semua palet. Palet hanya berlaku untuk tema gelap — tema Terang memakai inversi, jadi paletnya tidak ikut.':
+    'Changes the background, cards, and borders. Status colors (success, warning, error) stay the same in every palette. Palettes only apply to dark themes — the Light theme uses inversion, so the palette does not follow.',
   'Beri satu agent tugas khusus': 'Give one agent a dedicated task',
   'di provider belum diverifikasi.': 'at the provider is not verified yet.',
   'Endpoint untuk agent': 'Endpoint for agents',

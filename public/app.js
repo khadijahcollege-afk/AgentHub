@@ -6497,13 +6497,26 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
   }
   upgradeSelects();
 
-  // ---------- tema: Gelap / Terang / Sistem ----------
+  // ---------- tema: Gelap / Terang / Sistem + palet warna ----------
+  // Tema = terang/gelap (mengubah keterbacaan dasar). Palet = rona warna
+  // permukaan. Keduanya sumbu berbeda dan bisa dikombinasikan, seperti di
+  // Discord: tema mengatur gelap-terang, palet mengatur warnanya.
   const THEMES = [
     ['dark', 'Gelap', '<div class="theme-prev dark"><i></i><u></u></div>'],
     ['light', 'Terang', '<div class="theme-prev light"><i></i><u></u></div>'],
     ['glass', 'Kaca', '<div class="theme-prev glass"><i></i><u></u></div>'],
     ['oled', 'OLED', '<div class="theme-prev oled"><i></i><u></u></div>'],
     ['system', 'Sistem', '<div class="theme-prev system"><i></i><u></u></div>'],
+  ];
+  // Palet hanya berlaku untuk tema gelap; tema Terang memakai inversi, jadi
+  // palet gelap di atasnya akan tampil sebagai kebalikannya — bukan hasil yang
+  // dimaksud. UI menjelaskan itu, bukan menyembunyikan pilihannya.
+  const PALETTES = [
+    ['bawaan', 'Bawaan', '<div class="theme-prev dark"><i></i><u></u></div>'],
+    ['midnight', 'Midnight', '<div class="theme-prev midnight"><i></i><u></u></div>'],
+    ['aurora', 'Aurora', '<div class="theme-prev aurora"><i></i><u></u></div>'],
+    ['ungu', 'Ungu', '<div class="theme-prev ungu"><i></i><u></u></div>'],
+    ['senja', 'Senja', '<div class="theme-prev senja"><i></i><u></u></div>'],
   ];
   function sysLight() {
     return !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches);
@@ -6512,6 +6525,13 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
     const pref = localStorage.getItem('ah_theme') || 'dark';
     const eff = pref === 'system' ? (sysLight() ? 'light' : 'dark') : (pref === 'glass' ? 'dark' : pref);
     document.documentElement.dataset.theme = eff;
+    // Palet dipasang sebagai atribut terpisah dari tema. Tema Terang memakai
+    // inversi, jadi palet gelap di atasnya akan tampil terbalik dan warnanya
+    // tidak lagi seperti yang dipilih — karena itu atributnya dilepas, bukan
+    // dibiarkan aktif diam-diam.
+    const pal = localStorage.getItem('ah_palette') || 'bawaan';
+    if (eff === 'light' || pal === 'bawaan') document.documentElement.removeAttribute('data-palette');
+    else document.documentElement.dataset.palette = pal;
     // Kaca = gelap + translucensi dipaksa menyala; beralih tema lain ->
     // kembalikan kendali translucensi ke preferensi pengguna.
     if (pref === 'glass') {
@@ -6524,11 +6544,29 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
       apApply();
     }
     $$('#theme-cards .theme-card').forEach((c) => c.classList.toggle('active', c.dataset.theme === pref));
+    $$('#palette-cards .theme-card').forEach((c) => c.classList.toggle('active', c.dataset.palette === pal));
     $$('#acct-theme-label').forEach((el) => {
       el.textContent = pref === 'system' ? 'Sistem' : pref === 'light' ? 'Terang'
         : pref === 'glass' ? 'Kaca' : pref === 'oled' ? 'OLED' : 'Gelap';
     });
   }
+
+  // Terang memakai inversi: palet dilepas di applyTheme, jadi pilihannya tidak
+  // hilang, hanya tidak berlaku. Keterangan di UI menyebut itu.
+  function renderPaletteCards() {
+    const host = $('#palette-cards');
+    if (!host) return;
+    const pal = localStorage.getItem('ah_palette') || 'bawaan';
+    host.innerHTML = PALETTES.map(([id, label, prev]) => `
+      <button class="theme-card ${pal === id ? 'active' : ''}" data-palette-set="${id}">
+        ${prev}<span>${label}</span>
+      </button>`).join('');
+    $$('#palette-cards .theme-card').forEach((b) => b.addEventListener('click', () => {
+      localStorage.setItem('ah_palette', b.dataset.paletteSet);
+      applyTheme();
+    }));
+  }
+  renderPaletteCards();
   function renderThemeCards() {
     const host = $('#theme-cards');
     if (!host) return;

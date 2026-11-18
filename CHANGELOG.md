@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.9.7 — 2026-11-18
+Warna AgentHub bisa diganti sesuka hati, seperti di Discord.
+
+Lima tema yang ada semuanya abu-abu netral: yang berubah hanya terang-gelap.
+Bukan karena kurang pilihan, tetapi karena strukturnya: hampir seribu warna
+ditulis langsung di tiap aturan (`.card { background: #19191c }`), sehingga
+menambah palet berarti menulis ulang setiap aturan. Elemen baru yang memakai
+warna harfiah langsung mematahkan semua palet — dan patahnya tidak terlihat
+sebagai kesalahan, elemen itu hanya tetap abu-abu di tengah jendela berwarna.
+
+- **Dua sumbu yang berdiri sendiri** (`public/app.js`, `public/style.css`) —
+  tema mengatur terang-gelap, palet mengatur rona permukaan; bisa dikombinasikan.
+  Palet hanya berlaku di tema gelap karena tema Terang memakai inversi.
+- **Empat palet baru** — *Midnight*, *Aurora*, *Ungu*, *Senja*. Masing-masing
+  mengisi 55 token: permukaan, kartu berlapis, garis, teks redup, dan sepuluh
+  kanal warna permukaan kaca.
+- **Satu kosakata token** — 169 warna netral menjadi variabel, dan
+  `workspace.css` yang menimpa `:root` dengan definisinya sendiri kini memakai
+  kosakata yang sama. Itu akar masalahnya: berkas itu dimuat setelah
+  `style.css`, jadi palet kalah untuk `--bg`, `--side`, `--surface`.
+- **Kaca ikut palet** — sebelas latar translusen diubah ke
+  `rgb(var(--glass-*-rgb) / α)`.
+- **Empat cacat diperbaiki sebelum rilis** — palet mematikan efek kaca (selector
+  kini `:not([data-tl="1"])`); `--side` tertimpa nilai solid; palet *Ungu*
+  kehilangan `--surface`/`--surface2`; `--muted2` 10px turun ke 3.05:1 lalu
+  dinaikkan ke 4.6:1 (tema bawaan ikut 4.41 → 4.65).
+- **17 penjaga tema baru** (`test/theme.test.js`) — kelengkapan token, keseragaman
+  set, kontras WCAG, token ganda, kaca tetap translusen, dan larangan nilai kaca
+  harfiah. Diuji dengan 7 mutasi: semuanya tertangkap.
+
 ## 1.9.6 — 2026-11-18
 Gateway berhenti membuang key yang sah hanya karena aplikasinya ditolak.
 

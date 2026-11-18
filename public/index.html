@@ -10,8 +10,8 @@
 <link rel="apple-touch-icon" href="/public/icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="stylesheet" href="/public/style.css?v=1.10.12">
-<link rel="stylesheet" href="/public/workspace.css?v=20261116">
+<link rel="stylesheet" href="/public/style.css?v=1.9.7">
+<link rel="stylesheet" href="/public/workspace.css?v=20261118">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%2360a5fa'/%3E%3Cstop offset='100%25' stop-color='%232563eb'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='100' height='100' rx='22' fill='url(%23g)'/%3E%3Ccircle cx='50' cy='38' r='16' fill='white'/%3E%3Crect x='30' y='62' width='40' height='10' rx='5' fill='white'/%3E%3C/svg%3E">
 </head>
 <body>
@@ -677,6 +677,11 @@
             <h3>Tampilan</h3>
             <p class="muted small">Tema mengikuti pilihan Anda atau pengaturan Windows. Warna aksen dipakai pada tombol utama, cursor streaming, dan chip model.</p>
             <div class="set-field"><span class="set-field-label">Tema</span><div id="theme-cards" class="theme-cards"></div></div>
+            <div class="set-field">
+              <span class="set-field-label">Palet warna</span>
+              <div id="palette-cards" class="theme-cards"></div>
+              <p class="muted small">Mengubah warna latar, kartu, dan garis. Warna status (berhasil, peringatan, gagal) tetap sama di semua palet. Palet hanya berlaku untuk tema gelap — tema Terang memakai inversi, jadi paletnya tidak ikut.</p>
+            </div>
             <div class="set-field"><span class="set-field-label">Warna aksen</span><div id="accent-swatches" class="accent-swatches"></div></div>
             <div class="set-field ap-head-row"><span class="set-field-label" id="ap-translucent">Translucensi</span><span class="ap-inuse hidden" id="ap-inuse">Dipakai sekarang</span></div>
             <div class="ap-block">
@@ -1505,6 +1510,6 @@
 <div id="toast-wrap" class="toast-wrap"></div>
 <script src="/public/pwa.js"></script>
 <script src="/public/qrcode.min.js"></script>
-<script type="module" src="/public/app.js?v=1.10.12"></script>
+<script type="module" src="/public/app.js?v=1.9.7"></script>
 </body>
 </html>
