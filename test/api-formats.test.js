@@ -36,8 +36,36 @@ test('Anthropic request maps system, messages, tools, and auth', () => {
   assert.deepEqual(upstreamHeaders('anthropic_messages', { key: 'secret' }), { 'content-type': 'application/json', 'x-api-key': 'secret', 'anthropic-version': '2023-06-01' });
 });
 
-test('Responses request and response normalize to Chat Completions', () => {
-  const request = upstreamRequest('responses', { messages: [{ role: 'user', content: 'Hi' }], max_tokens: 42, tools: [{ type: 'function', function: { name: 'lookup', parameters: { type: 'object' } } }], tool_choice: { type: 'function', function: { name: 'lookup' } } }, 'gpt-test');
+test('Anthropic key probe reports a 200 that actually means failure', async () => {
+  // Regresi nyata: Z.ai membalas HTTP 200 dengan `{code:1000, success:false}`
+  // untuk key yang ditolak. Pemeriksaan lama hanya melihat `res.ok`, jadi key
+  // yang tidak bisa dipakai dilaporkan "Key valid · 0 model" — dan agent baru
+  // gagal saat benar-benar memanggil. Probe harus membaca isi body.
+  const originalFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async () => new Response(JSON.stringify({
+      code: 1000, msg: '身份验证失败。', success: false,
+    }), { status: 200 });
+    const r = await probeKey('https://api.z.ai/api/anthropic', 'deadbeef', 1000, 'anthropic_messages');
+    assert.equal(r.status, 'invalid', 'key ditolak harus "invalid", bukan "valid": ' + r.statusText);
+    assert.match(r.statusText, /ditolak/i);
+
+    // 200 yang benar-benar sehat tetap valid (OpenAI-compatible biasa, tanpa
+    // penanda `success` sama sekali).
+    globalThis.fetch = async () => new Response(JSON.stringify({ data: [{ id: 'glm-5.3' }] }), { status: 200 });
+    const ok = await probeKey('https://api.example/v1', 'secret', 1000, 'chat_completions');
+    assert.equal(ok.status, 'valid');
+    assert.equal(ok.models, 1);
+
+    // Gagal karena sebab lain (bukan auth) bukan "invalid" — key belum tentu
+    // salah, jadi jangan dibuang dari pool.
+    globalThis.fetch = async () => new Response(JSON.stringify({ code: 500, msg: 'server sibuk', success: false }), { status: 200 });
+    const busy = await probeKey('https://api.example/v1', 'secret', 1000, 'chat_completions');
+    assert.equal(busy.status, 'error');
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test('Responses request and response normalize to Chat Completions', () => {  const request = upstreamRequest('responses', { messages: [{ role: 'user', content: 'Hi' }], max_tokens: 42, tools: [{ type: 'function', function: { name: 'lookup', parameters: { type: 'object' } } }], tool_choice: { type: 'function', function: { name: 'lookup' } } }, 'gpt-test');
   assert.equal(request.path, '/responses');
   assert.equal(request.body.max_output_tokens, 42);
   assert.equal(request.body.input[0].content, 'Hi');

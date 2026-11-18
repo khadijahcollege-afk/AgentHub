@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { PRESETS, RETIRED_PRESETS, presetInfo, DEFAULT_MODELS } from '../lib/keys.js';
+import { PRESETS, RETIRED_PRESETS, presetInfo, DEFAULT_MODELS, API_FORMATS } from '../lib/keys.js';
 
 // GitHub Models pensiun 30 Juli 2026: endpoint models.inference.ai.azure.com
 // tidak lagi melayani permintaan, jadi tidak boleh ditawarkan sebagai preset
@@ -38,4 +38,36 @@ test('preset: setiap preset aktif punya model default, kecuali custom', () => {
     assert.ok(DEFAULT_MODELS[key], `${key}: model default wajib ada`);
   }
   assert.equal(DEFAULT_MODELS.github, undefined, 'preset pensiun tidak lagi punya model default');
+});
+
+// Z.ai punya tiga pintu dengan tagihan berbeda, dan menukarnya berarti membayar
+// dua kali: dua endpoint Coding Plan memotong kuota langganan, satu endpoint
+// API menagih per token. Sampai 1.9.4 hanya ada satu preset 'zai' berlabel
+// "GLM Plan" yang menunjuk endpoint bayar-per-token.
+test('preset: Z.ai Coding Plan menunjuk endpoint yang memotong kuota langganan', () => {
+  assert.equal(PRESETS.zai.baseUrl, 'https://api.z.ai/api/coding/paas/v4',
+    'Coding Plan (OpenAI) harus memakai /api/coding/, bukan /api/paas/');
+  assert.equal(PRESETS['zai-anthropic'].baseUrl, 'https://api.z.ai/api/anthropic');
+  // Endpoint bayar-per-token tetap tersedia, tapi harus jelas berbeda namanya.
+  assert.equal(PRESETS['zai-api'].baseUrl, 'https://api.z.ai/api/paas/v4');
+  assert.match(PRESETS['zai-api'].label, /bayar per token/i);
+
+  // Label plan tidak boleh menempel pada pintu yang menagih per token.
+  for (const key of ['zai', 'zai-anthropic']) {
+    assert.match(PRESETS[key].label, /Coding Plan/i, `${key}: label harus menyebut Coding Plan`);
+    assert.doesNotMatch(PRESETS[key].baseUrl, /\/api\/paas\//, `${key}: bukan endpoint bayar-per-token`);
+  }
+});
+
+test('preset: protokol mengikuti endpoint, bukan satu format untuk semua', () => {
+  // Endpoint Anthropic tidak bisa dilayani protokol OpenAI: body OpenAI ke
+  // /messages ditolak sebagai permintaan rusak. Preset yang tidak menyebut
+  // format tetap Chat Completions (perilaku lama).
+  assert.equal(PRESETS['zai-anthropic'].format, 'anthropic_messages');
+  assert.equal(PRESETS.zai.format, 'chat_completions');
+  assert.equal(PRESETS['zai-api'].format, 'chat_completions');
+  for (const [key, p] of Object.entries(PRESETS)) {
+    if (!p.format) continue;
+    assert.ok(API_FORMATS.includes(p.format), `${key}: format harus salah satu API_FORMATS`);
+  }
 });

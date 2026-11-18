@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.9.5 — 2026-11-18
+Preset Z.ai berhenti menagih dua kali.
+
+Z.ai punya tiga pintu ke GLM dan tagihannya berbeda: Coding Plan lewat protokol
+OpenAI (`api.z.ai/api/coding/paas/v4`), Coding Plan lewat protokol Anthropic
+(`api.z.ai/api/anthropic`), dan API bayar-per-token (`api.z.ai/api/paas/v4`).
+Sampai 1.9.4 hanya ada satu preset `zai` berlabel "Z.ai (GLM Plan)" yang
+menunjuk pintu **ketiga**: key langganan yang ditempel di sana tidak pernah
+menyentuh kuota plan, dan tidak ada tanda di UI bahwa itu yang terjadi.
+
+- **Tiga preset, bukan satu** (`lib/keys.js`) — `zai` = Coding Plan OpenAI,
+  `zai-anthropic` = Coding Plan Anthropic, `zai-api` = bayar per token dengan
+  label yang menyebutnya.
+- **Preset menentukan protokolnya** (`lib/keys.js`, `public/app.js`) —
+  sebelumnya `addKey` selalu jatuh ke `chat_completions`, sehingga key lewat
+  preset Anthropic mengirim body OpenAI ke `/messages` dan ditolak. Sekarang
+  preset membawa `format`, dan UI mengikutinya saat dipilih.
+- **Probe key membaca isi body, bukan hanya status HTTP** (`lib/keys.js`) —
+  Z.ai membalas HTTP 200 dengan `{"code":1000,"success":false}` untuk key yang
+  ditolak. Pemeriksaan lama hanya melihat `res.ok`, jadi hasilnya "Key valid ·
+  0 model": key yang tidak bisa dipakai dilaporkan sehat. Sekarang kegagalan
+  auth jadi `invalid` (dibuang dari pool), kegagalan lain jadi `error` (tetap
+  dicoba).
+
 ## 1.9.4 — 2026-11-18
 Pemeriksaan "folder bisa ditulis" sekarang menulis.
 

@@ -5833,13 +5833,15 @@ window.__ahMachines = {
       if (act === 'use-zai-key') {
         // REA ZCode: plan = builtin:zai-start-plan di akun z.ai; kuota 300M/hari
         // GLM-5.3-Flash mengikuti KEY akun (OAuth ZCode terenkripsi di keyring
-        // OS — tidak diekspor). Jalur sah: tempel key dari akun z.ai, preset
-        // 'zai' menunjuk api.z.ai/api/paas/v4.
+        // OS — tidak diekspor). Jalur sah: tempel key dari akun z.ai memakai
+        // preset Coding Plan, yang menunjuk api.z.ai/api/coding/paas/v4 —
+        // endpoint yang benar-benar memotong kuota langganan. Preset
+        // 'zai-api' sengaja terpisah karena endpoint itu menagih per token.
         go('keys');
         const sel = $('#key-preset');
         if (sel) { sel.value = 'zai'; sel.dispatchEvent(new Event('change')); }
         $('#key-value')?.focus();
-        toast('Tempel key dari akun Z.ai Anda (z.ai) — model glm-5.3-flash, kuota plan 300M/hari', 6000);
+        toast('Tempel key dari akun Z.ai Anda (z.ai) — preset Coding Plan, model glm-5.3-flash', 6000);
         return;
       }
       if (act === 'use-free-engine') {
@@ -7922,6 +7924,10 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
     const p = state.keyPresets[presetSel.value];
     $('#key-url').value = p.baseUrl || '';
     $('#key-name').value = p.label === 'Custom (OpenAI-compatible)' ? '' : p.label;
+    // Protokol mengikuti preset. Endpoint Anthropic menolak body OpenAI dan
+    // sebaliknya, jadi membiarkan pilihan lama berarti key yang benar tersimpan
+    // dengan protokol yang salah dan gagal saat dipanggil agent.
+    if (p.format) $('#key-format').value = p.format;
     const a = $('#key-signup');
     if (p.signup) { a.href = p.signup; a.classList.remove('hidden'); } else a.classList.add('hidden');
   });
