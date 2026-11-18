@@ -83,6 +83,10 @@ test.before(async () => {
       AGENTHUB_STRICT_PORT: '1',
       AGENTHUB_UPDATE_API: `http://127.0.0.1:${mockPort}/releases/latest`,
       AGENTHUB_UPDATE_DOWNLOAD: `http://127.0.0.1:${mockPort}/download`,
+      // Rantai otomatis berakhir di peluncuran installer. Tes tidak boleh
+      // menjalankan berkas sungguhan, dan justru harus memeriksa bahwa
+      // keputusannya benar SEBELUM peluncuran.
+      AGENTHUB_NO_LAUNCH_INSTALLER: '1',
     },
     stdio: 'ignore',
     windowsHide: true,
@@ -209,4 +213,31 @@ test('update: versi sama → tidak ada unduhan ulang, status tetap', async () =>
   // cache 30 menit masih menjawab v9.9.9 — perilaku benar (tak menagih GitHub)
   const r2 = await api('/api/update-check');
   assert.equal((await r2.json()).ok, true);
+});
+
+test('update: cek manual (?install=1) menjawab dari pemeriksaan BARU, bukan cache', async () => {
+  // Regresi: tombol "Cek pembaruan" dulu memanggil /api/update (cache 30 menit),
+  // jadi user yang baru memperbaiki proxy tetap melihat jawaban lama dan
+  // menyimpulkan tombolnya rusak.
+  mockTag = 'v9.8.0';
+  const fresh = await (await api('/api/update-check?force=1&install=1')).json();
+  assert.equal(fresh.ok, true);
+  assert.equal(fresh.latest, 'v9.8.0', 'sumber diperiksa ulang, bukan cache v9.9.9');
+  assert.equal(fresh.hasUpdate, true);
+  // state pemasangan otomatis ikut dilaporkan, supaya UI tahu ia tidak perlu
+  // menampilkan tombol kedua.
+  assert.equal(typeof fresh.autoInstall, 'object');
+  assert.equal(fresh.autoInstall.enabled, true, 'default config menyalakan autoUpdate');
+});
+
+test('update: status membawa alasan pemasangan otomatis apa adanya', async () => {
+  const u = await (await api('/api/update')).json();
+  // UI tidak boleh menebak: jumlah run aktif dan gerbang terakhir datang dari
+  // server, sumber yang sama dengan yang dipakai untuk memutuskan.
+  assert.equal(typeof u.autoInstall, 'object');
+  assert.equal(typeof u.autoInstall.activeRuns, 'number', 'run aktif dilaporkan');
+  assert.equal(typeof u.autoInstall.pending, 'boolean', 'status penundaan dilaporkan');
+  // `decision` tetap dihitung server supaya UI tidak punya aturan kedua.
+  assert.ok(['none', 'download', 'wait', 'install', 'retry'].includes(u.decision.action),
+    'keputusan langkah berikutnya dikenal: ' + u.decision.action);
 });

@@ -385,20 +385,25 @@ A download finishing is not evidence that the file is the one the release
 published. Every release has carried `SHA256SUMS.txt` and nothing read it, so a
 truncated download or an HTML captive-portal page could be saved as
 `AgentHub-Setup.exe` and offered with an "Install now" button. Owner: `lib/install.js`
-(pure rules — checksums, interception, preflight, retry, lifecycle decisions) plus
-`server.js` (`downloadAndVerify`, `/api/update/install`). The split is what lets the
-rules be tested without downloading 100 MB or touching a real machine.
+(pure rules — checksums, interception, preflight, retry, `installGate`, lifecycle
+decisions) plus `server.js` (`downloadAndVerify`, `installNow`, `maybeAutoInstall`,
+`/api/update/install`). The split is what lets the rules be tested without
+downloading 100 MB, spawning a real installer, or touching a real machine.
 
 ```
 checking ──→ eligible ──→ downloading ──→ verifying ──→ ready ──→ installing
     │            │             │              │           │
     └────────────┴─────────────┴──→ blocked ←─┘           └──→ ready (spawn failed)
                                        └──→ checking | downloading | eligible
+
+ready ──(auto, no active run)──→ installing
+  └───(auto, run active)──→ deferred ──(runs.onIdle)──→ installing
 ```
 
-`ready` is deliberately not terminal: the user may cancel before installing, and
-`installing` returns to `ready` when the installer cannot be spawned — a state the
-UI cannot leave is a dead end.
+`ready` is deliberately not terminal: the user may cancel before installing, an
+automatic install waits for active runs to finish, and `installing` returns to
+`ready` when the installer cannot be spawned — a state the UI cannot leave is a
+dead end.
 
 | Invariant | Why |
 | --- | --- |
@@ -408,6 +413,11 @@ UI cannot leave is a dead end.
 | A non-network failure is **not retried** | Re-fetching the same bytes from the same proxy costs time and quota and returns the same bad file. `retry` is given a `shouldRetry` that rejects `CHECKSUM_MISMATCH` and `NOT_INSTALLER`. |
 | Unknown free space is `warn`, not `error` | `statfs` is unavailable on some platforms. Blocking an install because the disk size could not be read would refuse a machine that is perfectly fine. |
 | Preflight gates the API, not just the button | `/api/update/install` can be called by an agent or `curl`, with no UI. Checking only in the client would make the rule optional. |
+| One install gate, two doors | `installNow()` decides for both the button and the automatic chain, and `installGate()` is a pure function with its own test. When the refusal rules lived only inside the HTTP handler, any chain added later could skip them without anything failing. |
+| Automatic install never runs during a run | Installing closes the app, so an in-flight agent run would die mid-task. `installGate` returns `defer`, `installPending` records it, and `runs.onIdle` retries — every ending (done, error, stopped, crash recovery) goes through `finish()`. A press of "Install now" is a user decision and is never deferred. |
+| The 6-hour check never installs on its own | `autoInstall` travels only from `?install=1`, which only the button sends. Downloading and verifying in the background is useful; closing the application without being asked is not. |
+| A permanent download failure is not retried every tick | Without `updateDl.code` remembering `CHECKSUM_MISMATCH`/`NOT_INSTALLER` per version, one bad proxy means 78 MB re-downloaded every 6 hours, forever, with the same outcome. |
+| An async spawn failure must not kill the server | `spawn` reports failure as an `error` event. With no listener, Node throws unhandled and exits — moments after the user pressed install, which reads as "the installer broke the app". |
 | Retry uses jitter | Without it, every AgentHub instance alive at that moment hits the same host in the same millisecond after an outage. |
 | `installing` may fall back to `ready` | If the spawn throws, leaving the state at `installing` shows a spinner forever with no way to retry. |
 | Diagnostics redact, never omit | Tokens and keys become `[disembunyikan]`. Omitting the field would hide whether a key is even configured; printing it would leak it. |

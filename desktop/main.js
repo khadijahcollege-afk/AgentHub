@@ -172,9 +172,11 @@ function createTray() {
 }
 
 // ---------- cek pembaruan (GitHub Releases) ----------
-// Sama seperti /api/update-check di server, tapi di sisi shell: versi lebih
-// baru diumumkan lewat notifikasi Windows dan menu tray menyediakan tautan
-// langsung ke halaman rilis. Cek otomatis sekali saat boot + tiap 6 jam.
+// Shell mengumumkan versi baru lewat notifikasi Windows, tetapi PEMASANGAN
+// dikerjakan server: hanya server yang punya checksum, preflight, dan rantai
+// cek → unduh → verifikasi → pasang. Membuka halaman rilis di browser (perilaku
+// lama) membuat user mengunduh ulang secara manual — persis langkah yang
+// seharusnya dihapus.
 let updateMenuUrl = null;
 let updateChecking = false;
 function semver(v) {
@@ -189,29 +191,58 @@ function isNewer(latest, current) {
   if (a.patch !== b.patch) return a.patch > b.patch;
   return !!(b.pre && !a.pre);
 }
+
+// Minta server menjalankan rantai pembaruan. `install` hanya benar bila user
+// menekan "Cek pembaruan" di menu tray: itu permintaan eksplisit, jadi
+// installernya boleh berjalan dan menutup aplikasi.
+function pullUpdateFromServer({ install = false } = {}) {
+  const cfg = localConfig();
+  const q = install ? '/api/update-check?force=1&install=1' : '/api/update';
+  return fetch(`http://127.0.0.1:${cfg.port}${q}`, {
+    headers: { authorization: `Bearer ${cfg.token}` },
+    signal: AbortSignal.timeout(install ? 20_000 : 8_000),
+  }).then((res) => (res.ok ? res.json() : null)).catch(() => null);
+}
+
 async function checkForUpdates(manual = false) {
   if (updateChecking) return;
   updateChecking = true;
   try {
-    const res = await fetch('https://api.github.com/repos/khadijahcollege-afk/AgentHub/releases/latest', {
-      headers: { 'user-agent': 'AgentHub-desktop-update-check', accept: 'application/vnd.github+json' },
-      signal: AbortSignal.timeout(8000),
-    });
-    if (!res.ok) throw new Error(`GitHub API ${res.status}`);
-    const rel = await res.json();
-    const tag = String(rel.tag_name || '');
-    if (isNewer(tag, VERSION)) {
-      updateMenuUrl = String(rel.html_url || 'https://github.com/khadijahcollege-afk/AgentHub/releases/latest');
+    // Jalur utama: server tahu versi berjalan, aset per platform, dan checksum.
+    const u = await pullUpdateFromServer({ install: manual });
+    if (u?.ok && u.hasUpdate) {
+      updateMenuUrl = String(u.url || 'https://github.com/khadijahcollege-afk/AgentHub/releases/latest');
       rebuildTrayMenu();
-      const note = new Notification('AgentHub', {
-        body: `Versi baru ${tag} tersedia — buka menu tray untuk mengunduh.`,
-        silent: !manual,
-      });
-      note.on('click', () => { shell.openExternal(updateMenuUrl); });
+      const d = u.download?.status;
+      const body = d === 'installing' || (d === 'ready' && u.autoInstall?.enabled !== false)
+        ? `Versi ${u.latest} sedang dipasang — aplikasi akan ditutup lalu dimulai ulang.`
+        : d === 'downloading'
+          ? `Versi ${u.latest} sedang diunduh (${u.download?.pct || 0}%).`
+          : `Versi baru ${u.latest} tersedia — pemasangan berjalan dari aplikasi.`;
+      const note = new Notification('AgentHub', { body, silent: !manual });
+      note.on('click', () => { showWindow().catch(failStartup); });
       note.show();
-    } else if (manual) {
-      const note = new Notification('AgentHub', { body: `Sudah versi terbaru (${VERSION}).` });
-      note.show();
+      return;
+    }
+    if (manual) {
+      // Jangan mengarang "sudah terbaru" kalau server tidak bisa dihubungi:
+      // cek cadangan ke GitHub API hanya untuk memberi jawaban yang jujur.
+      if (!u) {
+        const res = await fetch('https://api.github.com/repos/khadijahcollege-afk/AgentHub/releases/latest', {
+          headers: { 'user-agent': 'AgentHub-desktop-update-check', accept: 'application/vnd.github+json' },
+          signal: AbortSignal.timeout(8000),
+        });
+        if (!res.ok) throw new Error(`GitHub API ${res.status}`);
+        const rel = await res.json();
+        const tag = String(rel.tag_name || '');
+        if (isNewer(tag, VERSION)) {
+          updateMenuUrl = String(rel.html_url || 'https://github.com/khadijahcollege-afk/AgentHub/releases/latest');
+          rebuildTrayMenu();
+          new Notification('AgentHub', { body: `Versi baru ${tag} tersedia. Buka jendela AgentHub lalu Cek pembaruan untuk memasangnya.` }).show();
+          return;
+        }
+      }
+      new Notification('AgentHub', { body: `Sudah versi terbaru (${VERSION}).` }).show();
     }
   } catch (e) {
     if (manual) {
@@ -298,7 +329,7 @@ function trayTemplate() {
     },
   ];
   if (updateMenuUrl) {
-    template.push({ label: 'Unduh versi baru', click: () => shell.openExternal(updateMenuUrl) });
+    template.push({ label: 'Buka halaman rilis', click: () => shell.openExternal(updateMenuUrl) });
   }
   template.push(
     { type: 'separator' },

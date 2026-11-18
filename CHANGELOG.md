@@ -1,5 +1,58 @@
 # Changelog
 
+## 1.9.2 — 2026-11-18
+Cek pembaruan menyelesaikan pekerjaannya sendiri: cek → unduh → verifikasi →
+pasang.
+
+Sampai 1.9.1 tombol **Cek pembaruan** hanya memberi tahu bahwa ada versi baru.
+Unduhannya berjalan sendiri, tetapi installer yang sudah terverifikasi tetap
+menunggu satu klik pada **Pasang sekarang** — tombol yang tidak menambah
+keputusan apa pun, karena checksum berkasnya sudah dicocokkan. Di shell desktop,
+menu tray bahkan hanya membuka halaman rilis di browser, sehingga user
+mengunduh 78 MB untuk kedua kalinya dengan tangan. Rilis ini menyambung rantai
+itu, dan sekaligus memperbaiki tiga cacat yang muncul di jalan yang sama.
+
+- **Rantai pemasangan otomatis** (`server.js`) — `startDownload` yang berakhir
+  `ready` langsung memanggil `installNow()`. `autoInstall: 'unduhan selesai'`
+  dipakai bersama `installGate`, jadi aturan penolakan tidak bisa berbeda antara
+  tombol dan rantai.
+- **Pemasangan ditunda selama ada run aktif** — installer menutup aplikasi, dan
+  run yang berjalan akan mati di tengah pekerjaan. `installGate` mengembalikan
+  `defer`; penundaan dipicu ulang dari `runs.onIdle`, sehingga semua akhir run
+  (selesai, error, dihentikan, pemulihan crash) ikut memicunya. Pemasangan yang
+  diminta user secara eksplisit tidak pernah ditunda.
+- **Cek berkala tidak memasang sendiri** — `updateTick` menerima `autoInstall`
+  hanya dari `?install=1`. Pemeriksaan latar tiap 6 jam tetap mengunduh dan
+  memverifikasi, tetapi tidak menutup aplikasi tanpa diminta.
+- **Tombol Cek tidak lagi dijawab dari cache** (`public/app.js`) — dulu ia
+  memanggil `/api/update` (cache 30 menit), jadi user yang baru memperbaiki proxy
+  tetap melihat jawaban lama dan menyimpulkan tombolnya rusak. Sekarang
+  `/api/update-check?force=1&install=1`, lalu status dipantau lewat polling
+  sampai rantai selesai — SSE bisa putus tepat saat installer menutup server.
+- **`autoUpdate` menjadi nilai sungguhan** (`lib/store.js`) — key ini tidak ada
+  di `DEFAULT_CONFIG`, dan seluruh kode memakai `config.autoUpdate !== false`.
+  Artinya pengguna yang tidak pernah melihat pilihan itu selalu dianggap memilih
+  "pasang otomatis", tanpa jalan mematikannya dari UI. Sekarang defaultnya
+  tertulis di `config.json` dan sakelarnya ada di pane Desktop
+  (`#set-autoupdate`), disimpan segera saat diubah.
+- **Shell desktop memakai jalur server** (`desktop/main.js`) — "Cek pembaruan" di
+  tray kini meminta server menjalankan rantai; GitHub API dipertahankan hanya
+  sebagai jawaban cadangan bila server tidak bisa dihubungi. Label lama "Unduh
+  versi baru" menjadi "Buka halaman rilis", karena mengunduh bukan lagi langkah
+  yang perlu dilakukan user.
+- **Kegagalan spawn installer tidak lagi mematikan server** (`lib/update.js`) —
+  `spawn` bisa gagal asinkron (antivirus, berkas hilang di antara pemeriksaan dan
+  eksekusi). Tanpa pendengar `error`, Node melempar error tak tertangani dan
+  proses mati tepat setelah user menekan "pasang".
+- **Kegagalan permanen tidak diulang selamanya** — satu checksum yang tidak
+  cocok berarti 78 MB diunduh ulang setiap 6 jam dari proxy yang sama, dengan
+  hasil yang sama. Kode kegagalan kini dicatat di `updateDl.code` dan dilewati
+  sampai user meminta ulang.
+- **`launchInstaller` bisa dilarang oleh kebijakan mesin**
+  (`AGENTHUB_NO_LAUNCH_INSTALLER=1`) — unduhan dan verifikasi tetap berjalan,
+  peluncuran dilaporkan sebagai ditahan. Tanpa kunci ini, satu-satunya cara
+  mematikan pemasangan adalah mematikan `autoUpdate` sepenuhnya.
+
 ## 1.9.1 — 2026-11-18
 Kegagalan yang menyebut sebabnya, dan penyimpanan config yang tidak lagi kalah
 oleh antivirus.

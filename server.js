@@ -46,12 +46,12 @@ import * as freerot from './lib/freerot.js';
 import { listModelChoices, activateModel, isMaskedKey } from './lib/models.js';
 import { tunnelStatus, startTunnel, stopTunnel } from './lib/tunnel.js';
 import {
-  fetchLatestRelease, updateInfo, fullUpdateInfo, assetFor, downloadAsset, launchInstaller,
+  fetchLatestRelease, fullUpdateInfo, assetFor, downloadAsset, launchInstaller,
   fetchChecksums,
 } from './lib/update.js';
 import {
   parseChecksums, verifyFile, hashFile, detectInterception, readMagic, preflight,
-  freeSpace, canWrite, firstSuccess, retry, installDecision, uninstallPlan,
+  freeSpace, canWrite, firstSuccess, retry, installDecision, installGate, uninstallPlan,
   diagnosticsBundle, bundleToText,
 } from './lib/install.js';
 import * as runs from './lib/runs.js';
@@ -123,16 +123,25 @@ let updateVerify = { status: 'none', expected: null, actual: null, reason: null,
 // Preflight terakhir untuk mesin ini. Dihitung ulang setiap kali diminta,
 // tetapi disimpan supaya UI bisa menampilkan temuan tanpa menunggu.
 let installPre = null;
+// Pemasangan otomatis yang SUDAH diputuskan tetapi belum dijalankan. Hanya
+// berisi satu hal: "jadwalkan pemasangan begitu tidak ada run berjalan".
+// Disimpan di memori, bukan di config: kalau server mati, unduhan tetap ada di
+// dist/ dan pemeriksaan berikutnya akan memutuskan ulang dari fakta di disk.
+let installPending = null;
+// Hasil gerbang pemasangan terakhir, supaya UI bisa menyebut ALASAN penundaan
+// atau penolakan tanpa menghitung ulang aturan yang sama dengan cara berbeda.
+let installGateLast = null;
 
 function updatePublic() {
   const info = updateCache.data;
   const { path, ...rest } = updateDl;
+  const ready = updateDl.status === 'ready';
   return {
     ...info,
     autoUpdate: config.autoUpdate !== false,
     download: rest,
-    installable: updateDl.status === 'ready' && fs.existsSync(updateDl.path || ''),
-    installerPath: updateDl.status === 'ready' ? updateDl.path : null,
+    installable: ready && fs.existsSync(updateDl.path || ''),
+    installerPath: ready ? updateDl.path : null,
     asset: info?.ok && info.hasUpdate ? assetFor() : null,
     // status verifikasi + keputusan langkah berikutnya, supaya UI tidak
     // menghitung ulang aturan yang sama dengan cara berbeda.
@@ -143,10 +152,18 @@ function updatePublic() {
       hasUpdate: !!info?.hasUpdate,
       downloadStatus: updateDl.status,
     }),
+    // Pemasangan otomatis: satu-satunya tempat UI tahu bahwa ia TIDAK perlu
+    // menekan apa pun. `gate` membawa alasan penundaan/penolakan apa adanya.
+    autoInstall: {
+      enabled: config.autoUpdate !== false,
+      pending: !!installPending,
+      activeRuns: runs.activeRuns().length,
+      gate: installGateLast,
+    },
   };
 }
 
-async function updateTick(force = false) {
+async function updateTick(force = false, { autoInstall = false } = {}) {
   const now = Date.now();
   if (!force && updateCache.at && now - updateCache.at < 30 * 60 * 1000) return;
   // Sumber berantai: API GitHub bisa diblokir jaringan kantor, tetapi
@@ -194,10 +211,23 @@ async function updateTick(force = false) {
     };
   }
   broadcast('update');
-  // ada versi baru + autoUpdate aktif → unduh otomatis (sekali per versi)
-  if (updateCache.data?.hasUpdate && config.autoUpdate !== false
-    && updateDl.version !== updateCache.data.latest && updateDl.status !== 'downloading') {
-    startDownload();
+  // Ada versi baru + autoUpdate aktif → unduh otomatis (sekali per versi).
+  // `autoInstall` HANYA benar untuk pemeriksaan yang diminta user (tombol).
+  // Pemeriksaan berkala tetap mengunduh, tetapi tidak pernah memasang sendiri:
+  // memasang berarti aplikasi ditutup, dan itu keputusan user, bukan jadwal.
+  if (updateCache.data?.hasUpdate && config.autoUpdate !== false) {
+    if (updateDl.version === updateCache.data.latest && updateDl.status === 'ready') {
+      if (autoInstall) maybeAutoInstall('berkas sudah siap');
+    } else if (updateDl.status !== 'downloading') {
+      // Permintaan user (`autoInstall`) juga MEMAKSA unduh ulang setelah
+      // kegagalan permanen: proxy yang tadi merusak berkas mungkin sudah
+      // diperbaiki, dan user yang menekan tombol berhak mendapat percobaan baru.
+      startDownload(autoInstall, { autoInstall });
+    }
+  } else if (!updateCache.data?.hasUpdate) {
+    // Versi di disk ternyata bukan lagi yang terbaru (mis. rilis ditarik):
+    // jangan biarkan berkas lama dipasang diam-diam.
+    installPending = null;
   }
 }
 
@@ -249,13 +279,18 @@ async function downloadAndVerify(info, dest) {
   return { ...r, verify: v };
 }
 
-function startDownload(force = false) {
+function startDownload(force = false, { autoInstall = false } = {}) {
   const info = updateCache.data;
   if (!info?.ok || !info.hasUpdate || !info.asset) return;
   if (updateBusy || updateDl.status === 'downloading') return;
   // sudah ada untuk versi ini → jangan unduh ulang (kecuali diminta paksa
   // setelah gagal)
   if (updateDl.version === info.latest && updateDl.status === 'ready' && !force) return;
+  // Kegagalan PERMANEN untuk versi ini tidak diulang otomatis. Tanpa ini,
+  // satu checksum yang tidak cocok berarti 78 MB diunduh ulang setiap 6 jam,
+  // selamanya, dari proxy yang sama — dan tiap kali hasilnya sama.
+  if (!force && updateDl.version === info.latest && updateDl.status === 'error'
+    && ['CHECKSUM_MISMATCH', 'NOT_INSTALLER'].includes(updateDl.code)) return;
   updateBusy = true;
   updateDl = { status: 'downloading', pct: 0, bytes: 0, total: 0, error: null, path: null, version: info.latest, at: Date.now() };
   updateVerify = { status: 'none', expected: null, actual: null, reason: null, at: 0 };
@@ -265,21 +300,130 @@ function startDownload(force = false) {
   // bukan installer TIDAK diulang: mengunduh ulang berkas yang sama dari
   // proxy yang sama hanya membuang waktu dan kuota user.
   const transient = (e) => !['CHECKSUM_MISMATCH', 'NOT_INSTALLER'].includes(e?.code);
-  retry(() => downloadAndVerify(info, dest), {
+  // Kode kegagalan dicatat terpisah: `retry` hanya mengembalikan pesan, padahal
+  // yang menentukan "boleh diulang atau tidak" adalah KODEnya, bukan teksnya.
+  let lastCode = null;
+  retry(() => downloadAndVerify(info, dest).catch((e) => { lastCode = e?.code || null; throw e; }), {
     attempts: 3, shouldRetry: transient,
     sleep: async (ms) => { broadcast('update'); await new Promise((r) => setTimeout(r, ms)); },
   }).then((out) => {
     if (!out.ok) {
-      updateDl = { ...updateDl, status: 'error', error: out.error, at: Date.now() };
+      updateDl = { ...updateDl, status: 'error', error: out.error, code: lastCode, at: Date.now() };
       broadcast('update');
       return;
     }
     updateDl = { ...updateDl, status: 'ready', bytes: out.value.bytes, path: out.value.path, pct: 100, at: Date.now() };
     broadcast('update');
+    // Rantai: unduhan yang sudah terverifikasi langsung dipasang. Inilah inti
+    // permintaan "klik cek pembaruan → kalau versi lama, langsung perbarui":
+    // tanpa langkah ini user harus menekan tombol kedua yang tidak menambah
+    // keputusan apa pun — berkasnya sudah diperiksa checksum-nya.
+    if (autoInstall) maybeAutoInstall('unduhan selesai');
   }).finally(() => {
     updateBusy = false;
   });
 }
+
+// Satu jalur pemasangan untuk dua pintu: tombol "Pasang sekarang" dan rantai
+// otomatis. Dulu keputusan penolakan (checksum, preflight) hanya ada di dalam
+// handler HTTP, jadi jalur otomatis apa pun yang ditambahkan belakangan bisa
+// melewatinya. Sekarang keduanya memakai gerbang yang sama.
+function installNow({ auto = false } = {}) {
+  const info = updateCache.data;
+  if (!info?.ok) return { ok: false, status: 409, body: { error: 'Info versi belum tersedia' } };
+  const onDisk = updateDl.status === 'ready' && fs.existsSync(updateDl.path || '');
+  const pre = installPreflight();
+  const gate = installGate({
+    ready: onDisk,
+    installing: updateDl.status === 'installing',
+    verifyStatus: updateVerify.status,
+    preflightFailed: pre.ok ? [] : pre.failed,
+    activeRuns: runs.activeRuns().length,
+    auto,
+  });
+  installGateLast = { ...gate, auto, at: Date.now() };
+  if (gate.action === 'skip' || gate.action === 'refuse') {
+    // Berkas yang hilang dari dist/ bukan penolakan keamanan: itu unduhan yang
+    // perlu diulang, dan pesannya harus menyebut itu supaya user tidak mencari
+    // masalah di checksum.
+    if (gate.code === 'NOT_READY' && updateDl.status === 'ready') {
+      return {
+        ok: false, status: 409,
+        body: { error: 'Berkas installer hilang dari dist/ — unduh ulang', code: 'MISSING_FILE', gate },
+      };
+    }
+    const body = { error: gate.why, code: gate.code, gate };
+    if (gate.code === 'PREFLIGHT_FAILED') body.preflight = pre;
+    return { ok: false, status: 409, body };
+  }
+  if (gate.action === 'defer') return { ok: false, status: 409, body: { error: gate.why, code: gate.code, gate } };
+  try {
+    const r = launchInstaller(updateDl.path, process.platform, null, {
+      // Kegagalan spawn datang belakangan; status harus kembali jujur supaya
+      // tombol masih masuk akal dan percobaan berikutnya tidak buta.
+      onError: (e) => {
+        updateDl = { ...updateDl, status: 'ready', error: `installer gagal dijalankan: ${String(e?.message || e)}`, at: Date.now() };
+        installPending = null;
+        broadcast('update');
+      },
+    });
+    // `installing` bukan state akhir: bila proses pemasangan gagal
+    // dijalankan, status kembali ke `ready` supaya tombol tetap masuk akal.
+    // Bila peluncuran SENGAJA dilarang (kebijakan mesin), status tetap `ready`
+    // dan UI diberi tahu — berpura-pura "sedang memasang" akan membuat user
+    // menunggu aplikasi yang tidak akan pernah ditutup.
+    if (r.launched === false) {
+      updateDl = { ...updateDl, status: 'ready', error: null, at: Date.now() };
+      installPending = null;
+      broadcast('update');
+      return {
+        ok: true, status: 200,
+        body: { ok: true, ...r, path: updateDl.path, auto, gate, note: 'installer tidak dijalankan di mesin ini' },
+      };
+    }
+    updateDl = { ...updateDl, status: 'installing', error: null, at: Date.now() };
+    installPending = null;
+    broadcast('update');
+    return { ok: true, status: 200, body: { ok: true, ...r, path: updateDl.path, auto, gate } };
+  } catch (e) {
+    updateDl = { ...updateDl, status: 'ready', error: String(e.message || e), at: Date.now() };
+    broadcast('update');
+    return { ok: false, status: 500, body: { error: String(e.message || e) } };
+  }
+}
+
+// Pemasangan otomatis. Dipanggil dari dua tempat: sesudah unduhan selesai, dan
+// sesudah run terakhir selesai (bila tadi ditunda). Tidak pernah melempar:
+// kegagalan pemasangan tidak boleh menggagalkan proses unduh yang sudah berhasil.
+function maybeAutoInstall(reason = '') {
+  if (config.autoUpdate === false) return { action: 'off' };
+  if (updateDl.status !== 'ready') return { action: 'skip' };
+  const r = installNow({ auto: true });
+  if (r.ok) return { action: 'installed', reason };
+  const code = r.body?.code;
+  if (code === 'DEFERRED') {
+    // Dicatat supaya UI bisa mengatakan "menunggu run selesai", dan supaya
+    // pendengar idle tahu ada pekerjaan yang tertunda. Menjalankan installer
+    // sekarang berarti mematikan pekerjaan user tanpa izin.
+    installPending = { version: updateDl.version, why: r.body.error, at: Date.now() };
+    broadcast('update');
+    return { action: 'deferred', code };
+  }
+  // Penolakan keras (checksum/preflight): tidak diulang, tidak dijadwalkan.
+  installPending = null;
+  broadcast('update');
+  return { action: 'refused', code };
+}
+
+// Installer mematikan server, jadi pemasangan yang tertunda baru dijalankan
+// ketika tidak ada lagi pekerjaan yang bisa hilang. `onIdle` dipakai supaya
+// semua akhir run (selesai, error, dihentikan, pemulihan crash) ikut memicu.
+runs.onIdle(() => {
+  if (!installPending) return;
+  if (runs.activeRuns().length) return;
+  setImmediate(() => { maybeAutoInstall('semua run selesai'); });
+});
+
 // Preflight dijalankan ulang setiap kali diminta (murah: satu statfs + satu
 // access). Hasil terakhir disimpan untuk dibaca UI tanpa menunggu, tetapi
 // keputusan selalu diambil dari jalankan baru — mesin bisa berubah di antara
@@ -2792,8 +2936,15 @@ ${msgs || '<p class="meta">Percakapan kosong.</p>'}
     // `?force=1` melewati cache 30 menit. Tombol "Cek pembaruan" memakai ini:
     // menjawab dari cache membuat tombol itu terasa rusak saat user baru saja
     // memperbaiki jaringan atau proxy.
-    await updateTick(url.searchParams.get('force') === '1').catch(() => {});
-    return sendJson(res, 200, updateCache.data || updateInfo(APP_VERSION, null, { error: 'belum diperiksa' }));
+    //
+    // `?install=1` berarti user MEMINTA pembaruan, bukan sekadar ingin tahu:
+    // rantai cek → unduh → verifikasi → pasang dijalankan sampai selesai.
+    // Tanpa flag ini (pemeriksaan berkala), unduhan tetap otomatis tetapi
+    // pemasangan menunggu persetujuan — memasang berarti menutup aplikasi.
+    const force = url.searchParams.get('force') === '1';
+    const autoInstall = url.searchParams.get('install') === '1' && config.autoUpdate !== false;
+    await updateTick(force, { autoInstall }).catch(() => {});
+    return sendJson(res, 200, updatePublic());
   }
 
   // ---- auto-update: status, unduh manual, pasang ----
@@ -2809,40 +2960,12 @@ ${msgs || '<p class="meta">Percakapan kosong.</p>'}
     return sendJson(res, 200, { ok: true, status: 'downloading' });
   }
   if (p === '/api/update/install' && method === 'POST') {
-    const info = updateCache.data;
-    if (!info?.ok) return sendJson(res, 409, { error: 'Info versi belum tersedia' });
-    if (updateDl.status !== 'ready') return sendJson(res, 409, { error: 'Berkas installer belum siap — tunggu unduhan selesai atau panggil /api/update/download' });
-    const exists = fs.existsSync(updateDl.path);
-    if (!exists) return sendJson(res, 409, { error: 'Berkas installer hilang dari dist/ — unduh ulang' });
-    // Checksum yang beda adalah penolakan keras: berkas itu tidak boleh
-    // dijalankan. Preflight juga diperiksa di sini, bukan hanya di UI —
-    // endpoint ini bisa dipanggil agent atau curl, tanpa UI sama sekali.
-    if (updateVerify.status === 'mismatch') {
-      return sendJson(res, 409, {
-        error: 'Installer ditolak: checksum tidak cocok dengan SHA256SUMS.txt rilis',
-        code: 'CHECKSUM_MISMATCH',
-      });
-    }
-    const pre = installPreflight();
-    if (!pre.ok) {
-      return sendJson(res, 409, {
-        error: `Pemasangan dihalangi: ${pre.failed.join(', ')}`,
-        code: 'PREFLIGHT_FAILED',
-        preflight: pre,
-      });
-    }
-    try {
-      const r = launchInstaller(updateDl.path);
-      // `installing` bukan state akhir: bila proses pemasangan gagal
-      // dijalankan, status kembali ke `ready` supaya tombol tetap masuk akal.
-      updateDl = { ...updateDl, status: 'installing', error: null, at: Date.now() };
-      broadcast('update');
-      return sendJson(res, 200, { ok: true, ...r, path: updateDl.path });
-    } catch (e) {
-      updateDl = { ...updateDl, status: 'ready', at: Date.now() };
-      broadcast('update');
-      return sendJson(res, 500, { error: String(e.message || e) });
-    }
+    // Keputusan (checksum, preflight, run aktif) ada di `installNow` supaya
+    // tombol dan rantai otomatis tidak bisa berbeda aturan. Endpoint ini bisa
+    // dipanggil agent atau curl tanpa UI, jadi gerbangnya tetap di sini.
+    const r = installNow({ auto: false });
+    if (!r.ok) return sendJson(res, r.status, r.body);
+    return sendJson(res, 200, r.body);
   }
 
   // ---- preflight: kelayakan mesin SEBELUM 100 MB diunduh ----

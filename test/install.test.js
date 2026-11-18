@@ -15,10 +15,10 @@ import { pickFreePort } from './helpers/port.js';
 import { stopTestServer } from './helpers/server.js';
 import {
   parseChecksums, hashFile, verifyFile, detectInterception, readMagic, preflight,
-  firstSuccess, retry, installDecision, uninstallPlan, redact,
+  firstSuccess, retry, installDecision, installGate, uninstallPlan, redact,
   diagnosticsBundle, bundleToText,
 } from '../lib/install.js';
-import { CHECKSUM_ASSET, fetchChecksums } from '../lib/update.js';
+import { CHECKSUM_ASSET, fetchChecksums, launchInstaller } from '../lib/update.js';
 import { INSTALL_MACHINE, canTransition, MACHINE_VERSION } from '../lib/machines.js';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -92,6 +92,16 @@ test.before(async () => {
     port: PORT, token: TOKEN, notify: false, refreshHours: 168,
     agentCheckMinutes: 1440, keyCheckHours: 168, baselined: true, createdAt: Date.now(),
   }));
+  // Harness lambat: satu-satunya cara menguji bahwa pemasangan otomatis BENAR
+  // menunggu run selesai adalah punya run yang benar-benar masih berjalan.
+  // Tanpa ini, "defer" hanya bisa diuji sebagai fungsi murni — dan justru
+  // sambungan ke `runs.onIdle` yang bisa putus tanpa ketahuan.
+  const isWin = process.platform === 'win32';
+  fs.writeFileSync(path.join(dataDir, 'harnesses.json'), JSON.stringify(
+    isWin
+      ? [{ id: 'slow', label: 'Slow', cmd: 'cmd', args: ['/c', 'ping', '-n', '30', '127.0.0.1'] }]
+      : [{ id: 'slow', label: 'Slow', cmd: 'sleep', args: ['25'] }],
+  ));
   child = spawn(process.execPath, ['server.js'], {
     cwd: ROOT,
     env: {
@@ -104,6 +114,9 @@ test.before(async () => {
       AGENTHUB_STRICT_PORT: '1',
       AGENTHUB_UPDATE_API: `http://127.0.0.1:${mockPort}/releases/latest`,
       AGENTHUB_UPDATE_DOWNLOAD: `http://127.0.0.1:${mockPort}/download`,
+      // Installer sungguhan tidak boleh dijalankan oleh tes: ia memasang
+      // AgentHub dan menutup proses. Yang diuji adalah KEPUTUSAN dan urutannya.
+      AGENTHUB_NO_LAUNCH_INSTALLER: '1',
     },
     stdio: 'ignore',
     windowsHide: true,
@@ -308,6 +321,51 @@ test('install: mesin install punya jalur sah dari checking ke ready dan sebalikn
   assert.equal(canTransition(INSTALL_MACHINE, 'blocked', 'installing'), false);
 });
 
+test('install: launchInstaller melaporkan kegagalan spawn alih-alih mematikan proses', () => {
+  // `spawn` bisa gagal secara ASINKRON (antivirus, berkas hilang). Tanpa
+  // pendengar `error`, Node melempar error tak tertangani dan server mati
+  // tepat sesudah user menekan "pasang".
+  const seen = [];
+  const fakeSpawn = () => {
+    const handlers = {};
+    return {
+      pid: 4242,
+      on: (ev, fn) => { handlers[ev] = fn; },
+      unref: () => { seen.push('unref'); },
+      emit: (ev, arg) => handlers[ev]?.(arg),
+    };
+  };
+  const child = fakeSpawn();
+  const r = launchInstaller('C:\\fake\\setup.exe', 'win32', () => child, { onError: (e) => seen.push(`err:${e.message}`) });
+  assert.equal(r.launched, true);
+  assert.equal(r.mode, 'silent');
+  assert.deepEqual(seen, ['unref'], 'proses dilepas agar induk bisa keluar');
+  // Simulasikan kegagalan asinkron: pelapor dipanggil, bukan melempar.
+  child.emit('error', new Error('EBUSY'));
+  assert.deepEqual(seen, ['unref', 'err:EBUSY']);
+
+  // macOS/Linux tidak bisa senyap — mode jujur "open", bukan "silent" palsu.
+  const mac = launchInstaller('/Applications/x.dmg', 'darwin', () => fakeSpawn());
+  assert.equal(mac.mode, 'open');
+});
+
+test('install: kebijakan mesin bisa melarang installer dijalankan', async () => {
+  // Tanpa kunci ini, satu-satunya cara mematikan pemasangan otomatis adalah
+  // mematikan autoUpdate sepenuhnya — yang juga mematikan unduhan.
+  const before = process.env.AGENTHUB_NO_LAUNCH_INSTALLER;
+  process.env.AGENTHUB_NO_LAUNCH_INSTALLER = '1';
+  try {
+    let spawned = false;
+    const r = launchInstaller('x.exe', 'win32', () => { spawned = true; return {}; });
+    assert.equal(r.launched, false);
+    assert.equal(r.suppressed, true);
+    assert.equal(spawned, false, 'tidak ada proses yang dijalankan');
+  } finally {
+    if (before === undefined) delete process.env.AGENTHUB_NO_LAUNCH_INSTALLER;
+    else process.env.AGENTHUB_NO_LAUNCH_INSTALLER = before;
+  }
+});
+
 // ---------- diagnostik ----------
 
 test('install: redact menyembunyikan rahasia tapi mempertahankan keberadaannya', () => {
@@ -428,6 +486,76 @@ test('install: checksum salah menolak pemasangan, bukan menjalankan berkas', asy
   assert.match(body.error, /belum siap|checksum/i);
 });
 
+test('install: installGate menolak checksum/preflight dan menunda saat ada run', () => {
+  // Jalur normal
+  assert.equal(installGate({ ready: true }).action, 'install');
+  // Penolakan keras tidak bergantung pada `auto`
+  assert.equal(installGate({ ready: true, verifyStatus: 'mismatch' }).code, 'CHECKSUM_MISMATCH');
+  assert.equal(installGate({ ready: true, preflightFailed: ['disk'] }).code, 'PREFLIGHT_FAILED');
+  // Satu penolakan tidak bisa ditawar dengan menekan tombol
+  assert.equal(installGate({ ready: true, verifyStatus: 'mismatch', auto: false }).action, 'refuse');
+  // Belum siap / sedang memasang: bukan penolakan, hanya belum waktunya
+  assert.equal(installGate({ ready: false }).code, 'NOT_READY');
+  assert.equal(installGate({ ready: true, installing: true }).code, 'INSTALLING');
+  // Penundaan HANYA berlaku untuk pemasangan otomatis: menekan "Pasang
+  // sekarang" adalah keputusan user dan tidak boleh diabaikan diam-diam.
+  assert.equal(installGate({ ready: true, activeRuns: 2 }).action, 'install', 'manual tetap jalan');
+  const auto = installGate({ ready: true, activeRuns: 2, auto: true });
+  assert.equal(auto.action, 'defer');
+  assert.equal(auto.activeRuns, 2);
+  // `unverified` (tanpa SHA256SUMS.txt) BUKAN penolakan: berkas tidak bisa
+  // dibandingkan, tetapi bukan berarti rusak. UI yang wajib mengatakannya.
+  assert.equal(installGate({ ready: true, verifyStatus: 'unverified' }).action, 'install');
+});
+
+test('install: cek manual dengan ?install=1 merantai unduh → verifikasi → pasang', async () => {
+  // Kebijakan mesin melarang installer dijalankan, jadi yang diamati adalah
+  // bahwa rantai sampai ke titik peluncuran DAN melaporkannya dengan jujur.
+  mockMode = 'ok';
+  mockTag = 'v99.3.0';
+
+  const r = await api('/api/update-check?force=1&install=1');
+  assert.equal(r.status, 200);
+  const body = await r.json();
+  assert.equal(body.hasUpdate, true);
+  assert.equal(body.autoInstall?.enabled, true, 'pemasangan otomatis menyala pada config default');
+
+  // Tunggu rantai selesai. Status akhir yang sah: `ready` (dijalankan/ditahan)
+  // — tidak boleh tertinggal di `downloading`.
+  let u = null;
+  for (let i = 0; i < 80; i++) {
+    await new Promise((res) => setTimeout(res, 250));
+    u = await (await api('/api/update')).json();
+    if (['ready', 'error', 'installing'].includes(u.download?.status)) break;
+  }
+  assert.equal(u.download.status, 'ready',
+    'rantai berhenti di siap-pasang karena peluncuran dilarang di mesin uji: ' + JSON.stringify(u.download));
+  assert.equal(u.verify.status, 'ok', 'checksum diperiksa sebelum pemasangan diputuskan: ' + JSON.stringify(u.verify));
+  assert.equal(u.installable, true);
+  // Gerbang terakhir tercatat, jadi UI bisa menyebut alasan apa pun yang
+  // menghalangi tanpa menebak.
+  assert.equal(u.autoInstall?.gate?.code, 'OK', 'gerbang meloloskan pemasangan: ' + JSON.stringify(u.autoInstall));
+  assert.equal(u.autoInstall?.pending, false, 'tidak ada run aktif → tidak ada penundaan');
+});
+
+test('install: pemasangan otomatis TIDAK melewati penolakan checksum', async () => {
+  mockMode = 'bad';
+  mockTag = 'v99.4.0';
+
+  await api('/api/update-check?force=1&install=1');
+  let u = null;
+  for (let i = 0; i < 80; i++) {
+    await new Promise((res) => setTimeout(res, 250));
+    u = await (await api('/api/update')).json();
+    if (u.download?.status === 'error') break;
+  }
+  assert.equal(u.download.status, 'error');
+  assert.equal(u.verify.status, 'mismatch');
+  assert.equal(u.installable, false, 'berkas dengan checksum salah tidak pernah "siap"');
+  // Status tidak boleh berpura-pura memasang berkas yang ditolak.
+  assert.notEqual(u.download.status, 'installing');
+});
+
 test('install: isi HTML dari proxy ditolak sebagai bukan installer', async () => {
   mockMode = 'html';
   mockTag = 'v99.2.0';
@@ -444,3 +572,63 @@ test('install: isi HTML dari proxy ditolak sebagai bukan installer', async () =>
     'pesan menyebut sebabnya, bukan sekadar "gagal": ' + u.download.error);
   assert.equal(u.installable, false);
 });
+
+test('install: pemasangan otomatis DITUNDA selama ada run, lalu jalan setelah run selesai', async () => {
+  // Ini sambungan yang paling mudah putus tanpa ketahuan: `installGate`
+  // mengembalikan `defer` dengan benar, tetapi tidak ada yang memicunya lagi
+  // sesudah run terakhir selesai. Akibatnya installer tidak pernah berjalan
+  // dan UI diam-diam menampilkan "menunggu" selamanya.
+  mockMode = 'ok';
+  mockTag = 'v99.5.0';
+
+  const t = await (await api('/api/threads', {
+    method: 'POST', body: JSON.stringify({ engine: 'slow' }),
+  })).json();
+  const run = await api(`/api/threads/${t.id}/send`, {
+    method: 'POST', body: JSON.stringify({ prompt: 'kerja panjang', engine: 'slow' }),
+  });
+  assert.equal(run.status, 200, 'run harus mulai supaya penundaan bisa diuji');
+
+  const started = await (await api('/api/update')).json();
+  assert.equal(started.autoInstall.activeRuns >= 1, true,
+    'server harus MELIHAT run yang sedang berjalan: ' + JSON.stringify(started.autoInstall));
+
+  await api('/api/update-check?force=1&install=1');
+
+  let u = null;
+  for (let i = 0; i < 120; i++) {
+    await new Promise((res) => setTimeout(res, 250));
+    u = await (await api('/api/update')).json();
+    if (u.download?.status === 'ready') break;
+    if (u.download?.status === 'error') break;
+  }
+  assert.equal(u.download.status, 'ready', 'unduhan selesai & terverifikasi: ' + JSON.stringify(u.download));
+  assert.equal(u.installable, true);
+  // Inti penundaan: berkas SIAP, tetapi pemasangan sengaja belum dijalankan.
+  // Installer menutup aplikasi, dan run yang masih bekerja akan mati di tengah.
+  assert.equal(u.autoInstall.pending, true,
+    'pemasangan harus tertunda selama run berjalan: ' + JSON.stringify(u.autoInstall));
+  assert.equal(u.autoInstall.gate?.code, 'DEFERRED');
+  assert.notEqual(u.download.status, 'installing', 'installer tidak boleh jalan saat agent bekerja');
+
+  // Selesaikan run → pendengar `runs.onIdle` harus melanjutkan pemasangan.
+  await api(`/api/threads/${t.id}/stop`, { method: 'POST' });
+  await run.text().catch(() => '');
+
+  let after = null;
+  for (let i = 0; i < 120; i++) {
+    await new Promise((res) => setTimeout(res, 250));
+    after = await (await api('/api/update')).json();
+    if (after.autoInstall?.pending === false && after.autoInstall?.gate?.auto === true) break;
+  }
+  assert.equal(after.autoInstall.pending, false,
+    'penundaan harus dilepas setelah run selesai: ' + JSON.stringify(after.autoInstall));
+  assert.equal(after.autoInstall.activeRuns, 0, 'run benar-benar sudah berhenti');
+  assert.equal(after.autoInstall.gate.code, 'OK',
+    'gerbang meloloskan pemasangan pada percobaan kedua: ' + JSON.stringify(after.autoInstall.gate));
+  assert.equal(after.autoInstall.gate.auto, true, 'perjalanan kedua berasal dari rantai otomatis');
+  // Peluncuran dilarang di mesin uji, jadi status kembali `ready` — bukan
+  // berpura-pura `installing` untuk installer yang tidak pernah dijalankan.
+  assert.equal(after.download.status, 'ready');
+});
+

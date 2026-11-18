@@ -996,6 +996,8 @@
             <div class="panel inner" id="update-panel">
               <b>Pembaruan</b>
               <p class="muted small" style="margin-top:4px">Versi berjalan <code id="update-current">…</code>. Periksa GitHub Releases untuk rilis lebih baru.</p>
+              <label class="switch-row" style="margin-top:10px"><input id="set-autoupdate" type="checkbox"><span>Cek pembaruan → langsung unduh &amp; pasang</span></label>
+              <p class="muted small">Bila menyala, menekan <b>Cek pembaruan</b> dan menemukan versi lebih baru akan mengunduh, memverifikasi checksum, lalu memasang sendiri tanpa tombol kedua. Pemasangan ditunda sampai tidak ada agent yang sedang bekerja — installer menutup aplikasi. Matikan untuk mengunduh saja dan memasang dengan tangan.</p>
               <div class="download-rows">
                 <button class="btn primary" id="btn-update-check" type="button">Cek pembaruan</button>
                 <button class="btn hidden" id="btn-update-dl" type="button">Unduh sekarang</button>

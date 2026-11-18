@@ -85,3 +85,19 @@ test('store: kegagalan permanen tetap dilaporkan, tidak ditelan', () => {
   }
   assert.equal(calls, 1, 'error non-transien tidak diulang');
 });
+
+test('store: config baru menyimpan autoUpdate sebagai nilai, bukan tebakan', () => {
+  // Regresi: `autoUpdate` dulu TIDAK ada di DEFAULT_CONFIG, dan seluruh kode
+  // memakai `config.autoUpdate !== false`. Artinya pengguna yang tidak pernah
+  // melihat pilihan itu selalu dianggap memilih "pasang otomatis" — dan tidak
+  // ada jalan mematikannya dari UI karena nilainya tidak pernah tersimpan.
+  const cfgPath = path.join(DATA, 'config.json');
+  try { fs.unlinkSync(cfgPath); } catch { /* belum ada */ }
+  const fresh = store.loadConfig();
+  assert.equal(fresh.autoUpdate, true, 'default: pembaruan otomatis menyala');
+  const onDisk = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+  assert.equal(onDisk.autoUpdate, true, 'nilai benar-benar tertulis ke config.json');
+  // Mematikannya harus bertahan setelah dimuat ulang.
+  store.saveConfig({ ...fresh, autoUpdate: false });
+  assert.equal(store.loadConfig().autoUpdate, false);
+});

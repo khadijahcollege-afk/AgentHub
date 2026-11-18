@@ -254,13 +254,38 @@ test('ui: pencarian dalam thread terikat Ctrl+F', () => {
   assert.ok(app.includes('data-mid'), 'elemen pesan membawa data-mid untuk lompatan');
 });
 
-test('desktop: tray punya cek pembaruan + unduh versi baru', () => {
+test('desktop: tray punya cek pembaruan yang MEMASANG, bukan hanya membuka browser', () => {
   const main = fs.readFileSync(path.join(ROOT, 'desktop/main.js'), 'utf8');
   assert.ok(main.includes('checkForUpdates'), 'fungsi cek pembaruan ada');
-  assert.ok(main.includes('/repos/khadijahcollege-afk/AgentHub/releases/latest'), 'sumber rilis GitHub');
+  assert.ok(main.includes('/repos/khadijahcollege-afk/AgentHub/releases/latest'), 'sumber rilis GitHub tetap ada sebagai cadangan');
   assert.ok(main.includes('rebuildTrayMenu'), 'menu tray dibangun ulang saat versi baru ditemukan');
   assert.ok(main.includes('scheduleUpdateChecks'), 'cek otomatis terjadwal');
-  assert.ok(main.includes('Unduh versi baru'), 'tautan unduh di menu tray');
+  // Regresi: menu tray dulu hanya membuka halaman rilis, jadi "cek pembaruan"
+  // tidak pernah memasang apa pun — user harus mengunduh ulang dengan tangan.
+  assert.ok(main.includes('pullUpdateFromServer'), 'shell meminta rantai pembaruan ke server');
+  assert.ok(main.includes('/api/update-check?force=1&install=1'), 'cek manual memakai jalur yang memasang');
+  assert.ok(!main.includes("label: 'Unduh versi baru'"), 'label lama yang hanya mengunduh sudah tidak ada');
+});
+
+test('desktop: server yang menjalankan rantai update memakai gerbang yang sama dengan tombol', () => {
+  const server = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+  // Satu jalur pemasangan: kalau rantai otomatis punya aturan sendiri, checksum
+  // dan preflight bisa dilewati tanpa ketahuan.
+  const installNowUses = [...server.matchAll(/installGate\(/g)].length;
+  assert.equal(installNowUses, 1, 'gerbang pemasangan hanya boleh dihitung di satu tempat');
+  assert.match(server, /function installNow\(/, 'jalur pemasangan bersama ada');
+  assert.match(server, /function maybeAutoInstall\(/, 'rantai pemasangan otomatis ada');
+  assert.match(server, /runs\.onIdle\(/, 'pemasangan tertunda dipicu saat run selesai');
+  // Endpoint cek harus MEMBACA niat pemasangan dari permintaan, bukan menebak.
+  assert.match(server, /searchParams\.get\('install'\) === '1'/, 'endpoint cek menerima permintaan pemasangan');
+
+  // UI: hanya tombol yang boleh meminta pemasangan. Membuka pane atau kembali
+  // dari layar lain tidak boleh menutup aplikasi.
+  const app = fs.readFileSync(path.join(ROOT, 'public/app.js'), 'utf8');
+  assert.match(app, /install\s*\?\s*'\/api\/update-check\?force=1&install=1'\s*:\s*'\/api\/update'/, 'hanya tombol memakai jalur pemasangan');
+  assert.match(app, /checkUpdates\(false,\s*\{\s*install:\s*true\s*\}\)/, 'tombol Cek meminta pemasangan');
+  assert.match(app, /checkUpdates\(true\)/, 'membuka pane hanya membaca status');
+  assert.match(app, /function pollUpdate\(/, 'rantai dipantau sampai selesai, bukan berharap SSE tidak putus');
 });
 
 test('desktop: jendela mendukung sudut transparan', () => {

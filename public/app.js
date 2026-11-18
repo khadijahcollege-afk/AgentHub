@@ -7582,6 +7582,11 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
     $('#set-keys').value = c.keyCheckHours;
     $('#set-notify').checked = !!c.notify;
     $('#set-autopool').checked = c.autoPool !== false;
+    // Pemasangan otomatis. Server mengirim `autoUpdate` sebagai boolean
+    // sungguhan (default config), jadi kotak ini mencerminkan apa yang
+    // benar-benar akan dilakukan saat tombol Cek ditekan.
+    const au = $('#set-autoupdate');
+    if (au) au.checked = c.autoUpdate !== false;
     $('#set-token').textContent = state.token;
     const cf = $('#set-cloudflared');
     if (cf && document.activeElement !== cf) cf.value = c.cloudflaredPath || '';
@@ -8027,6 +8032,24 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
       toast(e.target.checked ? 'Notifikasi aktif' : 'Notifikasi dimatikan');
     } catch { e.target.checked = !e.target.checked; }
   });
+  // Pemasangan otomatis: disimpan segera, bukan menunggu tombol "Simpan
+  // preferensi". Sakelar ini hidup di pane yang sama dengan tombol Cek, dan
+  // user yang mematikannya tepat sebelum menekan Cek harus dilindungi saat itu
+  // juga — bukan setelah ia ingat menekan Simpan di pane lain.
+  $('#set-autoupdate')?.addEventListener('change', async (e) => {
+    const on = e.target.checked;
+    try {
+      await api('/api/settings', { method: 'POST', body: JSON.stringify({ autoUpdate: on }) });
+      if (state?.config) state.config.autoUpdate = on;
+      if (state?.update) state.update.autoUpdate = on;
+      toast(on
+        ? 'Pembaruan otomatis: cek → unduh → pasang tanpa tombol kedua'
+        : 'Pembaruan otomatis dimatikan: unduhan tetap jalan, pemasangan menunggu Anda', 5000);
+    } catch (err) {
+      e.target.checked = !on;
+      toast('Gagal menyimpan: ' + err.message);
+    }
+  });
   // Peristiwa & durasi: preferensi lokal. Dulu panel ini hanya punya satu
   // sakelar, sehingga user tidak bisa memilih apa yang layak mengganggu.
   function paintNotifyPrefs() {
@@ -8334,17 +8357,34 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
     const txt = $('#update-banner-text');
     const btn = $('#update-install');
     if (!u.hasUpdate) { el.classList.add('hidden'); return; }
-    if (dismissedUpdate() === u.latest && u.download?.status !== 'ready') { el.classList.add('hidden'); return; }
+    // Satu-satunya keadaan yang boleh ditutup user: "ada versi baru, tapi
+    // belum ada yang terjadi". Saat unduhan/pemasangan berjalan, menyembunyikan
+    // banner membuat aplikasi tiba-tiba menutup tanpa penjelasan.
+    const busy = ['downloading', 'verifying', 'ready', 'installing'].includes(u.download?.status);
+    if (!busy && dismissedUpdate() === u.latest) { el.classList.add('hidden'); return; }
     el.classList.remove('hidden');
     if (u.download?.status === 'downloading') {
       txt.textContent = `Versi baru ${u.latest} — mengunduh otomatis ${u.download.pct || 0}%`;
       btn.classList.add('hidden');
+    } else if (u.download?.status === 'verifying') {
+      txt.textContent = `Versi baru ${u.latest} — memeriksa checksum…`;
+      btn.classList.add('hidden');
+    } else if (u.download?.status === 'installing') {
+      txt.textContent = `Memasang ${u.latest} — aplikasi akan ditutup dan dimulai ulang`;
+      btn.classList.add('hidden');
     } else if (u.download?.status === 'ready') {
-      txt.textContent = `Versi baru ${u.latest} siap dipasang — installer sudah diunduh otomatis`;
-      btn.classList.remove('hidden');
-      if (updateReadyToasted !== u.latest) {
-        updateReadyToasted = u.latest;
-        toast(`Versi baru ${u.latest} siap — tombol Pasang sekarang tersedia`, 6000);
+      const auto = u.autoInstall?.enabled !== false;
+      const pending = u.autoInstall?.pending;
+      if (pending) {
+        const n = u.autoInstall?.activeRuns || 0;
+        txt.textContent = `Versi baru ${u.latest} siap — dipasang otomatis setelah ${n} pekerjaan agent selesai`;
+        btn.classList.add('hidden');
+      } else if (auto) {
+        txt.textContent = `Versi baru ${u.latest} siap — memasang otomatis…`;
+        btn.classList.add('hidden');
+      } else {
+        txt.textContent = `Versi baru ${u.latest} siap dipasang — installer sudah diunduh otomatis`;
+        btn.classList.remove('hidden');
       }
     } else if (u.download?.status === 'error') {
       txt.textContent = `Versi baru ${u.latest} — unduhan otomatis gagal: ${u.download.error}`;
@@ -8379,8 +8419,9 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
     }
     if (u.hasUpdate) {
       const when = u.publishedAt ? new Date(u.publishedAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+      const auto = u.autoInstall?.enabled !== false;
       host.innerHTML = `<b style="color:var(--accent)">Versi baru tersedia: ${esc(u.latest)}</b> — Anda di ${esc(u.current)}${when ? ` · rilis ${esc(when)}` : ''}.`
-        + `<div class="muted small">Aset untuk platform ini: ${esc(u.asset?.name || '?')} — diunduh otomatis ke dist/ bila "pasang otomatis" aktif.</div>`
+        + `<div class="muted small">Aset untuk platform ini: ${esc(u.asset?.name || '?')} — ${auto ? 'diunduh dan dipasang otomatis' : 'diunduh otomatis; pemasangan menunggu Anda'}.</div>`
         + (u.notes ? `<div class="muted small" style="margin-top:4px;white-space:pre-wrap">${esc(u.notes.slice(0, 300))}${u.notes.length > 300 ? '…' : ''}</div>` : '');
       open?.classList.remove('hidden');
       if (open) open.href = u.url || 'https://github.com/khadijahcollege-afk/AgentHub/releases/latest';
@@ -8394,9 +8435,23 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
       } else if (d?.status === 'verifying') {
         host.innerHTML += `<div class="muted small">Mengunduh selesai — memeriksa checksum terhadap SHA256SUMS.txt rilis…</div>`;
       } else if (d?.status === 'ready') {
-        inst?.classList.remove('hidden');
-        host.innerHTML += verifyLine(u.verify)
-          + `<div class="muted small">Installer sudah terunduh otomatis — klik Pasang sekarang untuk memasang senyap & memulai ulang.</div>`;
+        host.innerHTML += verifyLine(u.verify);
+        // Empat keadaan berbeda, bukan satu: dipasang sendiri, menunggu run
+        // selesai, menunggu satu klik (autoUpdate mati), atau ditolak.
+        const gate = u.autoInstall?.gate;
+        const pending = u.autoInstall?.pending;
+        if (pending) {
+          const n = u.autoInstall?.activeRuns || 0;
+          host.innerHTML += `<div class="muted small">Dipasang otomatis <b>setelah ${n} pekerjaan agent selesai</b>: memasang menutup aplikasi, jadi run yang berjalan tidak dipotong di tengah.</div>`;
+        } else if (gate && ['CHECKSUM_MISMATCH', 'PREFLIGHT_FAILED'].includes(gate.code)) {
+          host.innerHTML += `<div class="muted small">Pemasangan otomatis dihentikan: ${esc(gate.why)}. Perbaiki penyebabnya lalu tekan Pasang sekarang.</div>`;
+          inst?.classList.remove('hidden');
+        } else if (auto) {
+          host.innerHTML += `<div class="muted small">Memasang otomatis… aplikasi akan ditutup dan dimulai ulang.</div>`;
+        } else {
+          inst?.classList.remove('hidden');
+          host.innerHTML += `<div class="muted small">Installer sudah terunduh otomatis — klik Pasang sekarang untuk memasang senyap & memulai ulang.</div>`;
+        }
       } else if (d?.status === 'installing') {
         host.innerHTML += `<div class="muted small">Installer sedang berjalan — aplikasi akan ditutup dan dimulai ulang.</div>`;
       } else if (d?.status === 'error') {
@@ -8435,23 +8490,59 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
     return `<div class="upd-verify bad"><span class="upd-badge">checksum beda</span> Diharapkan <code>${esc((v.expected || '').slice(0, 16))}…</code>, berkas <code>${esc((v.actual || '').slice(0, 16))}…</code> — tidak akan dipasang.</div>`;
   }
 
-  async function checkUpdates(silent = false) {
+  // Cek pembaruan. `install` = user meminta pembaruan, bukan hanya ingin tahu:
+  // server lalu merantai cek → unduh → verifikasi → pasang. Tanpa itu, tombol
+  // ini hanya menghasilkan "ada versi baru" dan user harus menekan tombol
+  // kedua yang tidak menambah keputusan apa pun.
+  //
+  // Selama rantai berjalan, status dipantau lewat /api/update (bukan SSE saja):
+  // SSE bisa terputus tepat saat installer menutup server, dan tanpa polling
+  // layar akan menampilkan "memasang" selamanya sesudah aplikasi kembali hidup.
+  let updatePollTimer = null;
+  function stopUpdatePoll() {
+    if (updatePollTimer) { clearTimeout(updatePollTimer); updatePollTimer = null; }
+  }
+  function pollUpdate(tries = 0) {
+    stopUpdatePoll();
+    updatePollTimer = setTimeout(async () => {
+      updatePollTimer = null;
+      try {
+        const u = await api('/api/update');
+        state.update = u;
+        renderUpdateStatus(u);
+        renderUpdateBanner();
+        const d = u.download?.status;
+        // Berhenti saat tidak ada lagi yang bergerak: siap (menunggu satu
+        // klik), gagal, tidak ada pembaruan, atau batas waktu habis.
+        const still = d === 'downloading' || d === 'verifying' || d === 'installing'
+          || (d === 'ready' && u.autoInstall?.pending);
+        if (still && tries < 300) pollUpdate(tries + 1);
+      } catch { /* server sedang mati karena installer — berhenti memantau */ }
+    }, 800);
+  }
+
+  async function checkUpdates(silent = false, { install = false } = {}) {
     const btn = $('#btn-update-check');
     if (btn) { btn.disabled = true; btn.textContent = 'Memeriksa…'; }
     const host = $('#update-status');
     if (!silent && host) host.textContent = 'Memeriksa GitHub Releases…';
     try {
-      const u = await api('/api/update');
+      // `force=1`: tombol tidak boleh dijawab dari cache 30 menit.
+      // `install=1` HANYA saat user menekan tombol — membuka pane Desktop atau
+      // kembali dari layar lain tidak boleh menutup aplikasi untuk memasang.
+      const q = install ? '/api/update-check?force=1&install=1' : '/api/update';
+      const u = await api(q);
       state.update = u;
       renderUpdateStatus(u);
       renderUpdateBanner();
+      if (install && u?.hasUpdate) pollUpdate();
     } catch (e) {
       renderUpdateStatus({ ok: false, current: state?.server?.version, error: e.message });
     } finally {
       if (btn) { btn.disabled = false; btn.textContent = 'Cek pembaruan'; }
     }
   }
-  $('#btn-update-check').addEventListener('click', () => checkUpdates(false));
+  $('#btn-update-check').addEventListener('click', () => checkUpdates(false, { install: true }));
   $('#btn-update-dl')?.addEventListener('click', async () => {
     try {
       await api('/api/update/download', { method: 'POST' });
