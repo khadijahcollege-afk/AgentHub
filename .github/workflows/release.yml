@@ -104,11 +104,27 @@ jobs:
         run: |
           find artifacts -type f -exec mv {} . \;
           sha256sum AgentHub-Setup.exe AgentHub-Portable.zip AgentHub-macOS.dmg AgentHub-macOS-portable.zip AgentHub-linux.AppImage AgentHub-linux.deb > SHA256SUMS.txt
+      - name: Resolve release notes for this tag
+        id: notes
+        run: |
+          # Catatan rilis harus mengikuti TAG, bukan versi yang kebetulan
+          # terakhir ditulis di berkas ini. Sebelumnya baris ini dipatok ke
+          # satu berkas (v1.9.0.md) dan setiap rilis baru harus mengeditnya
+          # dengan tangan; bila terlewat, rilis baru akan menerbitkan catatan
+          # rilis LAMA tanpa ada yang gagal — kesalahan yang tidak terlihat.
+          FILE="docs/releases/${GITHUB_REF_NAME}.md"
+          if [ -f "$FILE" ]; then
+            echo "path=$FILE" >> "$GITHUB_OUTPUT"
+            echo "catatan rilis: $FILE"
+          else
+            echo "path=" >> "$GITHUB_OUTPUT"
+            echo "::warning::$FILE tidak ada — rilis memakai catatan otomatis GitHub"
+          fi
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           name: AgentHub ${{ github.ref_name }}
-          body_path: docs/releases/v1.9.0.md
+          body_path: ${{ steps.notes.outputs.path }}
           generate_release_notes: true
           files: |
             AgentHub-Setup.exe

@@ -9,15 +9,15 @@
 //      memori.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { pickFreePort } from './helpers/port.js';
+import { startTestServer, stopTestServer } from './helpers/server.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const PORT = await pickFreePort(8630, 40);
+const PORT = await pickFreePort(8740, 40);
 const TOKEN = 'bgtok0123456789';
 const BASE = `http://127.0.0.1:${PORT}`;
 
@@ -36,15 +36,6 @@ const api = (p, opts = {}) => fetch(BASE + p, {
 });
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-async function waitUp(ms = 20000) {
-  const t0 = Date.now();
-  while (Date.now() - t0 < ms) {
-    try { if ((await fetch(`${BASE}/healthz`)).ok) return true; } catch { /* belum hidup */ }
-    await sleep(100);
-  }
-  return false;
-}
 
 test.before(async () => {
   dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agenthub-bg-api-'));
@@ -78,13 +69,11 @@ test.before(async () => {
     recovered: false,
   }]));
 
-  child = spawn(process.execPath, ['server.js'], {
-    cwd: ROOT,
-    env: { ...process.env, AGENTHUB_DATA: dataDir, AGENTHUB_NO_TOAST: '1' },
-    stdio: 'ignore',
-    windowsHide: true,
-  });
-  assert.equal(await waitUp(), true, 'server harus hidup');
+  // Boot lewat helper: bila gagal, pesannya membawa keluaran server
+  // (port terpakai, config rusak, import gagal) alih-alih "server harus hidup".
+  const boot = await startTestServer({ root: ROOT, port: PORT, dataDir });
+  child = boot.child;
+  assert.equal(boot.alive, true, boot.failure());
 });
 
 test.after(() => {

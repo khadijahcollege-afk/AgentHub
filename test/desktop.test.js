@@ -200,6 +200,14 @@ test('release: CI membangun installer untuk Windows, macOS, dan Linux', () => {
   assert.match(wf, /needs:\s*\[build-windows, build-macos, build-linux\]/, 'publish menunggu ketiga build');
   assert.match(wf, /AgentHub-macOS\.dmg/, 'nama file mac stabil untuk link unduhan');
   assert.match(wf, /AgentHub-linux\.AppImage/, 'nama file linux stabil untuk link unduhan');
+  // Catatan rilis harus mengikuti TAG, bukan berkas yang dipatok dengan tangan.
+  // Regresi nyata: `body_path` menunjuk docs/releases/v1.9.0.md, sehingga rilis
+  // berikutnya akan menerbitkan catatan rilis LAMA tanpa ada langkah yang gagal.
+  assert.doesNotMatch(wf, /body_path:\s*docs\/releases\/v[\d.]+\.md/, 'body_path tidak boleh dipatok ke satu versi');
+  assert.match(wf, /body_path:\s*\$\{\{\s*steps\.\w+\.outputs\.\w+\s*\}\}/, 'body_path harus dari langkah yang membaca nama tag');
+  assert.match(wf, /docs\/releases\/\$\{GITHUB_REF_NAME\}\.md/, 'berkas catatan dicari dari nama tag');
+  // Setiap tag yang dirilis sebaiknya punya berkas catatannya.
+  assert.ok(fs.existsSync(path.join(ROOT, 'docs/releases', `v${version}.md`)), `docs/releases/v${version}.md harus ada untuk tag ini`);
   // konfigurasi builder memang punya target mac & linux dengan ikon yang ada
   const desktop = JSON.parse(fs.readFileSync(path.join(ROOT, 'desktop/package.json')));
   assert.ok(desktop.build.mac.target.some((t) => t.target === 'dmg'), 'mac target dmg');

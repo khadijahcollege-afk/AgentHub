@@ -10,10 +10,11 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { pickFreePort } from './helpers/port.js';
+import { stopTestServer } from './helpers/server.js';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const TOKEN = 'tokengitgraph123456';
-const PORT = await pickFreePort(8200);
+const PORT = await pickFreePort(8140, 40);
 const BASE = `http://127.0.0.1:${PORT}`;
 
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agenthub-git-api-'));
@@ -68,7 +69,7 @@ test.before(async () => {
   ]));
 
   child = spawn(process.execPath, ['server.js'], {
-    cwd: ROOT, env: { ...process.env, AGENTHUB_DATA: dataDir }, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true,
+    cwd: ROOT, env: { ...process.env, AGENTHUB_DATA: dataDir, AGENTHUB_STRICT_PORT: '1' }, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true,
   });
   for (let i = 0; i < 120; i++) {
     try { if ((await fetch(`${BASE}/healthz`)).ok) break; } catch { /* belum siap */ }
@@ -76,8 +77,10 @@ test.before(async () => {
   }
 });
 
-test.after(() => {
-  try { child?.kill(); } catch { /* noop */ }
+test.after(async () => {
+  // Tunggu proses benar-benar berhenti sebelum menghapus folder: proses
+  // yang masih hidup memegang port dan masih bisa menulis ke dataDir.
+  await stopTestServer(child);
   for (const d of [dataDir, repo, plain]) {
     try { fs.rmSync(d, { recursive: true, force: true }); } catch { /* noop */ }
   }

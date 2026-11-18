@@ -3278,6 +3278,14 @@ async function main() {
   // coba port, mundur bila terpakai
   let server;
   let port = config.port;
+
+  // Di tes, memundurkan port adalah perilaku yang SALAH: tes menunggu port
+  // yang ia minta, server diam-diam pindah ke port+1, dan tes menunggu 20 detik
+  // lalu melaporkan "server harus hidup" — padahal server hidup, hanya di port
+  // lain. Kegagalan yang menyebut sebab yang keliru lebih mahal daripada
+  // kegagalan cepat yang jujur. `AGENTHUB_STRICT_PORT=1` mematikan pemunduran.
+  const strictPort = process.env.AGENTHUB_STRICT_PORT === '1';
+
   for (let i = 0; i < 10; i++) {
     try {
       server = await new Promise((resolve, reject) => {
@@ -3292,6 +3300,10 @@ async function main() {
       });
       break;
     } catch (e) {
+      if (e.code === 'EADDRINUSE' && strictPort) {
+        console.error(`Port ${port} sudah dipakai dan AGENTHUB_STRICT_PORT=1 melarang pindah port.`);
+        process.exit(1);
+      }
       if (e.code === 'EADDRINUSE') { port += 1; server = null; continue; }
       throw e;
     }

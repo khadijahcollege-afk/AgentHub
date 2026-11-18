@@ -9,10 +9,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { pickFreePort } from './helpers/port.js';
+import { stopTestServer } from './helpers/server.js';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 // Band port unik per file tes: promo 8240–8299, uploads 8300–8359.
-const PORT = await pickFreePort(8360, 60);
+const PORT = await pickFreePort(8380, 40);
 const TOKEN = 'searchtoken0123456789';
 const API = `http://127.0.0.1:${PORT}`;
 
@@ -77,14 +78,16 @@ test.before(async () => {
 
   child = spawn(process.execPath, ['server.js'], {
     cwd: ROOT,
-    env: { ...process.env, AGENTHUB_DATA: dataDir, AGENTHUB_NO_TOAST: '1' },
+    env: { ...process.env, AGENTHUB_DATA: dataDir, AGENTHUB_NO_TOAST: '1', AGENTHUB_STRICT_PORT: '1' },
     stdio: 'ignore', windowsHide: true,
   });
   assert.equal(await waitUp(), true, 'server harus hidup');
 });
 
-test.after(() => {
-  try { child?.kill(); } catch { /* noop */ }
+test.after(async () => {
+  // Tunggu proses benar-benar berhenti sebelum menghapus folder: proses
+  // yang masih hidup memegang port dan masih bisa menulis ke dataDir.
+  await stopTestServer(child);
   for (const dir of [dataDir, deployDir]) {
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* noop */ }
   }

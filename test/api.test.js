@@ -4,15 +4,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, request } from 'node:http';
-import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { pickFreePort } from './helpers/port.js';
+import { startTestServer, stopTestServer } from './helpers/server.js';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-const PORT = await pickFreePort(7900, 90);
+const PORT = await pickFreePort(7900, 40);
 const TOKEN = 'testtoken0123456789';
 let child;
 let dataDir;
@@ -21,15 +21,6 @@ const api = (p, opts = {}) => fetch(`http://127.0.0.1:${PORT}${p}`, {
   ...opts,
   headers: { authorization: `Bearer ${TOKEN}`, ...(opts.body ? { 'content-type': 'application/json' } : {}) },
 });
-
-async function waitUp(ms = 20000) {
-  const t0 = Date.now();
-  while (Date.now() - t0 < ms) {
-    try { const r = await fetch(`http://127.0.0.1:${PORT}/healthz`); if (r.ok) return true; } catch { /* belum */ }
-    await new Promise((r) => setTimeout(r, 200));
-  }
-  return false;
-}
 
 test.before(async () => {
   dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agenthub-test-'));
@@ -42,18 +33,18 @@ test.before(async () => {
     sources: { openrouter: { models: [] }, list: { providers: [] }, cross: { models: [] } },
     knownIds: [], lastRefresh: Date.now(),
   }));
-  child = spawn(process.execPath, ['server.js'], {
-    cwd: ROOT,
-    env: { ...process.env, AGENTHUB_DATA: dataDir, AGENTHUB_NO_TOAST: '1' },
-    stdio: 'ignore',
-    windowsHide: true,
-  });
-  assert.equal(await waitUp(), true, 'server harus hidup');
+  // Boot lewat helper: bila gagal, pesannya membawa keluaran server
+  // (port terpakai, config rusak, import gagal) alih-alih "server harus hidup".
+  const boot = await startTestServer({ root: ROOT, port: PORT, dataDir });
+  child = boot.child;
+  assert.equal(boot.alive, true, boot.failure());
 });
 
-test.after(() => {
-  try { child?.kill(); } catch { /* noop */ }
-  try { fs.rmSync(dataDir, { recursive: true, force: true }); } catch { /* noop */ }
+test.after(async () => {
+  // Menunggu `exit`, bukan sekadar mengirim sinyal: proses yang masih hidup
+  // memegang port-nya, dan tes berikutnya bisa memilih port itu.
+  await stopTestServer(child);
+  try { fs.rmSync(dataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 }); } catch { /* noop */ }
 });
 
 test('/healthz dan serverinfo melaporkan versi aplikasi sebenarnya', async () => {
@@ -585,7 +576,6 @@ test('stats: statistik sesi thread dihitung dari pesan nyata', async () => {
   assert.equal((await api('/api/threads/tidakada0000/stats')).status, 404);
   await api(`/api/threads/${t.id}`, { method: 'DELETE' });
 });
-
 
 test('stats fitur: /api/stats menghitung dari peristiwa nyata, bukan angka karangan', async () => {
   const before = await (await api('/api/stats')).json();

@@ -12,6 +12,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { pickFreePort } from './helpers/port.js';
+import { stopTestServer } from './helpers/server.js';
 import {
   parseChecksums, hashFile, verifyFile, detectInterception, readMagic, preflight,
   firstSuccess, retry, installDecision, uninstallPlan, redact,
@@ -21,7 +22,7 @@ import { CHECKSUM_ASSET, fetchChecksums } from '../lib/update.js';
 import { INSTALL_MACHINE, canTransition, MACHINE_VERSION } from '../lib/machines.js';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-const PORT = await pickFreePort(8560, 20);
+const PORT = await pickFreePort(8660, 40);
 const TOKEN = 'installtok0123456789';
 let child;
 let dataDir;
@@ -98,6 +99,9 @@ test.before(async () => {
       AGENTHUB_DATA: dataDir,
       AGENTHUB_DIST: distDir,
       AGENTHUB_NO_TOAST: '1',
+      // Port dipatok: server TIDAK boleh diam-diam pindah ke port lain,
+      // karena tes menunggu port yang ia minta. Lihat test/helpers/server.js.
+      AGENTHUB_STRICT_PORT: '1',
       AGENTHUB_UPDATE_API: `http://127.0.0.1:${mockPort}/releases/latest`,
       AGENTHUB_UPDATE_DOWNLOAD: `http://127.0.0.1:${mockPort}/download`,
     },
@@ -107,8 +111,10 @@ test.before(async () => {
   assert.equal(await waitUp(), true, 'server harus hidup');
 });
 
-test.after(() => {
-  try { child?.kill(); } catch { /* noop */ }
+test.after(async () => {
+  // Tunggu proses benar-benar berhenti sebelum menghapus folder: proses
+  // yang masih hidup memegang port dan masih bisa menulis ke dataDir.
+  await stopTestServer(child);
   try { mockServer?.close(); } catch { /* noop */ }
   try { fs.rmSync(dataDir, { recursive: true, force: true }); } catch { /* noop */ }
   try { fs.rmSync(distDir, { recursive: true, force: true }); } catch { /* noop */ }

@@ -1,6 +1,6 @@
-// test/freerot.test.js — Free Auto: tangga rotasi model gratis.
+// test/freerot.test.js â€” Free Auto: tangga rotasi model gratis.
 // Unit: ladder, cooldown, deteksi limit. Server: engine free-auto memutar
-// model saat yang pertama kena limit — tanpa sentuhan pengguna.
+// model saat yang pertama kena limit â€” tanpa sentuhan pengguna.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -8,10 +8,17 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { pickFreePort } from './helpers/port.js';
+import { stopTestServer } from './helpers/server.js';
 import { ladder, markFail, looksLimited, cooling, _setState } from '../lib/freerot.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const PORT = 9030 + Math.floor(Math.random() * 30);
+// Blok port sendiri, bukan `9030 + Math.random() * 30`. Port acak dalam rentang
+// tetap tetap bisa bertabrakan dengan berkas tes lain yang memakai rentang yang
+// sama, dan tabrakan itu hanya muncul sesekali â€” persis jenis kegagalan yang
+// paling mahal untuk dilacak. `pickFreePort` juga memeriksa port benar-benar
+// bisa didengarkan, bukan hanya belum dipakai saat dipilih.
+const PORT = await pickFreePort(9060, 30);
 const TOKEN = 'freerottok012345678';
 let child;
 let dataDir;
@@ -32,7 +39,7 @@ async function waitUp(ms = 20000) {
 
 const SAVED_DATA = process.env.AGENTHUB_DATA;
 test('freerot unit: ladder urut gagal, cooling dilewati, deteksi limit', () => {
-  _setState({}); // unit test murni memori — jangan sentuh freerot.json live
+  _setState({}); // unit test murni memori â€” jangan sentuh freerot.json live
   process.env.AGENTHUB_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'agenthub-rot-'));
   try {
     const engines = [
@@ -69,7 +76,7 @@ test.before(async () => {
     agentCheckMinutes: 1440, keyCheckHours: 168, baselined: true, createdAt: Date.now(),
   }));
   // Engine gratis palsu: SLOW menggantung 45 detik (melewati batas 3 detik),
-  // BB jawab cepat — rotasi harus pindah otomatis tanpa menunggu.
+  // BB jawab cepat â€” rotasi harus pindah otomatis tanpa menunggu.
   fs.writeFileSync(path.join(dataDir, 'harnesses.json'), JSON.stringify([
     { id: 'opencode-free-slow-free', label: 'SLOW (menggantung)', type: 'cli', cmd: 'cmd', args: ['/c', 'powershell', '-NoProfile', '-Command', 'Start-Sleep -Seconds 45'] },
     { id: 'opencode-free-bb-free', label: 'BB (oke)', type: 'cli', cmd: 'cmd', args: ['/c', 'echo', 'jawaban dari BB'] },
@@ -80,6 +87,9 @@ test.before(async () => {
       ...process.env,
       AGENTHUB_DATA: dataDir,
       AGENTHUB_NO_TOAST: '1',
+      // Port dipatok: server TIDAK boleh diam-diam pindah ke port lain,
+      // karena tes menunggu port yang ia minta. Lihat test/helpers/server.js.
+      AGENTHUB_STRICT_PORT: '1',
       AGENTHUB_FREE_FIRST_TIMEOUT_MS: '3000', // batas tanpa-output dipendekkan untuk tes
     },
     stdio: 'ignore',
@@ -88,8 +98,10 @@ test.before(async () => {
   assert.equal(await waitUp(), true, 'server harus hidup');
 });
 
-test.after(() => {
-  try { child?.kill(); } catch { /* noop */ }
+test.after(async () => {
+  // Tunggu proses benar-benar berhenti sebelum menghapus folder: proses
+  // yang masih hidup memegang port dan masih bisa menulis ke dataDir.
+  await stopTestServer(child);
   try { fs.rmSync(dataDir, { recursive: true, force: true }); } catch { /* noop */ }
 });
 

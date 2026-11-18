@@ -4,7 +4,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import net from 'node:net';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { pickFreePort } from './helpers/port.js';
+
+const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
 
 function occupy(port, host = '0.0.0.0') {
   return new Promise((resolve, reject) => {
@@ -69,3 +74,37 @@ test('port yang didengarkan proses lain di :: saja tetap dilewati', async () => 
     await new Promise((r) => srv.close(r));
   }
 });
+
+test('blok port setiap berkas tes tidak bertumpuk', () => {
+  // Regresi nyata: 16 pasang berkas memilih port dari rentang yang sama
+  // (mcp-api 8760-8799 dan threads-export 8760-8779, dan seterusnya). Tes
+  // berjalan berurutan, tetapi `kill()` tidak seketika melepas port, jadi
+  // berkas berikutnya bisa mendapat port yang masih dipegang proses yang
+  // sedang mati — dan gagal dengan pesan yang menyesatkan.
+  //
+  // Invarian ini murah diuji dan mahal ditemukan kembali, jadi ia dikunci:
+  // setiap berkas yang menjalankan server WAJIB memakai blok 40 port sendiri.
+  const files = fs.readdirSync(TEST_DIR).filter((f) => f.endsWith('.test.js'));
+  const blocks = [];
+  for (const f of files) {
+    const src = fs.readFileSync(path.join(TEST_DIR, f), 'utf8');
+    // Berkas yang memakai port ephemeral dari OS tidak masuk hitungan.
+    const m = /const\s+PORT\s*=\s*await\s+pickFreePort\((\d+)(?:,\s*(\d+))?\)/.exec(src);
+    if (!m) continue;
+    const lo = Number(m[1]);
+    const span = m[2] ? Number(m[2]) : 20;
+    blocks.push({ file: f, lo, hi: lo + span - 1 });
+  }
+
+  assert.ok(blocks.length >= 25, `harus menemukan blok port: hanya ${blocks.length}`);
+
+  const overlaps = [];
+  for (let i = 0; i < blocks.length; i++) {
+    for (let j = i + 1; j < blocks.length; j++) {
+      const a = blocks[i]; const b = blocks[j];
+      if (a.lo <= b.hi && b.lo <= a.hi) overlaps.push(`${a.file} (${a.lo}-${a.hi}) x ${b.file} (${b.lo}-${b.hi})`);
+    }
+  }
+  assert.deepEqual(overlaps, [], `blok port bertumpuk:\n${overlaps.join('\n')}`);
+});
+

@@ -1,5 +1,93 @@
 # Changelog
 
+## 1.9.1 — 2026-11-18
+Kegagalan yang menyebut sebabnya, dan penyimpanan config yang tidak lagi kalah
+oleh antivirus.
+
+Suite tes sesekali gagal di berkas yang berbeda-beda, selalu dengan pesan yang
+sama: `server harus hidup`, setelah menunggu 20 detik. Pesan itu tidak menyebut
+sebab apa pun, sehingga kegagalan nyata (bug di server) tidak bisa dibedakan dari
+gangguan lingkungan (port dipakai proses lain) — dan satu-satunya cara memastikan
+adalah menjalankan ulang seluruh suite. Ketika sebabnya akhirnya dilacak, ada
+empat cacat terpisah di balik satu gejala, dan dua di antaranya ada di kode
+produksi.
+
+- **Server tidak lagi diam-diam pindah port** (`server.js`) — bila port yang
+  dikonfigurasi terpakai, server memundurkan diri ke `port + 1` dan menyimpan port
+  barunya. Untuk user itu benar: aplikasi tetap terbuka. Untuk tes itu salah total:
+  tes menunggu port yang ia minta, server hidup di port lain, dan 20 detik kemudian
+  tes melaporkan "server harus hidup" — padahal server hidup. `AGENTHUB_STRICT_PORT=1`
+  mematikan pemunduran itu supaya kegagalannya cepat dan jujur. Kemunduran port
+  tetap menjadi perilaku bawaan untuk pemakaian sehari-hari.
+- **`AGENTHUB_STRICT_PORT` bukan tambalan tes, melainkan kontrak** — 28 berkas tes
+  menjalankan `server.js` sungguhan, jadi flag ini diuji seperti perilaku server
+  lainnya: port terpakai harus keluar dengan kode 1 dan menyebut portnya, bukan
+  pindah diam-diam (`test/helpers-server.test.js`).
+- **Helper boot yang membawa keluaran server** (`test/helpers/server.js`) — 29
+  berkas tes memakai `stdio: 'ignore'`, sehingga kegagalan boot tidak meninggalkan
+  bukti sama sekali. Helper menyimpan stdout/stderr proses anak, mendeteksi proses
+  yang keluar lebih awal, dan menyertakan `Port 9123 sudah dipakai` di pesan
+  kegagalan. Waktu tunggu untuk port yang bentrok turun dari 20 detik menjadi
+  sekitar 1 detik.
+- **`fetch` di loop tunggu diberi timeout** — bila port ternyata dijawab proses
+  lain yang menerima sambungan tetapi tidak pernah membalas, `fetch` tanpa timeout
+  menggantung selamanya dan seluruh berkas tes ikut menggantung. Kegagalan yang
+  menggantung lebih mahal daripada kegagalan yang cepat, karena tidak ada yang
+  memberi tahu bahwa ada masalah.
+- **Blok port tes tidak lagi bertumpuk** — 16 pasang berkas tes memilih port dari
+  rentang yang sama (mis. `mcp-api` 8760–8799 dan `threads-export` 8760–8779).
+  Tes berjalan berurutan, tetapi `child.kill()` tidak seketika melepas port, jadi
+  berkas berikutnya bisa mendapat port yang masih dipegang proses yang sedang mati.
+  Setiap berkas kini punya blok 40 port sendiri (7900–9019), jadi kemungkinan itu
+  hilang karena konstruksi, bukan karena retry.
+- **`stopTestServer` menunggu `exit`, bukan sekadar mengirim sinyal** — `kill()`
+  hanya mengirim sinyal; proses masih memegang portnya beberapa milidetik
+  sesudahnya. Menunggu event `exit` menutup celah antara "sudah dimatikan" dan
+  "port benar-benar bebas". Ke-28 berkas tes yang menjalankan server kini
+  memakainya, dan 16 di antaranya sebelumnya memanggil `child?.kill()` lalu
+  langsung `rmSync(dataDir)`: folder dihapus sementara server masih menulis, yang
+  di Windows berarti `EPERM` yang ditelan `catch` dan menyisakan folder sampah.
+- **Pesan diagnosa tidak boleh menuduh tanpa bukti** — versi pertama helper
+  menulis "biasanya port sudah dipakai" untuk SETIAP kematian dini. Pada satu
+  kegagalan nyata, log-nya justru berisi banner `AgentHub aktif` dan kode keluar
+  `0xC0000409` (`STATUS_STACK_BUFFER_OVERRUN`) — server sempat hidup lalu crash
+  di level sistem operasi. Menyebut sebab yang salah lebih berbahaya daripada
+  tidak menyebut sebab, karena mengarahkan orang berikutnya memeriksa port yang
+  tidak bersalah. Penyebab sekarang disimpulkan dari bukti di log: banner +
+  crash dibedakan dari `EADDRINUSE`, kode Windows disebut namanya, dan jalur ini
+  dikunci dengan fixture yang sengaja crash setelah boot (`process.abort()`).
+  Crash `0xC0000409` itu sendiri **tidak** diklaim sudah diperbaiki: AgentHub
+  tidak memakai satu pun dependensi native (`node_modules` kosong), jadi ia
+  terjadi di dalam Node/libuv dan muncul sangat jarang. Yang diperbaiki adalah
+  cara kegagalan itu dilaporkan, supaya bila muncul lagi laporannya langsung
+  menunjuk ke sana.
+- **`freerot.test.js` memakai port acak dalam rentang bersama** — `9030 +
+  Math.random() * 30` bukan pilihan port, melainkan lotre: ia bisa bertabrakan
+  dengan berkas lain yang memakai rentang sama, dan tabrakan itu hanya muncul
+  sesekali. Diganti `pickFreePort(9060, 30)`.
+- **Invarian blok port diuji, bukan hanya dijanjikan** — `port-helper.test.js`
+  kini membaca setiap berkas tes dan gagal bila dua blok bertumpuk, karena
+  invarian yang hanya ada di kepala orang akan hilang pada berkas tes
+  berikutnya. Diverifikasi dengan sengaja menabrakkan dua berkas: penjaganya
+  menyebut pasangan yang bertabrakan secara persis.
+- **Penyimpanan config tahan `EPERM` antivirus** (`lib/store.js`) — `writeJson`
+  menulis ke `.tmp` lalu me-rename, dan di Windows antivirus serta Windows Search
+  membuka berkas yang baru ditulis untuk dipindai. Selama pemindaian itu handle-nya
+  memblokir rename dan `renameSync` gagal `EPERM` — sesaat, tetapi cukup untuk
+  membuat penyimpanan config gagal. Ini cacat produksi, bukan artefak tes: user
+  sungguhan kehilangan setelan karena antivirus kebetulan bekerja pada milidetik
+  yang sama. Rename kini dicoba ulang dengan jeda singkat (`Atomics.wait`, bukan
+  busy-wait) untuk `EPERM`/`EBUSY`/`EACCES` saja; error permanen seperti `ENOSPC`
+  tetap langsung dilaporkan, karena retry tidak boleh membuat tulisan yang gagal
+  terlihat berhasil (`test/store.test.js`).
+- **Catatan rilis mengikuti tag, bukan versi terakhir yang diedit** — `body_path`
+  di `release.yml` dipatok ke `docs/releases/v1.9.0.md`, jadi rilis berikutnya akan
+  menerbitkan catatan rilis LAMA tanpa ada langkah yang gagal — kesalahan yang
+  tidak terlihat sampai orang membacanya. Berkasnya kini dicari dari nama tag,
+  dengan peringatan eksplisit bila tidak ada.
+
+Suite: 635 tes, hijau berulang.
+
 ## 1.9.0 — 2026-11-18
 Pemasangan yang bisa membuktikan berkasnya benar — atau mengatakan dengan jujur
 bahwa ia tidak bisa membuktikannya.
