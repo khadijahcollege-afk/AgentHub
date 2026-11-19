@@ -278,6 +278,23 @@ test('desktop: server yang menjalankan rantai update memakai gerbang yang sama d
   assert.match(server, /runs\.onIdle\(/, 'pemasangan tertunda dipicu saat run selesai');
   // Endpoint cek harus MEMBACA niat pemasangan dari permintaan, bukan menebak.
   assert.match(server, /searchParams\.get\('install'\) === '1'/, 'endpoint cek menerima permintaan pemasangan');
+  // Kebutuhan elevasi dihitung SEKALI saat boot dari kemampuan menulis folder
+  // aplikasi — bukan ditebak dari nama folder di dalam handler.
+  assert.match(server, /const INSTALL_NEEDS_ELEVATION = needsElevation\(/, 'elevasi ditentukan saat boot');
+  assert.match(server, /needsElevation: INSTALL_NEEDS_ELEVATION/, 'peluncuran memakai hasilnya');
+  // Status `installing` harus punya batas waktu. Tanpa ini, installer yang
+  // menunggu UAC tak terjangkau membuat status nyangkut selamanya.
+  assert.match(server, /function refreshInstallState\(/, 'status macet bisa pulih');
+  assert.match(server, /installStall\(\{/, 'aturan batas waktu dipakai, bukan ditulis ulang');
+
+  // `spawn` TIDAK boleh diambil lewat import() dinamis: fungsi itu
+  // mengembalikan Promise, sehingga `pid` selalu undefined dan pendengar
+  // `error` tidak pernah terpasang.
+  const updateLib = fs.readFileSync(path.join(ROOT, 'lib/update.js'), 'utf8');
+  assert.match(updateLib, /import \{ spawn as nodeSpawn \} from 'node:child_process'/,
+    'spawn diimpor statis');
+  assert.equal(/spawnImpl \|\| \(\(\.\.\.args\) => import\(/.test(updateLib), false,
+    'tidak boleh kembali ke spawn berbasis Promise');
 
   // UI: hanya tombol yang boleh meminta pemasangan. Membuka pane atau kembali
   // dari layar lain tidak boleh menutup aplikasi.
@@ -286,6 +303,22 @@ test('desktop: server yang menjalankan rantai update memakai gerbang yang sama d
   assert.match(app, /checkUpdates\(false,\s*\{\s*install:\s*true\s*\}\)/, 'tombol Cek meminta pemasangan');
   assert.match(app, /checkUpdates\(true\)/, 'membuka pane hanya membaca status');
   assert.match(app, /function pollUpdate\(/, 'rantai dipantau sampai selesai, bukan berharap SSE tidak putus');
+});
+
+test('desktop: UI menyebut permintaan izin administrator sebelum user menunggu', () => {
+  // Bug nyata: aplikasi terpasang per-machine, jadi NSIS meminta elevasi di
+  // tengah pemasangan. Installer diluncurkan tersembunyi, sehingga dialog UAC
+  // tidak pernah dijangkau user dan pemasangan menggantung. UI yang diam soal
+  // ini membuat user hanya melihat "sudah diunduh tapi tidak terpasang".
+  const app = fs.readFileSync(path.join(ROOT, 'public/app.js'), 'utf8');
+  assert.match(app, /u\.elevation\?\.needed/, 'UI membaca kebutuhan elevasi dari server');
+  assert.match(app, /izin administrator/i, 'kebutuhan izin disebut dengan bahasa yang jelas');
+  // Status `installing` pada jalur ber-elevasi berarti MENUNGGU JAWABAN, bukan
+  // sedang menyalin berkas. Pesannya harus berbeda, bukan disamakan.
+  assert.match(app, /u\.elevation\?\.mode === 'elevated'/, 'menunggu UAC dibedakan dari memasang');
+  // Kegagalan pemasangan (UAC ditolak) kembali ke status `ready`; kalau UI
+  // mengabaikan `d.error` di keadaan itu, alasannya tidak pernah terlihat.
+  assert.match(app, /pemasangan gagal/, 'alasan kegagalan pemasangan ditampilkan');
 });
 
 test('desktop: jendela mendukung sudut transparan', () => {

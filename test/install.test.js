@@ -16,9 +16,9 @@ import { stopTestServer } from './helpers/server.js';
 import {
   parseChecksums, hashFile, verifyFile, detectInterception, readMagic, preflight,
   firstSuccess, retry, installDecision, installGate, pickWritableDir, uninstallPlan, redact,
-  canWrite, diagnosticsBundle, bundleToText,
+  canWrite, diagnosticsBundle, bundleToText, needsElevation, installStall,
 } from '../lib/install.js';
-import { CHECKSUM_ASSET, fetchChecksums, launchInstaller } from '../lib/update.js';
+import { CHECKSUM_ASSET, fetchChecksums, launchInstaller, installerArgs } from '../lib/update.js';
 import { INSTALL_MACHINE, canTransition, MACHINE_VERSION } from '../lib/machines.js';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -433,6 +433,221 @@ test('install: kebijakan mesin bisa melarang installer dijalankan', async () => 
     if (before === undefined) delete process.env.AGENTHUB_NO_LAUNCH_INSTALLER;
     else process.env.AGENTHUB_NO_LAUNCH_INSTALLER = before;
   }
+});
+
+test('install: pemasangan per-machine meminta elevasi DI DEPAN, bukan menggantung di tengah', () => {
+  // Bug nyata: aplikasi terpasang per-machine (Program Files, terdaftar di HKLM
+  // dengan /allusers), sedangkan installer dibangun `perMachine: false`. NSIS
+  // membaca HKLM\Software\<GUID>\InstallLocation, menyimpulkan mode "all users",
+  // lalu memanggil UAC_RunElevated di tengah pemasangan. Karena prosesnya
+  // diluncurkan `windowsHide: true`, dialog UAC tidak pernah dijangkau user:
+  // installer menunggu jawaban selamanya dan dari sisi user terlihat
+  // "sudah diunduh tapi tidak bisa dipasang".
+  const calls = [];
+  const fakeSpawn = (file, args, opts) => {
+    calls.push({ file, args, opts });
+    return { pid: 999, on: () => {}, unref: () => {} };
+  };
+
+  const r = launchInstaller('C:\\Program Files\\AgentHub\\setup.exe', 'win32', fakeSpawn, {
+    needsElevation: true,
+  });
+  assert.equal(r.launched, true);
+  assert.equal(r.mode, 'elevated', 'mode jujur: ada permintaan izin, bukan "silent"');
+  assert.equal(r.needsElevation, true);
+
+  assert.equal(calls.length, 1);
+  const { file, args } = calls[0];
+  assert.match(file, /powershell\.exe$/i, 'elevasi memakai jalur resmi Windows');
+  const script = args[args.length - 1];
+  assert.match(script, /-Verb RunAs/, 'permintaan izin harus eksplisit ke Windows');
+  assert.match(script, /setup\.exe/, 'installer yang benar yang dijalankan');
+  assert.match(script, /\/S/, 'pemasangan tetap senyap setelah izin diberikan');
+  assert.equal(calls[0].opts.windowsHide, true, 'shell perantara tidak menampilkan jendela');
+});
+
+test('install: jalur elevasi meng-escape kutip tunggal di path', () => {
+  // Path seperti C:\O'Brien\setup.exe tidak boleh memecah perintah PowerShell:
+  // kutip tunggal di-escape dengan menggandakannya, bukan dibiarkan.
+  let script = '';
+  const fakeSpawn = (file, args) => {
+    script = args[args.length - 1];
+    return { pid: 1, on: () => {}, unref: () => {} };
+  };
+  launchInstaller("C:\\O'Brien\\setup.exe", 'win32', fakeSpawn, { needsElevation: true });
+  assert.match(script, /O''Brien/, 'kutip tunggal digandakan');
+  assert.equal(/O'Brien/.test(script), false, 'kutip tunggal tunggal akan memecah perintah');
+});
+
+test('install: tanpa elevasi installer dijalankan langsung dan tetap senyap', () => {
+  const calls = [];
+  const fakeSpawn = (file, args, opts) => {
+    calls.push({ file, args, opts });
+    return { pid: 4242, on: () => {}, unref: () => {} };
+  };
+  const r = launchInstaller('C:\\Users\\x\\AppData\\Local\\Programs\\AgentHub\\setup.exe', 'win32', fakeSpawn, {
+    needsElevation: false,
+  });
+  assert.equal(r.mode, 'silent');
+  assert.equal(r.needsElevation, false);
+  assert.equal(calls[0].file, 'C:\\Users\\x\\AppData\\Local\\Programs\\AgentHub\\setup.exe',
+    'pemasangan per-user tidak butuh perantara');
+  assert.deepEqual(calls[0].args, ['--updated', '/S', '--force-run'],
+    'argumen lengkap: pemasangan tetap senyap DAN aplikasi dijalankan ulang');
+});
+
+test('install: penolakan UAC dilaporkan lewat onExit, bukan didiamkan', () => {
+  // PowerShell keluar dengan kode bukan nol saat dialog UAC ditolak. Tanpa
+  // laporan ini, penolakan hanya terlihat sebagai status yang diam sampai
+  // batas waktu habis.
+  const handlers = {};
+  const fakeSpawn = () => ({
+    pid: 7,
+    on: (ev, fn) => { handlers[ev] = fn; },
+    unref: () => {},
+  });
+  const seen = [];
+  launchInstaller('x.exe', 'win32', fakeSpawn, {
+    needsElevation: true,
+    onExit: (code) => seen.push(code),
+  });
+  handlers.exit(1223); // ERROR_CANCELLED: user menolak UAC
+  assert.deepEqual(seen, [1223]);
+});
+
+test('install: needsElevation ditentukan oleh kemampuan menulis folder aplikasi', () => {
+  // Bukan nama foldernya yang menentukan, melainkan apakah installer benar-benar
+  // bisa menimpa folder aplikasi. Folder baca-saja = NSIS akan meminta elevasi.
+  assert.equal(needsElevation({ platform: 'win32', root: 'C:\\Program Files\\AgentHub', writable: false }), true);
+  assert.equal(needsElevation({ platform: 'win32', root: 'C:\\Users\\x\\AppData\\Local\\Programs\\AgentHub', writable: true }), false);
+  assert.equal(needsElevation({ platform: 'darwin', root: '/Applications/AgentHub.app', writable: false }), false,
+    'hanya Windows yang memakai UAC di jalur installer');
+});
+
+test('install: installStall hanya menyatakan macet setelah batas waktu mode itu', () => {
+  // `installing` TANPA batas waktu adalah bug yang dialami user: installer
+  // menunggu UAC yang tak terjangkau, dan status tinggal di sana selamanya.
+  const now = 1_000_000_000_000;
+  assert.equal(installStall({ status: 'ready', mode: 'silent', startedAt: now - 1e9, now }).stalled, false,
+    'status selain installing tidak pernah "macet"');
+  assert.equal(installStall({ status: 'installing', mode: 'elevated', startedAt: 0, now }).stalled, false,
+    'tanpa waktu mulai tidak ada yang bisa dibandingkan');
+
+  // Jalur ber-elevasi menunggu JAWABAN USER, jadi batasnya pendek.
+  const fresh = installStall({ status: 'installing', mode: 'elevated', startedAt: now - 60_000, now });
+  assert.equal(fresh.stalled, false, 'satu menit masih wajar untuk menjawab UAC');
+  const stale = installStall({ status: 'installing', mode: 'elevated', startedAt: now - 4 * 60_000, now });
+  assert.equal(stale.stalled, true, '4 menit tanpa jawaban = macet');
+  assert.match(stale.why, /izin administrator|UAC/i, 'alasan menyebut UAC, bukan "gagal"');
+
+  // Jalur senyap menunggu DISK: 4 menit bukan alasan membatalkan.
+  assert.equal(installStall({ status: 'installing', mode: 'silent', startedAt: now - 4 * 60_000, now }).stalled, false);
+  assert.equal(installStall({ status: 'installing', mode: 'silent', startedAt: now - 11 * 60_000, now }).stalled, true);
+
+  // Mode tak dikenal tidak boleh membuat status tergantung selamanya.
+  assert.equal(installStall({ status: 'installing', mode: 'entah', startedAt: now - 11 * 60_000, now }).stalled, true,
+    'mode tak dikenal memakai batas paling longgar yang diketahui, bukan tak terbatas');
+});
+
+test('install: hasil peluncuran selalu jujur soal elevasi', () => {
+  // `mode` dipakai UI dan status untuk membedakan "sedang memasang" dari
+  // "menunggu izin". Nilai yang salah di sini membuat pesan UI berbohong.
+  const spawnOk = () => ({ pid: 5, on: () => {}, unref: () => {} });
+  const elevated = launchInstaller('x.exe', 'win32', spawnOk, { needsElevation: true });
+  assert.deepEqual(
+    { mode: elevated.mode, needsElevation: elevated.needsElevation },
+    { mode: 'elevated', needsElevation: true },
+  );
+  const silent = launchInstaller('x.exe', 'win32', spawnOk, { needsElevation: false });
+  assert.deepEqual(
+    { mode: silent.mode, needsElevation: silent.needsElevation },
+    { mode: 'silent', needsElevation: false },
+  );
+  // Non-Windows tidak pernah mengaku butuh elevasi walau diminta.
+  const mac = launchInstaller('/x.dmg', 'darwin', spawnOk, { needsElevation: true });
+  assert.equal(mac.needsElevation, false);
+});
+
+test('install: pid peluncuran tersedia, bukan selalu null', () => {
+  // Bug nyata: `spawn` diambil lewat `import()` dinamis sehingga mengembalikan
+  // Promise — `child.pid` SELALU undefined dan pendengar `error` tidak pernah
+  // terpasang. Kegagalan spawn jadi tidak terlihat sampai server mati.
+  const r = launchInstaller('x.exe', 'win32', () => ({ pid: 31337, on: () => {}, unref: () => {} }), {});
+  assert.equal(r.pid, 31337, 'pid proses anak harus diteruskan');
+});
+
+test('install: argumen installer NSIS menyertakan --updated dan --force-run', () => {
+  // `/S` saja memasang berkas lalu BERHENTI: template assisted-installer hanya
+  // menjalankan ulang aplikasi bila `${isForceRun}`. Akibatnya di mata user
+  // "sudah diunduh, tapi tidak terjadi apa-apa". `--updated` juga wajib supaya
+  // NSIS melewati halaman dan memakai jalur tutup-aplikasi khusus pembaruan.
+  assert.deepEqual(installerArgs(), ['--updated', '/S', '--force-run']);
+  assert.deepEqual(installerArgs({ forceRun: false }), ['--updated', '/S']);
+  assert.deepEqual(installerArgs({ silent: false, forceRun: false }), ['--updated']);
+  assert.equal(installerArgs()[0], '--updated', 'urutan sama dengan NsisUpdater resmi');
+});
+
+test('install: peluncuran tanpa elevasi memakai argumen lengkap, bukan /S saja', () => {
+  const calls = [];
+  const fakeSpawn = (file, args, opts) => {
+    calls.push({ file, args, opts });
+    return { pid: 1, on: () => {}, unref: () => {} };
+  };
+  launchInstaller('setup.exe', 'win32', fakeSpawn, { needsElevation: false });
+  assert.deepEqual(calls[0].args, ['--updated', '/S', '--force-run'],
+    'tanpa --force-run aplikasi tidak pernah dijalankan ulang setelah pemasangan');
+});
+
+test('install: jalur elevasi meneruskan argumen lengkap ke Start-Process', () => {
+  let script = '';
+  const fakeSpawn = (file, args) => {
+    script = args[args.length - 1];
+    return { pid: 1, on: () => {}, unref: () => {} };
+  };
+  launchInstaller('setup.exe', 'win32', fakeSpawn, { needsElevation: true });
+  assert.match(script, /--updated/, 'NSIS harus tahu ini pembaruan, bukan pemasangan baru');
+  assert.match(script, /\/S/, 'tetap senyap');
+  assert.match(script, /--force-run/, 'aplikasi dijalankan ulang sesudah pemasangan');
+});
+
+test('install: status pembaruan menyebut kebutuhan elevasi SEBELUM user menunggu', async () => {
+  // UI harus bisa memberi tahu "Windows akan meminta izin administrator" tanpa
+  // menebak dari path. Server yang tahu apakah folder aplikasi bisa ditulis,
+  // jadi dialah yang menjawab. Tanpa field ini, satu-satunya cara user tahu
+  // adalah melihat dialog UAC yang — pada pemasangan per-machine lama —
+  // tidak pernah muncul sama sekali.
+  const u = await (await api('/api/update')).json();
+  assert.equal(typeof u.elevation?.needed, 'boolean',
+    'status harus membawa kebutuhan elevasi: ' + JSON.stringify(u.elevation));
+  assert.equal(u.elevation.needed, false,
+    'server uji berjalan dari folder yang bisa ditulis, jadi tidak butuh elevasi');
+});
+
+test('install: status pemasangan yang macet kembali jujur, bukan "installing" selamanya', async () => {
+  // Kegagalan nyata di mesin user: installer diluncurkan, menunggu UAC yang tak
+  // pernah dijawab, dan status tinggal di `installing` selamanya. Tombol hilang,
+  // unduhan dianggap berjalan, dan jalan keluarnya hanya menutup aplikasi.
+  // Kontraknya: `installing` SELALU punya batas waktu, dan sesudah lewat status
+  // kembali ke `ready` dengan alasan yang bisa dibaca.
+  mockMode = 'ok';
+  mockTag = 'v99.6.0';
+  await api('/api/update-check?force=1');
+  let u = null;
+  for (let i = 0; i < 80; i++) {
+    await new Promise((res) => setTimeout(res, 250));
+    u = await (await api('/api/update')).json();
+    if (['ready', 'error'].includes(u.download?.status)) break;
+  }
+  assert.equal(u.download.status, 'ready', 'berkas siap: ' + JSON.stringify(u.download));
+
+  // Mesin uji melarang peluncuran installer, jadi status harus tetap `ready`
+  // dan TIDAK pernah berpura-pura memasang. Itu bukti bahwa status hanya
+  // berpindah ke `installing` bila prosesnya benar-benar lahir.
+  const r = await (await api('/api/update/install', { method: 'POST' })).json();
+  assert.equal(r.launched, false, 'peluncuran dilarang di mesin uji');
+  const after = await (await api('/api/update')).json();
+  assert.equal(after.download.status, 'ready',
+    'status tidak boleh mengaku memasang saat installer tidak dijalankan: ' + JSON.stringify(after.download));
 });
 
 // ---------- diagnostik ----------

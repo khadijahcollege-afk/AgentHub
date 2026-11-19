@@ -52,7 +52,7 @@ import {
 import {
   parseChecksums, verifyFile, hashFile, detectInterception, readMagic, preflight,
   freeSpace, canWrite, firstSuccess, retry, installDecision, installGate, pickWritableDir,
-  uninstallPlan, diagnosticsBundle, bundleToText,
+  uninstallPlan, diagnosticsBundle, bundleToText, needsElevation, installStall,
 } from './lib/install.js';
 import * as runs from './lib/runs.js';
 import * as mcp from './lib/mcp.js';
@@ -143,8 +143,36 @@ let installPending = null;
 // Hasil gerbang pemasangan terakhir, supaya UI bisa menyebut ALASAN penundaan
 // atau penolakan tanpa menghitung ulang aturan yang sama dengan cara berbeda.
 let installGateLast = null;
+// Apakah memasang di mesin ini butuh izin administrator. Dihitung sekali saat
+// boot: folder aplikasi tidak berpindah selama proses hidup, dan jawabannya
+// dipakai di tiga tempat (gerbang, peluncuran, UI) yang harus sepakat.
+const INSTALL_NEEDS_ELEVATION = needsElevation({ platform: process.platform, root: ROOT });
+// Jejak peluncuran installer: mode + waktu. Dipakai untuk mendeteksi installer
+// yang lahir tetapi tidak pernah menyelesaikan apa pun — kegagalan yang dulu
+// tidak terlihat sama sekali karena status hanya berpindah ke `installing`.
+let installAttempt = null;
+
+// Pemasangan bisa berhenti tanpa pernah selesai: dialog UAC tidak dijawab,
+// installer dimatikan antivirus, atau user menutupnya. Dulu status tetap
+// `installing` selamanya — tombol hilang, unduhan dianggap berjalan, dan
+// satu-satunya jalan keluar adalah menutup aplikasi. Aturannya ada di
+// `installStall` (fungsi murni, diuji tanpa server) supaya UI dan server tidak
+// pernah punya pendapat berbeda tentang kapan "menunggu" berubah jadi "macet".
+function refreshInstallState() {
+  const r = installStall({
+    status: updateDl.status,
+    mode: installAttempt?.mode || 'silent',
+    startedAt: installAttempt?.at || updateDl.at || 0,
+  });
+  if (!r.stalled) return false;
+  updateDl = { ...updateDl, status: 'ready', error: r.why, at: Date.now() };
+  installAttempt = null;
+  broadcast('update');
+  return true;
+}
 
 function updatePublic() {
+  refreshInstallState();
   const info = updateCache.data;
   const { path, ...rest } = updateDl;
   const ready = updateDl.status === 'ready';
@@ -155,6 +183,14 @@ function updatePublic() {
     installable: ready && fs.existsSync(updateDl.path || ''),
     installerPath: ready ? updateDl.path : null,
     asset: info?.ok && info.hasUpdate ? assetFor() : null,
+    // Pemasangan di mesin ini akan meminta izin administrator (aplikasi
+    // terpasang per-machine di Program Files). UI harus mengatakannya SEBELUM
+    // user menunggu, karena dialog UAC tidak bisa dipicu dari hasil unduhan.
+    elevation: {
+      needed: INSTALL_NEEDS_ELEVATION,
+      mode: installAttempt?.mode || null,
+      at: installAttempt?.at || null,
+    },
     // status verifikasi + keputusan langkah berikutnya, supaya UI tidak
     // menghitung ulang aturan yang sama dengan cara berbeda.
     verify: updateVerify,
@@ -343,6 +379,10 @@ function startDownload(force = false, { autoInstall = false } = {}) {
 function installNow({ auto = false } = {}) {
   const info = updateCache.data;
   if (!info?.ok) return { ok: false, status: 409, body: { error: 'Info versi belum tersedia' } };
+  // Status `installing` yang macet tidak boleh mengunci tombol: gerbang di
+  // bawah akan menolaknya selamanya. Pemeriksaan yang sama dengan yang dipakai
+  // UI dijalankan dulu supaya tombol dan status tidak pernah berbeda pendapat.
+  refreshInstallState();
   const onDisk = updateDl.status === 'ready' && fs.existsSync(updateDl.path || '');
   const pre = installPreflight();
   const gate = installGate({
@@ -369,13 +409,39 @@ function installNow({ auto = false } = {}) {
     return { ok: false, status: 409, body };
   }
   if (gate.action === 'defer') return { ok: false, status: 409, body: { error: gate.why, code: gate.code, gate } };
+  // Dicatat SEBELUM peluncuran: jalur ber-elevasi memakai PowerShell sebagai
+  // perantara, dan ia bisa keluar (user menolak UAC) sebelum peluncuran selesai
+  // dicatat. Tanpa ini, penolakan hanya terlihat sebagai status yang diam.
+  installAttempt = { mode: INSTALL_NEEDS_ELEVATION ? 'elevated' : 'silent', pid: null, needsElevation: INSTALL_NEEDS_ELEVATION, at: Date.now() };
   try {
     const r = launchInstaller(updateDl.path, process.platform, null, {
+      // Pemasangan per-machine meminta izin administrator di tengah jalan.
+      // Kalau permintaan itu tidak dibuat di depan, installer menggantung tanpa
+      // jendela dan user tidak pernah tahu ada dialog yang menunggu jawaban.
+      needsElevation: INSTALL_NEEDS_ELEVATION,
       // Kegagalan spawn datang belakangan; status harus kembali jujur supaya
       // tombol masih masuk akal dan percobaan berikutnya tidak buta.
       onError: (e) => {
         updateDl = { ...updateDl, status: 'ready', error: `installer gagal dijalankan: ${String(e?.message || e)}`, at: Date.now() };
         installPending = null;
+        installAttempt = null;
+        broadcast('update');
+      },
+      // Jalur ber-elevasi memakai PowerShell sebagai perantara: ia keluar
+      // dengan kode bukan nol ketika user MENOLAK dialog UAC. Tanpa ini,
+      // penolakan hanya terlihat sebagai "tidak ada apa-apa" sampai batas
+      // waktu habis.
+      onExit: (code) => {
+        if (!installAttempt || installAttempt.mode !== 'elevated') return;
+        if (updateDl.status !== 'installing') return;
+        if (!code) return; // 0 = dialog disetujui, installer lanjut sendiri
+        updateDl = {
+          ...updateDl,
+          status: 'ready',
+          error: 'Izin administrator ditolak, jadi pemasangan dibatalkan. Pasang manual dari berkas yang sudah diunduh bila ingin melanjutkan.',
+          at: Date.now(),
+        };
+        installAttempt = null;
         broadcast('update');
       },
     });
@@ -387,18 +453,21 @@ function installNow({ auto = false } = {}) {
     if (r.launched === false) {
       updateDl = { ...updateDl, status: 'ready', error: null, at: Date.now() };
       installPending = null;
+      installAttempt = null;
       broadcast('update');
       return {
         ok: true, status: 200,
         body: { ok: true, ...r, path: updateDl.path, auto, gate, note: 'installer tidak dijalankan di mesin ini' },
       };
     }
+    installAttempt = { mode: r.mode, pid: r.pid ?? null, needsElevation: !!r.needsElevation, at: Date.now() };
     updateDl = { ...updateDl, status: 'installing', error: null, at: Date.now() };
     installPending = null;
     broadcast('update');
     return { ok: true, status: 200, body: { ok: true, ...r, path: updateDl.path, auto, gate } };
   } catch (e) {
     updateDl = { ...updateDl, status: 'ready', error: String(e.message || e), at: Date.now() };
+    installAttempt = null;
     broadcast('update');
     return { ok: false, status: 500, body: { error: String(e.message || e) } };
   }

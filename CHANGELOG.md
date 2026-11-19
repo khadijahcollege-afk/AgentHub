@@ -1,5 +1,55 @@
 # Changelog
 
+## 1.9.12 — 2026-11-19
+Pembaruan yang sudah terunduh akhirnya benar-benar terpasang.
+
+Gejalanya sederhana: unduhan selesai, installer ada di `dist/`, status mengatakan
+"memasang", lalu tidak terjadi apa-apa. Tidak ada jendela, tidak ada galat, tidak
+ada versi baru. Penelusuran di mesin yang mengalaminya menemukan empat sebab, dan
+keempatnya harus diperbaiki agar pemasangan selesai.
+
+Pertama, installer menunggu dialog UAC yang tidak bisa dijangkau. Aplikasi
+terpasang per-machine (`C:\Program Files\AgentHub`, terdaftar di `HKLM`), sedangkan
+installer dibangun `perMachine: false`. NSIS menentukan mode dari registry:
+`HKLM\Software\<GUID>\InstallLocation` berisi `C:\Program Files\AgentHub`, jadi ia
+menyimpulkan "all users" lalu memanggil `UAC_RunElevated` **di tengah** pemasangan
+senyap. Karena installer diluncurkan `windowsHide: true`, dialognya muncul
+(`consent.exe` tercatat hidup) tetapi tidak ada yang memberitahu user. Installer
+ditemukan menggantung dengan CPU 0,28 detik — menunggu, bukan bekerja.
+
+Kedua, `/S` saja memasang berkas lalu berhenti. Template assisted electron-builder
+hanya menjalankan ulang aplikasi bila `${isForceRun}`. `--updated` juga hilang,
+padahal ia yang membuat NSIS melewati halaman dan memakai jalur tutup-aplikasi
+khusus pembaruan. Argumennya kini `--updated /S --force-run`, sama dengan
+`NsisUpdater` resmi.
+
+Ketiga, `spawn` diambil lewat `import()` dinamis sehingga mengembalikan Promise:
+`child.pid` selalu `undefined` dan pendengar `error` tidak pernah terpasang.
+Kegagalan spawn jadi tidak terlihat sampai server mati. Sekarang diimpor statis.
+
+Keempat, status `installing` tidak punya akhir. Sesudah installer diluncurkan, ia
+tinggal di sana selamanya; tombol hilang dan satu-satunya jalan keluar adalah
+menutup aplikasi. Batas waktunya kini berbeda menurut mode — menunggu disk jauh
+lebih longgar daripada menunggu jawaban user — dan penolakan UAC dilaporkan
+seketika lewat kode keluar PowerShell.
+
+- **Elevasi diminta di depan** lewat `Start-Process -Verb RunAs`; mode `elevated`
+  jujur, bukan `silent` palsu (`lib/update.js`).
+- **`needsElevation()`** menentukan kebutuhan dari kemampuan menulis folder
+  aplikasi — bukti nyata, bukan tebakan nama folder (`lib/install.js`).
+- **`installerArgs()`** menyusun `--updated /S --force-run` di satu tempat.
+- **`installStall()`** memutuskan kapan "menunggu" menjadi "macet", beserta
+  alasannya.
+- **UI menyebut izin administrator sebelum user menunggu**, membedakan "menunggu
+  persetujuan" dari "sedang memasang", dan menampilkan alasan kegagalan saat
+  status kembali ke `ready`.
+
+Bukti: perintah PowerShell yang baru diverifikasi sah sebelum dipakai — path
+normal dan path berisi kutip tunggal lolos parser, dan argumen tiba di target
+sebagai tiga token terpisah. Sebelas mutasi diuji, 11/11 tertangkap.
+
+Suite: 691 tes, hijau.
+
 ## 1.9.11 — 2026-11-19
 Satu BOM di `config.json` tidak lagi menghapus token dan port pengguna.
 

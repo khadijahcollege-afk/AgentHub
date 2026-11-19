@@ -402,6 +402,19 @@ label { color: #b5b5bf; font-size: 12px; gap: 8px; }
 .upd-verify.warn .upd-badge { background: rgba(230, 180, 80, .16); color: #e0b95c; }
 .upd-verify.bad .upd-badge { background: rgba(230, 90, 90, .18); color: #ef7a7a; }
 .upd-verify.bad { color: #ef9a9a; }
+/* Pemberitahuan bahwa Windows akan meminta izin administrator. Dibedakan dari
+   baris "muted" biasa: ini satu-satunya baris yang menuntut tindakan user, dan
+   mengabaikannya membuat pemasangan tidak pernah selesai. */
+.upd-elev {
+  margin-top: 4px;
+  padding: 6px 8px;
+  border-left: 2px solid rgba(230, 180, 80, .55);
+  background: rgba(230, 180, 80, .08);
+  border-radius: 0 4px 4px 0;
+  /* Bukan `--muted2`: ini satu-satunya baris yang menuntut tindakan user, jadi
+     ia harus terbaca sejelas teks biasa — bukan diredupkan seperti keterangan. */
+  color: var(--text2);
+}
 
 .upd-sources { margin: 6px 0 0; padding-left: 18px; }
 .upd-sources li { overflow-wrap: anywhere; }

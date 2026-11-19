@@ -8510,20 +8510,40 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
         // selesai, menunggu satu klik (autoUpdate mati), atau ditolak.
         const gate = u.autoInstall?.gate;
         const pending = u.autoInstall?.pending;
+        const elev = u.elevation?.needed;
+        // Kegagalan pemasangan sebelumnya (UAC ditolak, installer berhenti)
+        // kembali ke status `ready`. Tanpa baris ini alasan itu tidak pernah
+        // terlihat: user hanya melihat tombol yang sama seperti sebelumnya.
+        const failed = !!d.error;
+        if (failed) {
+          host.innerHTML += `<div class="upd-verify bad"><span class="upd-badge">pemasangan gagal</span> ${esc(d.error)}</div>`;
+        }
+        // Kegagalan baru saja terjadi: kalimat "memasang otomatis…" akan
+        // bertentangan dengannya. Setelah gagal, satu-satunya langkah yang
+        // benar adalah mencoba lagi secara sadar — jadi tombolnya ditampilkan.
         if (pending) {
           const n = u.autoInstall?.activeRuns || 0;
           host.innerHTML += `<div class="muted small">Dipasang otomatis <b>setelah ${n} pekerjaan agent selesai</b>: memasang menutup aplikasi, jadi run yang berjalan tidak dipotong di tengah.</div>`;
         } else if (gate && ['CHECKSUM_MISMATCH', 'PREFLIGHT_FAILED'].includes(gate.code)) {
           host.innerHTML += `<div class="muted small">Pemasangan otomatis dihentikan: ${esc(gate.why)}. Perbaiki penyebabnya lalu tekan Pasang sekarang.</div>`;
           inst?.classList.remove('hidden');
+        } else if (failed) {
+          inst?.classList.remove('hidden');
+          host.innerHTML += `<div class="muted small">Tekan Pasang sekarang untuk mencoba lagi.</div>`
+            + (elev ? `<div class="muted small upd-elev">Windows akan meminta <b>izin administrator</b>. Dialog itu harus disetujui agar pemasangan bisa lanjut.</div>` : '');
         } else if (auto) {
-          host.innerHTML += `<div class="muted small">Memasang otomatis… aplikasi akan ditutup dan dimulai ulang.</div>`;
+          host.innerHTML += `<div class="muted small">Memasang otomatis… aplikasi akan ditutup dan dimulai ulang.</div>`
+            + (elev ? `<div class="muted small upd-elev">Aplikasi ini terpasang untuk semua pengguna, jadi Windows akan menampilkan <b>dialog izin administrator</b>. Setujui dialog itu — tanpa jawaban, pemasangan tidak bisa lanjut.</div>` : '');
         } else {
           inst?.classList.remove('hidden');
-          host.innerHTML += `<div class="muted small">Installer sudah terunduh otomatis — klik Pasang sekarang untuk memasang senyap & memulai ulang.</div>`;
+          host.innerHTML += `<div class="muted small">Installer sudah terunduh otomatis — klik Pasang sekarang untuk memasang senyap & memulai ulang.</div>`
+            + (elev ? `<div class="muted small upd-elev">Windows akan meminta <b>izin administrator</b> saat pemasangan. Dialog itu memang harus disetujui.</div>` : '');
         }
       } else if (d?.status === 'installing') {
-        host.innerHTML += `<div class="muted small">Installer sedang berjalan — aplikasi akan ditutup dan dimulai ulang.</div>`;
+        const byElevation = u.elevation?.mode === 'elevated';
+        host.innerHTML += byElevation
+          ? `<div class="muted small">Menunggu persetujuan izin administrator. Setujui dialog UAC yang muncul — aplikasi akan ditutup dan dimulai ulang setelahnya.</div>`
+          : `<div class="muted small">Installer sedang berjalan — aplikasi akan ditutup dan dimulai ulang.</div>`;
       } else if (d?.status === 'error') {
         dl?.classList.remove('hidden');
         // Baris verifikasi ikut ditampilkan saat GAGAL. Tanpa ini, justru
@@ -8623,7 +8643,14 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
   const installUpdate = async () => {
     try {
       const r = await api('/api/update/install', { method: 'POST' });
-      toast(r.mode === 'silent' ? 'Installer berjalan senyap — aplikasi akan dipasang ulang & dimulai ulang otomatis' : 'Membuka berkas pembaruan — selesaikan langkah pemasangan', 6000);
+      // Tiga mode, tiga pesan. `elevated` berarti Windows akan meminta izin —
+      // tanpa mengatakannya, user mengira tidak terjadi apa-apa saat dialog
+      // muncul di belakang jendela lain.
+      toast(r.mode === 'elevated'
+        ? 'Menunggu izin administrator — setujui dialog UAC yang muncul, aplikasi akan dipasang lalu dimulai ulang'
+        : r.mode === 'silent'
+          ? 'Installer berjalan senyap — aplikasi akan dipasang ulang & dimulai ulang otomatis'
+          : 'Membuka berkas pembaruan — selesaikan langkah pemasangan', 8000);
       $('#update-banner')?.classList.add('hidden');
     } catch (e) { toast('Gagal memasang: ' + e.message); }
   };
