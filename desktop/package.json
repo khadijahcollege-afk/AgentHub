@@ -1,8 +1,8 @@
 {
   "name": "agenthub-desktop",
   "productName": "AgentHub",
-  "version": "1.9.12",
-  "description": "AgentHub desktop shell â€” jendela asli Windows untuk server AgentHub",
+  "version": "1.9.13",
+  "description": "AgentHub desktop shell Ã¢â‚¬â€ jendela asli Windows untuk server AgentHub",
   "main": "main.js",
   "author": "AgentHub Contributors",
   "license": "MIT",

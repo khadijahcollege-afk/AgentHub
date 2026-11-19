@@ -1,5 +1,38 @@
 # Changelog
 
+## 1.9.13 — 2026-11-19
+Satu tanda kutip mematikan mode senyap, dan dengan itu seluruh pemasangan otomatis.
+
+1.9.12 benar soal niatnya: elevasi diminta di depan, argumen lengkap
+(`--updated /S --force-run`) dikirim. Tetapi saat argumen itu disusun untuk
+`Start-Process -ArgumentList`, setiap argumen dibungkus tanda kutip — sehingga
+`/S` terkirim sebagai `"/S"`.
+
+NSIS tidak memakai `argv`; ia membaca `GetCommandLine()` mentah dan mem-parse
+sendiri:
+
+```c
+#define END_OF_ARG(c) (c == _T(' ') || c == _T('\0'))
+if (cmdline[0] == _T('S') && END_OF_ARG(cmdline[1]))
+  g_exec_flags.silent = 1;
+```
+
+Karakter sesudah `S` harus spasi atau akhir string. Dengan tanda kutip di sana,
+`END_OF_ARG` gagal dan flag senyap tidak pernah aktif. Installer lalu menampilkan
+wizard "Choose Installation Options" — hidup, terlihat "sedang memasang", tetapi
+menunggu klik dan tidak memasang apa pun sendiri.
+
+Karena `${Silent}` tidak aktif, `installSection.nsh` juga melewati jalur
+`doStartApp`, jadi aplikasi tidak dijalankan ulang. Dua gejala, satu sebab.
+
+Sekarang baris argumen mengutip hanya yang perlu (`startProcessArgLine`), sehingga
+yang terkirim polos: `--updated /S --force-run`. Path berspasi tetap dikutip benar.
+
+Tes baru memasang kembali bentuk 1.9.12 dan memastikan suite menjadi merah —
+bukan sekadar memeriksa bahwa kode hari ini kebetulan benar.
+
+Suite: 692 tes, hijau.
+
 ## 1.9.12 — 2026-11-19
 Pembaruan yang sudah terunduh akhirnya benar-benar terpasang.
 

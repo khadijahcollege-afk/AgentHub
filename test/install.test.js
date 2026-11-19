@@ -18,7 +18,7 @@ import {
   firstSuccess, retry, installDecision, installGate, pickWritableDir, uninstallPlan, redact,
   canWrite, diagnosticsBundle, bundleToText, needsElevation, installStall,
 } from '../lib/install.js';
-import { CHECKSUM_ASSET, fetchChecksums, launchInstaller, installerArgs } from '../lib/update.js';
+import { CHECKSUM_ASSET, fetchChecksums, launchInstaller, installerArgs, startProcessArgLine } from '../lib/update.js';
 import { INSTALL_MACHINE, canTransition, MACHINE_VERSION } from '../lib/machines.js';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -608,6 +608,35 @@ test('install: jalur elevasi meneruskan argumen lengkap ke Start-Process', () =>
   assert.match(script, /--updated/, 'NSIS harus tahu ini pembaruan, bukan pemasangan baru');
   assert.match(script, /\/S/, 'tetap senyap');
   assert.match(script, /--force-run/, 'aplikasi dijalankan ulang sesudah pemasangan');
+});
+
+test('install: /S TIDAK PERNAH dikutip di baris argumen Start-Process', () => {
+  // Ini kesalahan yang benar-benar terjadi di 1.9.12 dan membuat pemasangan
+  // otomatis tidak pernah jalan. NSIS hanya mengenali mode senyap bila karakter
+  // sesudah `S` adalah spasi atau akhir baris:
+  //
+  //   #define END_OF_ARG(c) (c == _T(' ') || c == _T('\0'))
+  //   if (cmdline[0] == _T('S') && END_OF_ARG(cmdline[1])) g_exec_flags.silent = 1;
+  //
+  // `"/S"` membuat karakter itu tanda kutip, flag senyap diabaikan, dan installer
+  // menampilkan wizard "Choose Installation Options" yang menunggu klik:
+  // prosesnya hidup, terlihat "sedang memasang", tetapi tidak memasang apa pun.
+  const line = startProcessArgLine();
+  assert.equal(line, '--updated /S --force-run', 'argumen polos, tanpa kutip: ' + line);
+  assert.ok(!/"\/S"|'\/S'/.test(line), '/S yang dikutip mematikan mode senyap NSIS');
+
+  // Aturan yang sama harus terbukti lewat jalur peluncuran sungguhan.
+  let script = '';
+  const fakeSpawn = (file, args) => {
+    script = args[args.length - 1];
+    return { pid: 1, on: () => {}, unref: () => {} };
+  };
+  launchInstaller('setup.exe', 'win32', fakeSpawn, { needsElevation: true });
+  const argPart = script.slice(script.indexOf('-ArgumentList') + 14);
+  assert.ok(!argPart.includes('"/S"'), 'skrip PowerShell mengirim /S terkutip: ' + script);
+  // Hanya argumen yang mengandung spasi/kutip yang boleh dikutip.
+  assert.equal(startProcessArgLine(['--updated', '/S', 'C:\\a b\\x.exe']),
+    '--updated /S "C:\\a b\\x.exe"', 'path berspasi tetap butuh kutip');
 });
 
 test('install: status pembaruan menyebut kebutuhan elevasi SEBELUM user menunggu', async () => {
