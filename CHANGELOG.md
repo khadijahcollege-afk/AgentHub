@@ -1,5 +1,41 @@
 # Changelog
 
+## 1.9.14 — 2026-11-19
+Karakter aneh di layar hilang, dan ada penjaga agar tidak kembali.
+
+Teks UI muncul sebagai rangkaian karakter sampah alih-alih
+`AgentHub — studio agent`.
+Penyebabnya bukan kode aplikasi, melainkan cara berkas disunting pada dua rilis
+sebelumnya: beberapa berkas ditulis ulang lewat PowerShell.
+
+```powershell
+$c = Get-Content $f -Raw          # membaca UTF-8 TANPA BOM sebagai CP1252
+[System.IO.File]::WriteAllText((Resolve-Path $f), $c)
+```
+
+`Get-Content -Raw` di PowerShell 5.1 mendekode sebagai CP1252 bila tidak ada BOM.
+Setiap em dash dipecah menjadi tiga karakter sampah, setiap middle dot menjadi
+dua, lalu semuanya ditulis kembali sebagai UTF-8 **yang sah** — sehingga validasi
+encoding biasa tetap lolos dan kerusakan hanya terlihat di layar. Karena berkas
+hanya terlihat di layar. Karena berkas yang sama tersentuh berulang kali,
+kerusakannya menumpuk: `index.html` di paket 1.9.13 mengandung 540 pola rusak.
+
+Pemulihan memakai blob git sebelum kerusakan masuk (`HEAD~2`), lalu menerapkan
+hanya perubahan yang disengaja (versi dan cache-busting) — bukan membalik encoding
+berkali-kali, yang hasilnya tidak utuh. Dua berkas tes yang sudah lama rusak
+diperbaiki pada tingkat byte (pola `c3 a2 e2 82 ac e2 80 9d` → `e2 80 94`), satu
+BOM dibuang, dan sintaksnya diverifikasi dengan `node --check`.
+
+Tes baru `test/encoding.test.js` memindai 267 berkas teks dan memeriksa BYTE,
+bukan hasil decode — justru karena kerusakan ini menghasilkan UTF-8 yang sah.
+Dibuktikan dengan menyuntikkan mojibake dan BOM sungguhan: keduanya membuat tes
+merah, dan hijau lagi setelah dibersihkan.
+
+Aturan sesudah ini: berkas repo tidak pernah ditulis lewat `Get-Content -Raw` +
+`WriteAllText`; penyuntingan memakai `fs` dengan encoding `'utf8'` eksplisit.
+
+Suite: 694 tes, hijau.
+
 ## 1.9.13 — 2026-11-19
 Satu tanda kutip mematikan mode senyap, dan dengan itu seluruh pemasangan otomatis.
 

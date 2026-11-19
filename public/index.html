@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
 <meta name="theme-color" content="#0b0b0c">
 <meta name="description" content="AgentHub: workspace lokal untuk chat AI, delegation, skill terpasang, terminal proyek, dan pemantauan gateway.">
-<title>AgentHub ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â studio agent</title>
+<title>AgentHub — studio agent</title>
 <link rel="manifest" href="/public/manifest.webmanifest">
 <link rel="apple-touch-icon" href="/public/icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="stylesheet" href="/public/style.css?v=1.9.13">
+<link rel="stylesheet" href="/public/style.css?v=1.9.14">
 <link rel="stylesheet" href="/public/workspace.css?v=20261119">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%2360a5fa'/%3E%3Cstop offset='100%25' stop-color='%232563eb'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='100' height='100' rx='22' fill='url(%23g)'/%3E%3Ccircle cx='50' cy='38' r='16' fill='white'/%3E%3Crect x='30' y='62' width='40' height='10' rx='5' fill='white'/%3E%3C/svg%3E">
 </head>
@@ -36,13 +36,13 @@
     <button id="update-dismiss" class="icon-btn" title="Abaikan versi ini" aria-label="Abaikan"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
   </div>
   <div id="conn-banner" class="conn-banner hidden" role="status" aria-live="polite">
-    <span id="conn-text">MenghubungkanÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦</span>
+    <span id="conn-text">Menghubungkan…</span>
     <button id="conn-retry" class="btn tiny">Coba lagi</button>
   </div>
 
   <!-- rail ikon -->
   <aside class="rail">
-    <button class="workspace-brand" id="brand-home" type="button" title="Buka / tutup sidebar (Ctrl B)" aria-label="AgentHub ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â buka atau tutup sidebar">
+    <button class="workspace-brand" id="brand-home" type="button" title="Buka / tutup sidebar (Ctrl B)" aria-label="AgentHub — buka atau tutup sidebar">
       <span class="brand-mark" aria-hidden="true">
         <svg viewBox="0 0 32 32">
           <defs>
@@ -88,7 +88,7 @@
   <!-- sidebar studio -->
   <aside class="sidebar hidden" id="sidebar">
     <div class="sb-head">
-      <button class="sb-menu-btn" id="sb-menu-btn" title="Menu ruang kerja"><b id="sb-title">AgentHub</b><span class="caret">ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¾</span></button>
+      <button class="sb-menu-btn" id="sb-menu-btn" title="Menu ruang kerja"><b id="sb-title">AgentHub</b><span class="caret">▾</span></button>
       <span class="sb-head-right">
         <button class="icon-btn" id="sb-search-btn" title="Cari"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg></button>
         <button class="icon-btn" data-view="alerts" title="Notifikasi"><svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 1 0-12 0c0 6-2 7-2 7h16s-2-1-2-7"/><path d="M10.5 19a2 2 0 0 0 3 0"/></svg></button>
@@ -97,13 +97,13 @@
     <button class="sb-env" id="env-open">
       <span class="env-ico"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="2.5"/><path d="M9 21h6M12 17v4"/></svg></span>
       <span class="env-name">This PC<small id="env-note" class="hidden"></small></span>
-      <i class="dot ok"></i><span class="caret">ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¾</span>
+      <i class="dot ok"></i><span class="caret">▾</span>
     </button>
     <button class="sb-action" id="btn-new-chat"><svg viewBox="0 0 24 24"><path d="M4 20h4L20 8l-4-4L4 16z"/></svg> <span>New chat</span><kbd>Alt N</kbd></button>
     <button class="sb-action" id="btn-resume"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg> <span>Resume session</span></button>
     <div class="sb-label"><span>Personal</span><span class="sb-label-right"><button class="icon-btn" id="btn-filter-projects" title="Filter proyek"><svg viewBox="0 0 24 24"><path d="M4 6h16l-6 7v5l-4 2v-7z"/></svg></button><button class="icon-btn" id="btn-cwd" title="Ganti folder proyek agent"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button></span></div>
     <div id="sb-projects" class="sb-projects"></div>
-    <div class="sb-label"><span>Recents</span><span class="caret">ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¾</span></div>
+    <div class="sb-label"><span>Recents</span><span class="caret">▾</span></div>
     <div id="sb-tagrow" class="sb-tagrow"></div>
     <div id="sb-recents" class="sb-recents"></div>
     <div id="sb-promo" class="sb-promo hidden"></div>
@@ -111,7 +111,7 @@
       <button class="sb-account" id="sb-account" title="Akun & tampilan perangkat ini">
         <span class="sb-account-mark">A</span>
         <span class="sb-account-main"><b id="account-name">AgentHub</b><small>Perangkat ini</small></span>
-        <span class="caret">ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¾</span>
+        <span class="caret">▾</span>
       </button>
     </div>
   </aside>
@@ -148,12 +148,12 @@
           <button id="btn-terminal" class="btn tiny" aria-controls="terminal-panel" aria-expanded="false" title="Terminal (Ctrl+`)">&gt;_ Terminal</button>
           <button id="btn-bg" class="icon-btn" aria-controls="bg-panel" aria-expanded="false" title="Perintah latar (background)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2.5 4.5 13.5H11l-1 8L18.5 10H12z"/></svg><span id="bg-badge" class="icon-badge hidden">0</span></button>
           <div id="find-bar" class="find-bar hidden">
-            <input id="find-input" class="search small" placeholder="Cari di threadÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦" type="search">
+            <input id="find-input" class="search small" placeholder="Cari di thread…" type="search">
             <span id="find-count" class="muted small"></span>
             <button class="icon-btn" id="find-close" title="Tutup pencarian"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
           </div>
           <button id="btn-share" class="icon-btn hidden" title="Bagikan thread (tautan baca-saja)"><svg viewBox="0 0 24 24"><path d="M12 3v11M8 6l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg></button>
-          <button id="btn-session-info" class="icon-btn hidden" title="Info sesi ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â token & pesan"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/></svg></button>
+          <button id="btn-session-info" class="icon-btn hidden" title="Info sesi — token & pesan"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/></svg></button>
           <button id="btn-sys-prompt" class="icon-btn hidden" title="System prompt thread ini"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h13"/><path d="M18.5 10.5v5"/><path d="M16 13h5"/></svg><span id="sys-prompt-badge" class="icon-badge hidden"></span></button>
           <button id="btn-changes" class="icon-btn hidden" title="Perubahan & aturan proyek"><svg viewBox="0 0 24 24"><path d="M7 4v12a3 3 0 0 0 3 3h7"/><path d="M17 16l3 3-3 3"/><circle cx="7" cy="4" r="2"/></svg><span id="changes-count" class="icon-badge hidden">0</span></button>
           <button id="btn-stop" class="icon-btn hidden" title="Hentikan run"><svg viewBox="0 0 24 24"><rect x="6.5" y="6.5" width="11" height="11" rx="2.5"/></svg></button>
@@ -205,7 +205,7 @@
           </div>
           <pre id="terminal-output" tabindex="0" aria-label="Output terminal">Jalankan perintah di folder proyek aktif.</pre>
           <form id="terminal-form"><span aria-hidden="true">&gt;</span><input id="terminal-command" aria-label="Perintah terminal" placeholder="Contoh: npm test" autocomplete="off" spellcheck="false"><button id="terminal-run" class="btn tiny primary">Jalankan</button></form>
-          <p class="terminal-hint">PowerShell di Windows ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· setiap perintah membuka proses baru ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· tab tetap hidup saat panel ditutup</p>
+          <p class="terminal-hint">PowerShell di Windows · setiap perintah membuka proses baru · tab tetap hidup saat panel ditutup</p>
         </section>
         <section id="bg-panel" class="bg-panel hidden" aria-label="Perintah latar">
           <div class="terminal-toolbar">
@@ -224,13 +224,13 @@
               <pre id="bg-output" tabindex="0" aria-label="Keluaran perintah latar">Belum ada perintah yang dipilih.</pre>
             </div>
           </div>
-          <p class="terminal-hint">Perintah latar hidup lebih lama dari run ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â keluarannya tersimpan di .agenthub/tasks</p>
+          <p class="terminal-hint">Perintah latar hidup lebih lama dari run — keluarannya tersimpan di .agenthub/tasks</p>
         </section>
         <div id="composer" class="composer-pill">
           <div class="pill-main">
           <div class="pill-context">
-            <button class="mini-chip" id="composer-cwd" title="Folder kerja agent CLI"><svg viewBox="0 0 24 24"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H9l2 2h7.5A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5z"/></svg> <span id="cwd-name">This PC</span> <span class="caret">ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¾</span></button>
-            <button class="mini-chip" id="composer-branch" title="Info git folder aktif"><svg viewBox="0 0 24 24"><circle cx="7" cy="5.5" r="2"/><circle cx="7" cy="18.5" r="2"/><circle cx="17" cy="9" r="2"/><path d="M7 7.5v9M17 11c0 4-6 3.5-8.5 5.5"/></svg> <span id="cwd-branch">main</span> <span class="caret">ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¾</span></button>
+            <button class="mini-chip" id="composer-cwd" title="Folder kerja agent CLI"><svg viewBox="0 0 24 24"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H9l2 2h7.5A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5z"/></svg> <span id="cwd-name">This PC</span> <span class="caret">▾</span></button>
+            <button class="mini-chip" id="composer-branch" title="Info git folder aktif"><svg viewBox="0 0 24 24"><circle cx="7" cy="5.5" r="2"/><circle cx="7" cy="18.5" r="2"/><circle cx="17" cy="9" r="2"/><path d="M7 7.5v9M17 11c0 4-6 3.5-8.5 5.5"/></svg> <span id="cwd-branch">main</span> <span class="caret">▾</span></button>
             <span id="composer-skills" class="composer-skills hidden" title="Skill yang aktif otomatis untuk permintaan ini"></span>
           </div>
             <div id="composer-queue" class="composer-queue hidden" aria-label="Antrean pesan"></div>
@@ -241,12 +241,12 @@
               <input id="attach-input" type="file" multiple class="hidden">
               <button class="mini-btn" id="btn-prompts" title="Prompt tersimpan"><svg viewBox="0 0 24 24"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v13a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 18.5z"/><path d="M8 7.5h8M8 11h8M8 14.5h5"/></svg></button>
               <button class="mini-btn hidden" id="btn-voice" title="Dikte suara (id-ID)"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0"/><path d="M12 17.5V21"/></svg></button>
-              <button class="mini-btn" id="btn-tools" title="Alat ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â lampirkan, jadwalkan, riset"><svg viewBox="0 0 24 24"><path d="M12 4l1.6 4.4L18 10l-4.4 1.6L12 16l-1.6-4.4L6 10l4.4-1.6z"/><path d="M19 15l.7 1.8L21.5 17.5l-1.8.7L19 20l-.7-1.8-1.8-.7 1.8-.7z"/></svg></button>
+              <button class="mini-btn" id="btn-tools" title="Alat — lampirkan, jadwalkan, riset"><svg viewBox="0 0 24 24"><path d="M12 4l1.6 4.4L18 10l-4.4 1.6L12 16l-1.6-4.4L6 10l4.4-1.6z"/><path d="M19 15l.7 1.8L21.5 17.5l-1.8.7L19 20l-.7-1.8-1.8-.7 1.8-.7z"/></svg></button>
               <button class="mini-btn" data-open-delegate title="Delegation ke banyak agent"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
-              <button class="access-chip" id="access-chip" title="Mode izin agent"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/></svg> <b id="access-label">Full access</b> <span class="caret">ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¾</span></button>
+              <button class="access-chip" id="access-chip" title="Mode izin agent"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/></svg> <b id="access-label">Full access</b> <span class="caret">▾</span></button>
               <span class="grow"></span>
-              <span class="model-chip" id="engine-chip" role="button" tabindex="0" title="Ganti engine / model"><span class="spark"><svg class="ico" viewBox="0 0 24 24"><path d="M12 3.6l1.9 6.5 6.5 1.9-6.5 1.9-1.9 6.5-1.9-6.5L3.6 12l6.5-1.9z"/></svg></span><span id="engine-label">Engine</span><span class="caret">ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¾</span></span>
-              <button class="mini-chip" id="effort-chip" title="Effort model ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â diterapkan ke engine yang mendukung (Codex)"><span id="effort-label">High</span> <span class="caret">ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¾</span></button>
+              <span class="model-chip" id="engine-chip" role="button" tabindex="0" title="Ganti engine / model"><span class="spark"><svg class="ico" viewBox="0 0 24 24"><path d="M12 3.6l1.9 6.5 6.5 1.9-6.5 1.9-1.9 6.5-1.9-6.5L3.6 12l6.5-1.9z"/></svg></span><span id="engine-label">Engine</span><span class="caret">▾</span></span>
+              <button class="mini-chip" id="effort-chip" title="Effort model — diterapkan ke engine yang mendukung (Codex)"><span id="effort-label">High</span> <span class="caret">▾</span></button>
               <input id="chat-model" class="model-inline hidden" placeholder="model (auto)">
               <span id="token-est" class="token-est muted small"></span>
               <button id="btn-send" class="send-btn" title="Kirim"><svg viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></svg></button>
@@ -276,7 +276,7 @@
           <summary>Aturan proyek <span class="muted small">(AGENTS.md &amp; sejenis)</span></summary>
           <div class="cd-rules-body">
             <select id="cd-rule-file" class="search small"></select>
-            <textarea id="cd-rule-text" rows="6" placeholder="Tulis aturan yang harus dipatuhi agent di folder iniÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦"></textarea>
+            <textarea id="cd-rule-text" rows="6" placeholder="Tulis aturan yang harus dipatuhi agent di folder ini…"></textarea>
             <div class="cd-rules-actions">
               <span id="cd-rule-status" class="muted small"></span>
               <span class="grow"></span>
@@ -288,13 +288,13 @@
     </section>
 
     <section id="view-skills" class="view">
-      <header class="view-head"><div><span class="page-eyebrow">KEMAMPUAN AGENT</span><h2>Skills terpasang</h2><p class="sub">Terdeteksi otomatis dari komputer dan proyek aktif, lalu <b>aktif sendiri</b> saat isi permintaan Anda cocok ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â tidak perlu memilih satu per satu.</p></div><button id="btn-skills-refresh" class="btn">Pindai ulang</button></header>
+      <header class="view-head"><div><span class="page-eyebrow">KEMAMPUAN AGENT</span><h2>Skills terpasang</h2><p class="sub">Terdeteksi otomatis dari komputer dan proyek aktif, lalu <b>aktif sendiri</b> saat isi permintaan Anda cocok — tidak perlu memilih satu per satu.</p></div><button id="btn-skills-refresh" class="btn">Pindai ulang</button></header>
       <div class="skills-auto" id="skills-auto">
         <span class="skills-auto-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5z"/></svg></span>
         <div><b>Aktivasi otomatis</b><p class="muted small">Skill berikut ini menyala sendiri ketika kata kunci permintaan Anda cocok dengan namanya. Anda tetap bisa memaksa satu skill dengan menulis <code>/skill nama-skill</code>.</p></div>
       </div>
       <div class="panel"><h3>Aktif otomatis</h3><p class="muted small">Agent menerima katalog skill di setiap tugas. Skill yang cocok dengan nama tugas dimuat langsung. Untuk memilih secara eksplisit, tulis <code>/skill nama-skill</code> dalam prompt. Skill menyediakan instruksi; alat tambahan mengikuti kemampuan engine.</p></div>
-      <input id="skills-search" class="search" type="search" placeholder="Cari skill atau sumber instalasiÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦" aria-label="Cari skills">
+      <input id="skills-search" class="search" type="search" placeholder="Cari skill atau sumber instalasi…" aria-label="Cari skills">
       <p id="skills-summary" class="muted small" role="status"></p><div id="skills-list" class="cat-grid"></div>
     </section>
     <!-- TASKS -->
@@ -304,7 +304,7 @@
           <div class="sb-head"><b>Tasks</b><span class="sb-head-right"><button class="icon-btn" id="btn-task-new" title="Tugas baru"><svg viewBox="0 0 24 24"><path d="M4 20h4L20 8l-4-4L4 16z"/></svg></button></span></div>
           <input id="task-search" class="search small" placeholder="Search" type="search">
           <div id="task-filters"></div>
-          <div class="sb-label"><span>Projects</span><span class="caret">ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¾</span></div>
+          <div class="sb-label"><span>Projects</span><span class="caret">▾</span></div>
           <div id="task-projects"></div>
         </aside>
         <div class="task-main">
@@ -313,7 +313,7 @@
             <span class="grow"></span>
             <button class="icon-btn" id="btn-task-panel" title="Tampilan ringkas"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M15 4v16"/></svg></button>
             <button class="icon-btn" id="btn-task-sidebar" title="Sembunyikan sidebar"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M9 4v16"/></svg></button>
-            <button class="btn ghost tiny" id="btn-task-display">Display <span class="caret">ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¾</span></button>
+            <button class="btn ghost tiny" id="btn-task-display">Display <span class="caret">▾</span></button>
           </div>
           <div class="task-board" id="kanban"></div>
         </div>
@@ -327,8 +327,8 @@
           <b>Notes</b>
           <span class="grow"></span>
           <input id="note-search" class="search note-search" placeholder="Search notes" type="search">
-          <button class="btn ghost tiny" id="btn-note-display">Display <span class="caret">ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¾</span></button>
-          <button class="btn primary tiny" id="btn-note-new">New note <span class="caret dark">ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¾</span></button>
+          <button class="btn ghost tiny" id="btn-note-display">Display <span class="caret">▾</span></button>
+          <button class="btn primary tiny" id="btn-note-new">New note <span class="caret dark">▾</span></button>
         </header>
         <div class="notes-body">
           <div class="notes-pills">
@@ -355,7 +355,7 @@
       </div>
       <div id="promo-pane-free" class="promo-pane hidden">
         <div class="promo-free-top">
-          <span class="muted small">Sumber: OpenRouter ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· models.dev ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· GitHub free-tier</span>
+          <span class="muted small">Sumber: OpenRouter · models.dev · GitHub free-tier</span>
           <button id="btn-promo-refresh" class="btn tiny">Cek sekarang</button>
         </div>
         <div class="adopt-banner">
@@ -369,7 +369,7 @@
           <button class="tab" data-tab="catalog">Katalog Free Tier</button>
           <button class="tab" data-tab="list">Daftar Free-Tier (GitHub)</button>
         </div>
-        <input id="promo-search" class="search" placeholder="Cari model / providerÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦" type="search">
+        <input id="promo-search" class="search" placeholder="Cari model / provider…" type="search">
         <div id="promo-live" class="tab-body"></div>
         <div id="promo-cross" class="tab-body hidden"></div>
         <div id="promo-catalog" class="tab-body hidden"></div>
@@ -387,9 +387,9 @@
         <form id="form-key" class="form-grid">
           <label>Preset<select id="key-preset"></select></label>
           <label>Nama <input id="key-name" placeholder="Nama tampilan"></label>
-          <label>Base URL <input id="key-url" placeholder="https://ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦/v1 (opsional, ikut preset)"></label>
+          <label>Base URL <input id="key-url" placeholder="https://…/v1 (opsional, ikut preset)"></label>
           <label>Format API<select id="key-format"><option value="chat_completions">Chat Completions</option><option value="anthropic_messages">Anthropic Messages</option><option value="responses">Responses</option></select></label>
-          <label class="span2">API Key <input id="key-value" type="password" placeholder="sk-ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ / gsk_ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦" required></label>
+          <label class="span2">API Key <input id="key-value" type="password" placeholder="sk-… / gsk_…" required></label>
           <div class="span2 form-actions"><button class="btn primary" type="submit">Simpan & Validasi</button><a id="key-signup" class="btn" target="_blank" rel="noreferrer">Dapatkan key <svg class="ico ext" viewBox="0 0 24 24"><path d="M9 5H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-3"/><path d="M13 4h7v7"/><path d="M20 4 11 13"/></svg></a></div>
         </form>
       </div>
@@ -403,17 +403,17 @@
         <button id="btn-pool-test" class="btn primary">Tes rotasi</button>
       </header>
       <div class="cards" style="grid-template-columns:repeat(3,1fr)">
-        <div class="card stat"><div class="stat-num" id="pool-active">ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“</div><div class="stat-label">Provider siap melayani</div><div class="stat-foot" id="pool-active-foot"></div></div>
-        <div class="card stat"><div class="stat-num" id="pool-req">ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“</div><div class="stat-label">Request via gateway</div><div class="stat-foot">total semua anggota</div></div>
-        <div class="card stat"><div class="stat-num" id="pool-err">ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“</div><div class="stat-label">Gagal (di-failover)</div><div class="stat-foot">dipindah otomatis</div></div>
+        <div class="card stat"><div class="stat-num" id="pool-active">–</div><div class="stat-label">Provider siap melayani</div><div class="stat-foot" id="pool-active-foot"></div></div>
+        <div class="card stat"><div class="stat-num" id="pool-req">–</div><div class="stat-label">Request via gateway</div><div class="stat-foot">total semua anggota</div></div>
+        <div class="card stat"><div class="stat-num" id="pool-err">–</div><div class="stat-label">Gagal (di-failover)</div><div class="stat-foot">dipindah otomatis</div></div>
       </div>
       <div class="panel">
         <h3>Endpoint untuk agent</h3>
-        <p class="muted small">Endpoint OpenAI-compatible ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â API key-nya = token AgentHub. Model boleh <code>auto</code>, <code>preset/model</code>, atau nama model langsung.</p>
-        <div class="url-row"><code id="gw-url">ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦</code><button id="btn-copy-gw" class="btn tiny">Salin</button></div>
-        <div class="url-row"><code id="gw-key">ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦</code><button id="btn-copy-gwkey" class="btn tiny">Salin</button></div>
-        <div class="env-actions"><button id="btn-copy-env" class="btn tiny primary">Salin env agent</button><span class="muted small">OPENAI_BASE_URL ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· OPENAI_API_KEY ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· OPENAI_MODEL</span></div>
-        <label class="set-field switch-row" style="margin-top:10px"><input id="gw-public" type="checkbox"><span>Fallback publik tanpa key ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â saat semua key kena limit, gateway otomatis memakai Kilo & LLM7 (gratis, 200 req/jam/IP)</span></label>
+        <p class="muted small">Endpoint OpenAI-compatible — API key-nya = token AgentHub. Model boleh <code>auto</code>, <code>preset/model</code>, atau nama model langsung.</p>
+        <div class="url-row"><code id="gw-url">…</code><button id="btn-copy-gw" class="btn tiny">Salin</button></div>
+        <div class="url-row"><code id="gw-key">…</code><button id="btn-copy-gwkey" class="btn tiny">Salin</button></div>
+        <div class="env-actions"><button id="btn-copy-env" class="btn tiny primary">Salin env agent</button><span class="muted small">OPENAI_BASE_URL · OPENAI_API_KEY · OPENAI_MODEL</span></div>
+        <label class="set-field switch-row" style="margin-top:10px"><input id="gw-public" type="checkbox"><span>Fallback publik tanpa key — saat semua key kena limit, gateway otomatis memakai Kilo & LLM7 (gratis, 200 req/jam/IP)</span></label>
         <details class="howto">
           <summary>Contoh pemakaian (curl / n8n / SDK)</summary>
           <pre id="gw-example"></pre>
@@ -424,9 +424,9 @@
         <div id="usage-list" class="item-list"></div>
       </div>
       <div class="panel">
-        <h3>Anggota pool <span class="muted small" style="font-weight:400">ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â angka kecil = didahulukan</span></h3>
+        <h3>Anggota pool <span class="muted small" style="font-weight:400">— angka kecil = didahulukan</span></h3>
         <div id="pool-list" class="item-list"></div>
-        <p class="muted small" style="margin-top:10px">Aktifkan key ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ pool di tab API Keys. Bila kuota habis (429) provider di-cooldown 5 menit dan traffic pindah otomatis.</p>
+        <p class="muted small" style="margin-top:10px">Aktifkan key → pool di tab API Keys. Bila kuota habis (429) provider di-cooldown 5 menit dan traffic pindah otomatis.</p>
       </div>
       <div id="pool-test-result" class="panel hidden">
         <h3>Hasil tes rotasi</h3>
@@ -444,11 +444,11 @@
         <form id="form-agent" class="form-grid">
           <label>Nama <input id="agent-name" placeholder="mis. Agent Sales n8n" required></label>
           <label>Tipe<select id="agent-type"><option value="webhook">Webhook / HTTP</option><option value="openai">LLM (OpenAI-compatible)</option></select></label>
-          <label class="webhook-only span2">URL Webhook <input id="agent-url" placeholder="https://n8n.local/webhook/ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦"></label>
-          <label class="openai-only hidden">Base URL <input id="agent-base" placeholder="https://ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦/v1"></label>
+          <label class="webhook-only span2">URL Webhook <input id="agent-url" placeholder="https://n8n.local/webhook/…"></label>
+          <label class="openai-only hidden">Base URL <input id="agent-base" placeholder="https://…/v1"></label>
           <label class="webhook-only">Method<select id="agent-method"><option>GET</option><option>POST</option><option>PUT</option><option>HEAD</option></select></label>
           <label class="openai-only hidden">Model <input id="agent-model" placeholder="mis. glm-4.5-flash"></label>
-          <label class="openai-only hidden">API Key (opsional) <input id="agent-key" type="password" placeholder="sk-ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦"></label>
+          <label class="openai-only hidden">API Key (opsional) <input id="agent-key" type="password" placeholder="sk-…"></label>
           <label class="webhook-only hidden" id="agent-body-label">Body JSON (POST/PUT) <textarea id="agent-body" rows="2" placeholder='{"task":"ping"}'></textarea></label>
           <div class="span2 form-actions"><button class="btn primary" type="submit">Simpan & Cek</button></div>
         </form>
@@ -459,7 +459,7 @@
     <!-- STATISTIK -->
     <section id="view-stats" class="view">
       <header class="view-head">
-        <div><span class="page-eyebrow">AKTIVITAS</span><h2>Statistik pemakaian</h2><p class="sub">Berapa sering tiap fitur benar-benar dipakai ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â dihitung dari tindakan nyata di aplikasi ini, bukan perkiraan.</p></div>
+        <div><span class="page-eyebrow">AKTIVITAS</span><h2>Statistik pemakaian</h2><p class="sub">Berapa sering tiap fitur benar-benar dipakai — dihitung dari tindakan nyata di aplikasi ini, bukan perkiraan.</p></div>
         <div class="stats-actions">
           <div class="seg" id="stats-range" role="group" aria-label="Rentang grafik">
             <button class="seg-btn active" data-range="7">7 hari</button>
@@ -552,7 +552,7 @@
           <button class="settings-back" id="btn-settings-back"><svg viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></svg> Kembali ke studio</button>
           <div class="settings-search-row">
             <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-3.4-3.4"/></svg>
-            <input id="settings-search" class="search small" placeholder="Cari pengaturanÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦" type="search">
+            <input id="settings-search" class="search small" placeholder="Cari pengaturan…" type="search">
           </div>
           <nav id="settings-nav" class="settings-nav-items" aria-label="Bagian pengaturan"></nav>
         </aside>
@@ -581,7 +581,7 @@
               <div><span class="engine-dot cur"></span><b>Sedang dipakai</b><small>Engine aktif untuk chat baru</small></div>
             </div>
             <div class="engine-toolbar">
-              <input id="engine-search" class="search small" type="search" placeholder="Cari engineÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦" aria-label="Cari engine">
+              <input id="engine-search" class="search small" type="search" placeholder="Cari engine…" aria-label="Cari engine">
               <button class="btn tiny" id="btn-engine-refresh" type="button">Pindai ulang CLI</button>
             </div>
             <div id="set-engines" class="engine-list"></div>
@@ -598,7 +598,7 @@
             <div id="set-connectors" class="kv"></div>
             <div class="form-actions">
               <button class="btn primary" id="btn-pulse-all" type="button">Kirim pulse ke semua</button>
-              <span class="chip hidden" id="pulse-status">memeriksaÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦</span>
+              <span class="chip hidden" id="pulse-status">memeriksa…</span>
               <button class="btn" data-settings-go="agents">Kelola konektor</button>
             </div>
             <div id="connector-pulse" class="connector-pulse"></div>
@@ -613,7 +613,7 @@
 
           <div class="settings-pane" data-pane="billing">
             <h3>Penagihan</h3>
-            <p class="muted small">Plan aktif memakai kuota promo ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â bukan kartu kredit. Kuota berkurang dari <code>usage.total_tokens</code> gateway yang nyata.</p>
+            <p class="muted small">Plan aktif memakai kuota promo — bukan kartu kredit. Kuota berkurang dari <code>usage.total_tokens</code> gateway yang nyata.</p>
             <div id="set-billing" class="kv"></div>
             <div class="form-actions"><button class="btn primary" data-settings-go="promo">Kelola plan & upgrade</button></div>
           </div>
@@ -625,7 +625,7 @@
               <div class="set-card">
                 <div class="set-card-title">Pemantauan promo</div>
                 <div class="set-field">
-                  <span class="set-field-label">Refresh sumber promo ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â jam</span>
+                  <span class="set-field-label">Refresh sumber promo — jam</span>
                   <input id="set-refresh" type="number" min="1" max="168">
                   <p class="muted small">Seberapa sering daftar model gratis & harga disegarkan dari OpenRouter dan models.dev.</p>
                 </div>
@@ -634,19 +634,19 @@
                 <div class="set-card-title">Kesehatan agent & key</div>
                 <div class="set-grid-2">
                   <div class="set-field">
-                    <span class="set-field-label">Health-check agent ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â menit</span>
+                    <span class="set-field-label">Health-check agent — menit</span>
                     <input id="set-agent" type="number" min="1" max="1440">
                     <p class="muted small">Probe konektor; hasilnya mengisi sparkline pulse.</p>
                   </div>
                   <div class="set-field">
-                    <span class="set-field-label">Re-validasi API key ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â jam</span>
+                    <span class="set-field-label">Re-validasi API key — jam</span>
                     <input id="set-keys" type="number" min="1" max="168">
                     <p class="muted small">Cek key: aktif/tidak, kuota, status pool.</p>
                   </div>
                 </div>
                 <div class="set-field">
                   <label class="switch-row"><input id="set-autopool" type="checkbox"><span>Key baru otomatis masuk pool gateway</span></label>
-                  <p class="muted small">Key yang lolos validasi langsung melayani endpoint /v1 ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â agent tinggal pakai tanpa setelan tambahan.</p>
+                  <p class="muted small">Key yang lolos validasi langsung melayani endpoint /v1 — agent tinggal pakai tanpa setelan tambahan.</p>
                 </div>
               </div>
               <div class="ap-foot"><button class="btn primary" type="submit">Simpan preferensi</button></div>
@@ -680,13 +680,13 @@
             <div class="set-field">
               <span class="set-field-label">Palet warna</span>
               <div id="palette-cards" class="theme-cards"></div>
-              <p class="muted small">Mengubah warna latar, kartu, dan garis. Warna status (berhasil, peringatan, gagal) tetap sama di semua palet. Palet hanya berlaku untuk tema gelap ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â tema Terang memakai inversi, jadi paletnya tidak ikut.</p>
+              <p class="muted small">Mengubah warna latar, kartu, dan garis. Warna status (berhasil, peringatan, gagal) tetap sama di semua palet. Palet hanya berlaku untuk tema gelap — tema Terang memakai inversi, jadi paletnya tidak ikut.</p>
             </div>
             <div class="set-field"><span class="set-field-label">Warna aksen</span><div id="accent-swatches" class="accent-swatches"></div></div>
             <div class="set-field ap-head-row"><span class="set-field-label" id="ap-translucent">Translucensi</span><span class="ap-inuse hidden" id="ap-inuse">Dipakai sekarang</span></div>
             <div class="ap-block">
               <div class="ap-row">
-                <div><b>Jendela</b><p class="muted small">Translucent membiarkan desktop terlihat di balik AgentHub.</p><p class="muted small hidden" id="ap-fx-off">Efek transparansi Windows sedang nonaktif ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â aplikasi tampil solid.</p></div>
+                <div><b>Jendela</b><p class="muted small">Translucent membiarkan desktop terlihat di balik AgentHub.</p><p class="muted small hidden" id="ap-fx-off">Efek transparansi Windows sedang nonaktif — aplikasi tampil solid.</p></div>
                 <div class="seg" id="ap-window-seg" role="group" aria-label="Mode jendela">
                   <button type="button" data-ap-window="solid">Solid</button>
                   <button type="button" data-ap-window="translucent">Translucent</button>
@@ -697,7 +697,7 @@
                 <button type="button" class="pp-toggle" id="ap-sidebar-only" aria-label="Hanya sidebar"><i></i></button>
               </div>
               <div class="ap-advanced">
-                <button type="button" class="ap-adv-toggle" id="ap-adv-toggle"><span class="caret">ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¾</span> Advanced</button>
+                <button type="button" class="ap-adv-toggle" id="ap-adv-toggle"><span class="caret">▾</span> Advanced</button>
                 <div class="ap-adv-body hidden" id="ap-adv-body">
                   <div class="ap-row"><div><b>Opasitas sidebar</b><p class="muted small">Seberapa kuat warna menutupi desktop di balik sidebar.</p></div><div class="ap-slider"><input type="range" id="ap-slider-side" min="30" max="100" step="1"><span class="ap-pct"></span></div></div>
                   <div class="ap-row"><div><b>Opasitas konten</b><p class="muted small">Seberapa kuat warna di balik area percakapan. 100% = solid.</p></div><div class="ap-slider"><input type="range" id="ap-slider-content" min="30" max="100" step="1"><span class="ap-pct"></span></div></div>
@@ -786,7 +786,7 @@
 
           <div class="settings-pane" data-pane="memory">
             <h3>Memori agent</h3>
-            <p class="muted small">Fakta tetap yang otomatis disuntikkan ke setiap prompt ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ala Memory di ChatGPT atau CLAUDE.md di Claude Code. Semua tersimpan lokal (memory.json); isi prompt dikirim hanya ke provider yang sedang dipakai.</p>
+            <p class="muted small">Fakta tetap yang otomatis disuntikkan ke setiap prompt — ala Memory di ChatGPT atau CLAUDE.md di Claude Code. Semua tersimpan lokal (memory.json); isi prompt dikirim hanya ke provider yang sedang dipakai.</p>
             <label class="mem-toggle"><input type="checkbox" id="set-memory-on"><span>Suntikkan memori ke semua percakapan</span></label>
             <label class="mem-toggle"><input type="checkbox" id="set-mem-auto"><span>Ekstrak fakta otomatis setelah percakapan selesai</span></label>
             <p class="muted small mem-hint">Satu panggilan model tambahan per percakapan, hanya setelah run berhasil. Fakta berbentuk perintah, prompt-marker, atau kredensial selalu dibuang. Maksimal tiga fakta per run. Tombol Ekstrak sekarang membaca seluruh percakapan yang sedang dibuka, jadi ia juga mengejar fakta dari sebelum fitur ini dinyalakan.</p>
@@ -810,7 +810,7 @@
             <h3>Instruksi tetap</h3>
             <p class="muted small">Teks di bawah dikirim ke model sebelum pesan Anda, di setiap percakapan. Berguna untuk preferensi gaya kerja yang berlaku terus-menerus. Urutan yang dikirim: instruksi pengguna ini, lalu aturan proyek (<code>AGENTS.md</code>/<code>CLAUDE.md</code> di folder kerja), lalu instruksi khusus thread.</p>
             <p class="muted small instr-path-line">Berkas: <code id="instr-path">AGENTS.md</code></p>
-            <textarea id="instr-text" rows="12" placeholder="Tulis instruksi yang berlaku untuk semua percakapan di komputer iniÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦"></textarea>
+            <textarea id="instr-text" rows="12" placeholder="Tulis instruksi yang berlaku untuk semua percakapan di komputer ini…"></textarea>
             <div class="form-actions cd-rules-actions">
               <button class="btn primary" id="instr-save">Simpan instruksi</button>
               <button class="btn" id="instr-reload">Muat ulang</button>
@@ -821,20 +821,20 @@
 
           <div class="settings-pane" data-pane="mcp">
             <h3>Server MCP</h3>
-            <p class="muted small">Model Context Protocol memberi agent tool dari luar AgentHub ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â GitHub, database, browser, apa pun yang menyediakan server MCP. Tool-nya muncul untuk model dengan nama <code>mcp__&lt;server&gt;__&lt;tool&gt;</code>. Kredensial (header/env) tidak pernah ditampilkan kembali oleh API.</p>
+            <p class="muted small">Model Context Protocol memberi agent tool dari luar AgentHub — GitHub, database, browser, apa pun yang menyediakan server MCP. Tool-nya muncul untuk model dengan nama <code>mcp__&lt;server&gt;__&lt;tool&gt;</code>. Kredensial (header/env) tidak pernah ditampilkan kembali oleh API.</p>
             <div id="mcp-list" class="mcp-list"></div>
             <form id="mcp-form" class="form-grid">
               <label>Nama server<input id="mcp-name" placeholder="mis. github" autocomplete="off"></label>
               <label>Transport
                 <select id="mcp-type">
-                  <option value="stdio">stdio ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â proses lokal</option>
-                  <option value="http">http ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â endpoint jarak jauh</option>
+                  <option value="stdio">stdio — proses lokal</option>
+                  <option value="http">http — endpoint jarak jauh</option>
                 </select>
               </label>
               <label class="span2" id="mcp-stdio-command">Perintah<input id="mcp-command" placeholder="mis. npx atau path absolut node" autocomplete="off"></label>
               <label class="span2" id="mcp-stdio-args">Argumen (satu per baris)<textarea id="mcp-args" rows="3" placeholder="-y&#10;@modelcontextprotocol/server-github"></textarea></label>
               <label class="span2 hidden" id="mcp-http-url">URL<input id="mcp-url" placeholder="https://contoh/mcp" autocomplete="off"></label>
-              <label class="span2 hidden" id="mcp-http-headers">Header (JSON, mis. {"Authorization":"Bearer ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦"})<textarea id="mcp-headers" rows="2" placeholder="{}"></textarea></label>
+              <label class="span2 hidden" id="mcp-http-headers">Header (JSON, mis. {"Authorization":"Bearer …"})<textarea id="mcp-headers" rows="2" placeholder="{}"></textarea></label>
               <div class="span2 form-actions">
                 <button class="btn primary" type="submit" id="mcp-save">Simpan server</button>
                 <button class="btn" type="button" id="mcp-refresh">Muat ulang katalog</button>
@@ -862,13 +862,13 @@
 
           <div class="settings-pane" data-pane="plugins">
             <h3>Plugin</h3>
-            <p class="muted small">Satu paket bisa membawa skill, perintah slash, hook, dan server MCP sekaligus. Skill dan perintah hanya teks ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â tidak menambah izin. Hook dan server MCP adalah kode yang benar-benar dijalankan, jadi keduanya baru aktif setelah Anda menyetujui digest-nya. Mengubah isi skrip plugin otomatis mencabut izin lama.</p>
+            <p class="muted small">Satu paket bisa membawa skill, perintah slash, hook, dan server MCP sekaligus. Skill dan perintah hanya teks — tidak menambah izin. Hook dan server MCP adalah kode yang benar-benar dijalankan, jadi keduanya baru aktif setelah Anda menyetujui digest-nya. Mengubah isi skrip plugin otomatis mencabut izin lama.</p>
             <label class="mem-toggle"><input type="checkbox" id="set-plugins-on"><span>Aktifkan plugin</span></label>
             <div class="store-head">
               <h3 style="margin:6px 0 2px">Toko Plugin</h3>
-              <p class="muted small">Kumpulan skill siap pakai ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â klik Pasang, langsung aktif sebagai skill otomatis. Semua berkas teks lokal, tanpa izin tambahan.</p>
+              <p class="muted small">Kumpulan skill siap pakai — klik Pasang, langsung aktif sebagai skill otomatis. Semua berkas teks lokal, tanpa izin tambahan.</p>
               <div class="store-toolbar">
-                <input id="store-search" class="search" placeholder="Cari pluginÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦">
+                <input id="store-search" class="search" placeholder="Cari plugin…">
                 <div class="seg" id="store-seg" role="group" aria-label="Jenis">
                   <button class="seg-btn active" data-store-filter="all">Semua</button>
                   <button class="seg-btn" data-store-filter="skill">Skill</button>
@@ -888,7 +888,7 @@
             <details class="cd-rules" id="plug-market">
               <summary>Marketplace</summary>
               <div class="cd-rules-body">
-                <p class="muted small">Folder berisi <code>marketplace.json</code> dan sub-folder plugin. Marketplace hanya memberi daftar ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â instalasi tetap terjadi saat Anda menekan Pasang.</p>
+                <p class="muted small">Folder berisi <code>marketplace.json</code> dan sub-folder plugin. Marketplace hanya memberi daftar — instalasi tetap terjadi saat Anda menekan Pasang.</p>
                 <div class="plug-market-add">
                   <input id="plug-market-path" placeholder="Path folder marketplace" autocomplete="off">
                   <button class="btn" type="button" id="plug-market-add">Tambah</button>
@@ -911,7 +911,7 @@
               <div><kbd>Ctrl /</kbd><span>Daftar pintasan (overlay)</span></div>
               <div><kbd>Alt N</kbd><span>Chat baru</span></div>
               <div><kbd>@</kbd><span>Sisipkan file / folder kerja</span></div>
-              <div><kbd>/</kbd><span>Perintah slash (/new, /export, /prompt, ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦)</span></div>
+              <div><kbd>/</kbd><span>Perintah slash (/new, /export, /prompt, …)</span></div>
               <div><kbd>Esc</kbd><span>Tutup popover / overlay</span></div>
               <div><kbd>Enter</kbd><span>Kirim prompt</span></div>
             </div>
@@ -929,14 +929,14 @@
                 <div class="pair-list" id="pair-list"></div>
                 <div class="pwa-row">
                   <button class="btn tiny hidden" id="btn-pwa-install">Instal sebagai aplikasi</button>
-                  <span class="muted small" id="pwa-hint">Di Chrome Android: menu ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¹ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â® ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ "Instal aplikasi / Tambah ke layar utama".</span>
-                  <span class="muted small hidden" id="pwa-hint-ios">Di Safari iPhone/iPad: tombol <b>Bagikan</b> (kotak + panah) ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ <b>"Tambahkan ke Layar Utama"</b> ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ AgentHub jadi aplikasi layar penuh dengan ikon sendiri.</span>
+                  <span class="muted small" id="pwa-hint">Di Chrome Android: menu ⋮ → "Instal aplikasi / Tambah ke layar utama".</span>
+                  <span class="muted small hidden" id="pwa-hint-ios">Di Safari iPhone/iPad: tombol <b>Bagikan</b> (kotak + panah) → <b>"Tambahkan ke Layar Utama"</b> → AgentHub jadi aplikasi layar penuh dengan ikon sendiri.</span>
                 </div>
               </div>
             </div>
             <div class="panel inner">
               <b>Akses via internet (data seluler)</b>
-              <p class="muted small">Buka AgentHub dari mana saja tanpa WiFi yang sama ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â lewat tunnel terenkripsi. Tanpa tunnel, HP harus satu WiFi dengan komputer ini.</p>
+              <p class="muted small">Buka AgentHub dari mana saja tanpa WiFi yang sama — lewat tunnel terenkripsi. Tanpa tunnel, HP harus satu WiFi dengan komputer ini.</p>
               <div class="tunnel-row">
                 <button class="btn primary" id="btn-tunnel-toggle">Aktifkan tunnel</button>
                 <span class="chip" id="tunnel-status">tidak aktif</span>
@@ -958,11 +958,11 @@
 
           <div class="settings-pane" data-pane="schedules">
             <h3>Jadwal</h3>
-            <p class="muted small">Prompt berulang dijalankan otomatis oleh server ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â hasilnya menumpuk di satu thread per jadwal. Server harus tetap hidup (shell tray membantu).</p>
+            <p class="muted small">Prompt berulang dijalankan otomatis oleh server — hasilnya menumpuk di satu thread per jadwal. Server harus tetap hidup (shell tray membantu).</p>
             <form id="form-schedule" class="form-grid">
               <label>Nama jadwal<input id="sched-name" placeholder="mis. Ringkasan repo pagi"></label>
               <label>Engine<select id="sched-engine" class="search small"></select></label>
-              <label class="span2">Prompt yang dijalankan<textarea id="sched-prompt" rows="2" placeholder="Tulis prompt untuk agentÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦"></textarea></label>
+              <label class="span2">Prompt yang dijalankan<textarea id="sched-prompt" rows="2" placeholder="Tulis prompt untuk agent…"></textarea></label>
               <label>Mode<select id="sched-mode" class="search small"><option value="interval">Setiap interval</option><option value="daily">Harian (jam tertentu)</option></select></label>
               <label id="sched-interval-wrap">Interval (menit)<input id="sched-interval" type="number" min="1" max="10080" value="60"></label>
               <label id="sched-daily-wrap" class="hidden">Jam eksekusi<input id="sched-daily" type="time" value="09:00"></label>
@@ -976,17 +976,17 @@
             <h3>Server</h3>
             <div class="panel inner">
               <b>Cadangan & pulihkan</b>
-              <p class="muted small">Semua data (key, thread, tugas, catatan, proyek, jadwal, plan) diekspor ke satu berkas JSON. Token akses sengaja tidak ikut ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â atur ulang di mesin tujuan.</p>
+              <p class="muted small">Semua data (key, thread, tugas, catatan, proyek, jadwal, plan) diekspor ke satu berkas JSON. Token akses sengaja tidak ikut — atur ulang di mesin tujuan.</p>
               <div class="download-rows">
                 <a class="btn primary" id="btn-backup-download" href="/api/backup" download>Ekspor cadangan (.json)</a>
-                <button class="btn" id="btn-restore-pick" type="button">Pulihkan dari berkasÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦</button>
+                <button class="btn" id="btn-restore-pick" type="button">Pulihkan dari berkas…</button>
                 <input id="backup-file" type="file" accept="application/json,.json" class="hidden">
               </div>
               <p class="muted small" id="restore-status"></p>
             </div>
             <div class="panel inner">
               <b>Token akses</b>
-              <div class="url-row"><code id="set-token">ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦</code><button id="btn-copy-token" class="btn tiny">Salin</button></div>
+              <div class="url-row"><code id="set-token">…</code><button id="btn-copy-token" class="btn tiny">Salin</button></div>
               <button id="btn-regen" class="btn" style="margin-top:8px">Regenerate token</button>
             </div>
             <div class="panel inner">
@@ -997,12 +997,12 @@
 
           <div class="settings-pane" data-pane="desktop">
             <h3>Aplikasi desktop</h3>
-            <p class="muted small">Shell Electron: jendela native + tray. Menutup jendela tidak menghentikan pemantauan ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â AgentHub tetap hidup di tray.</p>
+            <p class="muted small">Shell Electron: jendela native + tray. Menutup jendela tidak menghentikan pemantauan — AgentHub tetap hidup di tray.</p>
             <div class="panel inner" id="update-panel">
               <b>Pembaruan</b>
-              <p class="muted small" style="margin-top:4px">Versi berjalan <code id="update-current">ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦</code>. Periksa GitHub Releases untuk rilis lebih baru.</p>
-              <label class="switch-row" style="margin-top:10px"><input id="set-autoupdate" type="checkbox"><span>Cek pembaruan ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ langsung unduh &amp; pasang</span></label>
-              <p class="muted small">Bila menyala, menekan <b>Cek pembaruan</b> dan menemukan versi lebih baru akan mengunduh, memverifikasi checksum, lalu memasang sendiri tanpa tombol kedua. Pemasangan ditunda sampai tidak ada agent yang sedang bekerja ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â installer menutup aplikasi. Matikan untuk mengunduh saja dan memasang dengan tangan.</p>
+              <p class="muted small" style="margin-top:4px">Versi berjalan <code id="update-current">…</code>. Periksa GitHub Releases untuk rilis lebih baru.</p>
+              <label class="switch-row" style="margin-top:10px"><input id="set-autoupdate" type="checkbox"><span>Cek pembaruan → langsung unduh &amp; pasang</span></label>
+              <p class="muted small">Bila menyala, menekan <b>Cek pembaruan</b> dan menemukan versi lebih baru akan mengunduh, memverifikasi checksum, lalu memasang sendiri tanpa tombol kedua. Pemasangan ditunda sampai tidak ada agent yang sedang bekerja — installer menutup aplikasi. Matikan untuk mengunduh saja dan memasang dengan tangan.</p>
               <div class="download-rows">
                 <button class="btn primary" id="btn-update-check" type="button">Cek pembaruan</button>
                 <button class="btn hidden" id="btn-update-dl" type="button">Unduh sekarang</button>
@@ -1027,14 +1027,14 @@
               <a class="btn" id="set-desktop-mac" href="https://github.com/khadijahcollege-afk/AgentHub/releases/latest/download/AgentHub-macOS.dmg" target="_blank" rel="noreferrer">macOS (.dmg)<svg class="ico" viewBox="0 0 24 24"><path d="M9 5H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-3"/><path d="M13 4h7v7"/><path d="M20 4 11 13"/></svg></a>
               <a class="btn" id="set-desktop-linux" href="https://github.com/khadijahcollege-afk/AgentHub/releases/latest/download/AgentHub-linux.AppImage" target="_blank" rel="noreferrer">Linux (.AppImage)<svg class="ico" viewBox="0 0 24 24"><path d="M9 5H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-3"/><path d="M13 4h7v7"/><path d="M20 4 11 13"/></svg></a>
             </div>
-            <p class="muted small">macOS & Linux dibangun otomatis oleh CI saat tag <code>v*</code> dipush ke GitHub. Aplikasi belum ditandatangani ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â macOS: klik kanan ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ Open saat pertama; Linux AppImage: <code>chmod +x</code> lalu jalankan.</p>
+            <p class="muted small">macOS & Linux dibangun otomatis oleh CI saat tag <code>v*</code> dipush ke GitHub. Aplikasi belum ditandatangani — macOS: klik kanan → Open saat pertama; Linux AppImage: <code>chmod +x</code> lalu jalankan.</p>
             <div id="set-desktop" class="kv"></div>
             <p class="muted small">"Jalankan saat PC menyala" bisa diaktifkan dari menu tray ikon AgentHub.</p>
           </div>
 
           <div class="settings-pane" data-pane="orchestra">
             <h3>Orchestrator</h3>
-            <p class="muted small">Beberapa agent bekerja <b>bersamaan</b> di cabang git masing-masing, lalu hasilnya Anda tinjau dan gabungkan. Cocok untuk tugas besar yang bisa dipecah ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â bukan untuk obrolan biasa.</p>
+            <p class="muted small">Beberapa agent bekerja <b>bersamaan</b> di cabang git masing-masing, lalu hasilnya Anda tinjau dan gabungkan. Cocok untuk tugas besar yang bisa dipecah — bukan untuk obrolan biasa.</p>
 
             <div class="orch-steps">
               <div class="orch-step">
@@ -1054,7 +1054,7 @@
                 <span class="orch-num">2</span>
                 <div class="orch-step-body">
                   <b>Pilih siapa yang bekerja</b>
-                  <p class="muted small">Centang agent yang ikut. Semua yang dicentang mendapat tugas yang sama dan bekerja di cabangnya sendiri ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â jadi tidak saling menimpa.</p>
+                  <p class="muted small">Centang agent yang ikut. Semua yang dicentang mendapat tugas yang sama dan bekerja di cabangnya sendiri — jadi tidak saling menimpa.</p>
                   <div id="orch-engines" class="orch-engines"></div>
                   <button type="button" class="btn tiny" id="orch-add-agent">Beri satu agent tugas khusus</button>
                   <p class="muted small orch-hint">Tugas khusus berguna bila satu agent perlu menangani bagian berbeda, mis. "hanya menulis tes".</p>
@@ -1095,7 +1095,7 @@
                 </svg>
               </span>
               <div class="about-copy">
-                <b>AgentHub <span class="about-ver" id="about-version">vÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦</span></b>
+                <b>AgentHub <span class="about-ver" id="about-version">v…</span></b>
                 <p class="muted small">Ruang kerja agent lokal: satu antarmuka untuk banyak engine CLI dan gateway API, dengan penyimpanan data di komputer Anda sendiri.</p>
               </div>
             </div>
@@ -1133,7 +1133,7 @@
               </div>
             </div>
 
-            <p class="muted small">Lisensi MIT ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â lihat <a href="https://github.com/khadijahcollege-afk/AgentHub" target="_blank" rel="noreferrer">repository GitHub <svg class="ico" viewBox="0 0 24 24"><path d="M9 5H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-3"/><path d="M13 4h7v7"/><path d="M20 4 11 13"/></svg></a>.</p>
+            <p class="muted small">Lisensi MIT — lihat <a href="https://github.com/khadijahcollege-afk/AgentHub" target="_blank" rel="noreferrer">repository GitHub <svg class="ico" viewBox="0 0 24 24"><path d="M9 5H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-3"/><path d="M13 4h7v7"/><path d="M20 4 11 13"/></svg></a>.</p>
           </div>
 
         </div>
@@ -1162,7 +1162,7 @@
       </section>
       <section class="deleg-team">
         <div class="deleg-team-heading"><label class="deleg-label" for="del-agent-search"><span class="deleg-step">2</span> Susun tim</label><span id="del-selected-count" class="chip">0 dipilih</span></div>
-        <input id="del-agent-search" type="search" placeholder="Cari agent atau modelÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦" aria-label="Cari agent delegation" autocomplete="off">
+        <input id="del-agent-search" type="search" placeholder="Cari agent atau model…" aria-label="Cari agent delegation" autocomplete="off">
         <div id="del-engines" class="del-engines"></div>
         <p id="del-search-empty" class="deleg-help hidden">Tidak ada agent yang cocok dengan pencarian.</p>
       </section>
@@ -1184,7 +1184,7 @@
       <button class="icon-btn" id="btn-note-cancel" title="Tutup"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
     </div>
     <input id="note-title" class="note-title-input" placeholder="Judul catatan" maxlength="160">
-    <textarea id="note-body" rows="10" placeholder="Tulis sesuatuÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦"></textarea>
+    <textarea id="note-body" rows="10" placeholder="Tulis sesuatu…"></textarea>
     <div class="note-meta-row">
       <label class="note-field">Proyek<select id="note-project"></select></label>
       <label class="switch-row"><input id="note-pinned" type="checkbox"><span>Sematkan</span></label>
@@ -1227,14 +1227,14 @@
     <p class="muted small">Key langsung masuk pool gateway, jadi agent bisa memakainya lewat <code>/v1</code> tanpa setup tambahan. Sudah punya key? Tempel di bawah. Belum? Klik "Ambil key" untuk daftar.</p>
     <div class="adopt-model">
       <span class="chip free">GRATIS</span>
-      <code id="adopt-model">ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“</code>
+      <code id="adopt-model">–</code>
     </div>
     <p id="adopt-hint" class="adopt-hint hidden"></p>
     <div class="form-grid">
       <label>Provider<select id="adopt-preset"></select></label>
       <label>Nama key<input id="adopt-name" placeholder="mis. OpenRouter promo"></label>
-      <label class="span2">Base URL<input id="adopt-base" placeholder="https://ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦/v1"></label>
-      <label class="span2">API Key<input id="adopt-key" type="password" placeholder="sk-ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ / gsk_ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ (tempel key dari provider)" required></label>
+      <label class="span2">Base URL<input id="adopt-base" placeholder="https://…/v1"></label>
+      <label class="span2">API Key<input id="adopt-key" type="password" placeholder="sk-… / gsk_… (tempel key dari provider)" required></label>
     </div>
     <label class="switch-row" style="margin-top:10px"><input id="adopt-pool" type="checkbox" checked><span>Langsung aktifkan di pool gateway</span></label>
     <div class="form-actions" style="margin-top:12px">
@@ -1279,15 +1279,15 @@
 
 <!-- Palette perintah (Ctrl+K) -->
 <div id="palette-pop" class="pop palette-pop hidden">
-  <div class="pop-label">Perintah cepat ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â Ctrl+K</div>
-  <input id="palette-input" class="search small" placeholder="Ketik perintah atau tujuanÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦" style="margin-bottom:6px">
+  <div class="pop-label">Perintah cepat — Ctrl+K</div>
+  <input id="palette-input" class="search small" placeholder="Ketik perintah atau tujuan…" style="margin-bottom:6px">
   <div id="palette-rows" class="pick-rows"></div>
 </div>
 
 <!-- Pencarian global -->
 <div id="search-pop" class="pop search-pop hidden">
   <div class="pop-label">Cari semua</div>
-  <input id="search-input" class="search small" placeholder="Thread, tugas, catatan, proyekÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦" style="margin-bottom:6px">
+  <input id="search-input" class="search small" placeholder="Thread, tugas, catatan, proyek…" style="margin-bottom:6px">
   <div id="search-rows" class="pick-rows"></div>
 </div>
 
@@ -1301,7 +1301,7 @@
 <div id="prompts-pop" class="pop prompts-pop hidden">
   <div class="pop-label">Prompt tersimpan</div>
   <div class="prompt-save-row">
-    <input id="prompt-save-title" class="search small" placeholder="Judul prompt baruÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦">
+    <input id="prompt-save-title" class="search small" placeholder="Judul prompt baru…">
     <button id="btn-prompt-save" class="btn primary tiny">Simpan dari composer</button>
   </div>
   <div id="prompts-rows" class="pick-rows"></div>
@@ -1312,7 +1312,7 @@
   <div class="pop-label">Info sesi</div>
   <div id="session-kv" class="session-kv"></div>
               <div class="share-block">
-                <button class="btn tiny" id="share-open" type="button">Bagikan threadÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦</button>
+                <button class="btn tiny" id="share-open" type="button">Bagikan thread…</button>
                 <div id="share-list" class="share-list"></div>
               </div>
 </div>
@@ -1321,15 +1321,15 @@
 <div id="account-pop" class="pop account-pop hidden">
   <div class="account-head">
     <span class="sb-account-mark">A</span>
-    <span class="account-main"><b id="account-host">AgentHub</b><small id="account-id" title="ID perangkat ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â identik untuk semua browser yang terhubung server ini">ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦</small></span>
+    <span class="account-main"><b id="account-host">AgentHub</b><small id="account-id" title="ID perangkat — identik untuk semua browser yang terhubung server ini">…</small></span>
     <button class="icon-btn" id="btn-account-copy-id" title="Salin ID perangkat"><svg class="ico" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>
   </div>
   <div class="account-section"><span>Tema aksen</span><div id="account-themes" class="accent-swatches"></div></div>
   <div class="account-section"><span>Zoom tampilan</span><div id="account-zoom" class="zoom-opts"></div></div>
   <div class="account-rows">
-    <button class="acct-row" id="acct-theme"><svg viewBox="0 0 24 24"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4"/></svg><span>Mode: <b id="acct-theme-label">Gelap</b> ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â klik untuk ganti</span></button>
+    <button class="acct-row" id="acct-theme"><svg viewBox="0 0 24 24"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4"/></svg><span>Mode: <b id="acct-theme-label">Gelap</b> — klik untuk ganti</span></button>
     <button class="acct-row" id="acct-usage"><svg viewBox="0 0 24 24"><path d="M5 20V10M12 20V4M19 20v-7"/></svg><span>Rekap pemakaian</span></button>
-    <button class="acct-row" id="acct-upgrade"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 20h16"/></svg><span>Upgrade ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â Start Plan</span></button>
+    <button class="acct-row" id="acct-upgrade"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 20h16"/></svg><span>Upgrade — Start Plan</span></button>
     <button class="acct-row" id="acct-share"><svg viewBox="0 0 24 24"><circle cx="6" cy="18" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><path d="M8.6 16.6l6.8-7.2M8.4 17.4l7.2 2"/></svg><span>Bagikan AgentHub <em class="acct-badge">Rewards</em></span></button>
     <button class="acct-row" id="acct-disconnect"><svg viewBox="0 0 24 24"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="M10 17l-5-5 5-5M5 12h11"/></svg><span>Putuskan perangkat lain</span></button>
   </div>
@@ -1341,13 +1341,13 @@
     <div class="note-card-top">
       <div>
         <h3>Integrasi</h3>
-        <p class="muted small">Hubungkan layanan agar agent bisa memakainya ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â key API, engine CLI, konektor, dan jaringan.</p>
+        <p class="muted small">Hubungkan layanan agar agent bisa memakainya — key API, engine CLI, konektor, dan jaringan.</p>
       </div>
       <button class="icon-btn" id="btn-intg-close" title="Tutup"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
     </div>
     <div class="intg-search-row">
       <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-3.4-3.4"/></svg>
-      <input id="intg-search" class="search small" placeholder="Cari layananÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦" type="search">
+      <input id="intg-search" class="search small" placeholder="Cari layanan…" type="search">
     </div>
     <div id="intg-body" class="intg-body"></div>
   </div>
@@ -1362,12 +1362,12 @@
     <button class="acct-row" id="tool-research"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-3.4-3.4"/><path d="M11 8v6M8 11h6"/></svg><span>Riset web (DuckDuckGo, tanpa key)</span></button>
     <button class="acct-row" id="tool-research-tpl"><svg viewBox="0 0 24 24"><path d="M8 3.5h8a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-13a2 2 0 0 1 2-2z"/><path d="M10 8h4M10 12h4M10 16h2.5"/></svg><span>Template riset lokal</span></button>
     <button class="acct-row" id="tool-prompts"><svg viewBox="0 0 24 24"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v13a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 18.5z"/><path d="M8 7.5h8M8 11h8M8 14.5h5"/></svg><span>Prompt tersimpan</span></button>
-    <button class="acct-row" id="tool-orch"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>Orchestrator ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â tim agent paralel</span></button>
+    <button class="acct-row" id="tool-orch"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>Orchestrator — tim agent paralel</span></button>
     <button class="acct-row" id="tool-delegate"><svg viewBox="0 0 24 24"><circle cx="6" cy="7" r="2.2"/><circle cx="18" cy="7" r="2.2"/><circle cx="12" cy="18" r="2.2"/><path d="M7.7 8.4 10.7 16M16.3 8.4 13.3 16"/></svg><span>Delegation ke banyak agent</span></button>
   </div>
 </div>
 
-<!-- Pintasan keyboard: Ctrl+/ ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â tiap baris bisa diklik untuk menjalankan aksi -->
+<!-- Pintasan keyboard: Ctrl+/ — tiap baris bisa diklik untuk menjalankan aksi -->
 <div id="shortcuts-overlay" class="overlay hidden">
   <div class="overlay-card" role="dialog" aria-modal="true" aria-label="Pintasan keyboard">
     <div class="note-card-top">
@@ -1384,7 +1384,7 @@
 <!-- Popover pemilih model gateway -->
 <div id="model-pop" class="pop hidden">
   <div class="pop-label">Models</div>
-  <input id="model-search" class="search small" placeholder="Cari modelÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦" type="search" style="margin-bottom:8px">
+  <input id="model-search" class="search small" placeholder="Cari model…" type="search" style="margin-bottom:8px">
   <div id="model-rows" class="pick-rows"></div>
 </div>
 
@@ -1447,7 +1447,7 @@
     <p class="muted small" style="margin:2px 0 10px">Maks 8 tag, 24 karakter. Tag dipakai untuk memfilter thread di sidebar.</p>
     <div id="tag-current" class="tag-current"></div>
     <div class="tag-add-row">
-      <input id="tag-input" class="search" maxlength="24" placeholder="Tambah tagÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦" autocomplete="off" spellcheck="false">
+      <input id="tag-input" class="search" maxlength="24" placeholder="Tambah tag…" autocomplete="off" spellcheck="false">
       <button id="tag-add" class="btn" type="button">Tambah</button>
     </div>
     <div class="form-actions dialog-actions">
@@ -1472,7 +1472,7 @@
 <div id="env-pop" class="pop hidden">
   <div class="pop-label">Environments</div>
   <div class="env-row"><span class="env-ico"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M9 21h6M12 17v4"/></svg></span><span class="env-name">This PC<small>Connected</small></span><span class="ok"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.3 4.3L19 7"/></svg></span></div>
-  <div class="env-row" id="env-pair"><span class="env-ico"><svg viewBox="0 0 24 24"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/></svg></span><span class="env-name">Pair a device<small>buka QR untuk HP</small></span><span class="caret right">ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Âº</span></div>
+  <div class="env-row" id="env-pair"><span class="env-ico"><svg viewBox="0 0 24 24"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/></svg></span><span class="env-name">Pair a device<small>buka QR untuk HP</small></span><span class="caret right">›</span></div>
   <div class="pop-sep"></div>
   <button class="pop-action" id="env-manage"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M18.4 5.6L17 7M7 17l-1.4 1.4"/></svg> Manage environments</button>
 </div>
@@ -1482,11 +1482,11 @@
   <h4>Buka di HP</h4>
   <div class="qr-scan">
     <div class="qr-frame"><div id="qr-box-pop"></div></div>
-    <p class="qr-hint">Pindai dengan kamera HP ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â token sudah ikut di tautan</p>
+    <p class="qr-hint">Pindai dengan kamera HP — token sudah ikut di tautan</p>
   </div>
   <div class="qr-section">
     <div class="qr-label"><svg class="ico" viewBox="0 0 24 24"><path d="M2.5 9a15 15 0 0 1 19 0M5.5 12.5a10.5 10.5 0 0 1 13 0M8.5 16a6 6 0 0 1 7 0"/><circle cx="12" cy="19" r="1.2"/></svg> WiFi yang sama</div>
-    <div class="url-row"><code id="phone-url-pop">ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦</code><button class="btn tiny" id="btn-copy-url-pop">Salin</button></div>
+    <div class="url-row"><code id="phone-url-pop">…</code><button class="btn tiny" id="btn-copy-url-pop">Salin</button></div>
   </div>
   <div class="qr-section" id="qr-tunnel-section">
     <div class="qr-label"><svg class="ico" viewBox="0 0 24 24"><path d="M4 11a8 8 0 0 1 16 0M2 8c5.5-5.5 14.5-5.5 20 0M7 14a4.5 4.5 0 0 1 10 0"/><circle cx="12" cy="18" r="1.4"/></svg> Data seluler / internet</div>
@@ -1510,6 +1510,6 @@
 <div id="toast-wrap" class="toast-wrap"></div>
 <script src="/public/pwa.js"></script>
 <script src="/public/qrcode.min.js"></script>
-<script type="module" src="/public/app.js?v=1.9.13"></script>
+<script type="module" src="/public/app.js?v=1.9.14"></script>
 </body>
 </html>

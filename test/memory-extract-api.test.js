@@ -1,10 +1,10 @@
-﻿// test/memory-extract-api.test.js â€” ekstraksi memori lewat server nyata, dengan
+// test/memory-extract-api.test.js — ekstraksi memori lewat server nyata, dengan
 // upstream OpenAI-compatible palsu supaya jalur pool benar-benar teruji.
 //
 // Pesan thread diisi lewat engine "sink" (harness lokal), bukan rute tambahan:
 // rute semacam itu hanya ada demi tes dan akan menjadi permukaan API yang tidak
 // dipakai siapa pun. Jalur yang dipakai di sini justru jalur yang dipakai
-// pengguna sungguhan â€” /send.
+// pengguna sungguhan — /send.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
@@ -171,7 +171,7 @@ test('status ekstraksi: mati secara default, belum ada catatan', async () => {
 test('percakapan bisa diekstrak manual dan fakta tersimpan', async () => {
   threadId = await newThread();
   // Menambah key di atas sudah memanggil upstream sekali (validasi key), jadi
-  // hitung dari sini â€” yang diuji adalah panggilan SELAMA run.
+  // hitung dari sini — yang diuji adalah panggilan SELAMA run.
   const base = upstreamCalls;
   await runSink(threadId, 'saya selalu pakai pnpm dan lebih suka jawaban ringkas');
 

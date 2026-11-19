@@ -1,6 +1,6 @@
-// test/freerot.test.js â€” Free Auto: tangga rotasi model gratis.
+// test/freerot.test.js — Free Auto: tangga rotasi model gratis.
 // Unit: ladder, cooldown, deteksi limit. Server: engine free-auto memutar
-// model saat yang pertama kena limit â€” tanpa sentuhan pengguna.
+// model saat yang pertama kena limit — tanpa sentuhan pengguna.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -15,7 +15,7 @@ import { ladder, markFail, markOk, looksLimited, cooling, _setState, _state, mar
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 // Blok port sendiri, bukan `9030 + Math.random() * 30`. Port acak dalam rentang
 // tetap tetap bisa bertabrakan dengan berkas tes lain yang memakai rentang yang
-// sama, dan tabrakan itu hanya muncul sesekali â€” persis jenis kegagalan yang
+// sama, dan tabrakan itu hanya muncul sesekali — persis jenis kegagalan yang
 // paling mahal untuk dilacak. `pickFreePort` juga memeriksa port benar-benar
 // bisa didengarkan, bukan hanya belum dipakai saat dipilih.
 const PORT = await pickFreePort(9060, 30);
@@ -39,7 +39,7 @@ async function waitUp(ms = 20000) {
 
 const SAVED_DATA = process.env.AGENTHUB_DATA;
 test('freerot unit: ladder urut gagal, cooling dilewati, deteksi limit', () => {
-  _setState({}); // unit test murni memori â€” jangan sentuh freerot.json live
+  _setState({}); // unit test murni memori — jangan sentuh freerot.json live
   process.env.AGENTHUB_DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'agenthub-rot-'));
   try {
     const engines = [
@@ -143,7 +143,7 @@ test.before(async () => {
     agentCheckMinutes: 1440, keyCheckHours: 168, baselined: true, createdAt: Date.now(),
   }));
   // Engine gratis palsu: SLOW menggantung 45 detik (melewati batas 3 detik),
-  // BB jawab cepat â€” rotasi harus pindah otomatis tanpa menunggu.
+  // BB jawab cepat — rotasi harus pindah otomatis tanpa menunggu.
   fs.writeFileSync(path.join(dataDir, 'harnesses.json'), JSON.stringify([
     { id: 'opencode-free-slow-free', label: 'SLOW (menggantung)', type: 'cli', cmd: 'cmd', args: ['/c', 'powershell', '-NoProfile', '-Command', 'Start-Sleep -Seconds 45'] },
     { id: 'opencode-free-bb-free', label: 'BB (oke)', type: 'cli', cmd: 'cmd', args: ['/c', 'echo', 'jawaban dari BB'] },
