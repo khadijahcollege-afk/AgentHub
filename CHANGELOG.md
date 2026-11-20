@@ -1009,6 +1009,17 @@ ditunggu, dan apa yang harus bisa dipulihkan setelah gagal.
   `share`, `port-helper` — 424 tes, semuanya lulus.
 
 ## 1.6.14 — 2026-11-17
+- **Tema Shop (ala Shop Discord)** — overlay full-screen dengan 10 tema gratis
+  yang BENAR-BENAR BISA DIPAKAI (tiap tema = palet 55 token dari builder ramp
+  otomatis, bukan tulisan tangan): Discord, Blurple Night, Anime Sky, Gaming
+  Neon, Dark & Moody, Cute & Cozy, Sci-Fi Terminal, Nature Forest, Ocean
+  Deep, Sunset Vibes. Filter kategori (Dark & Moody/Gaming/Anime/Cute &
+  Cozy/Sci-Fi/Nature) + filter warna aksen; kartu dengan pratinjau mini
+  mock-profile berwarna asli; modal detail dengan pratinjau besar + tombol
+  Pakai (langsung aktif via mekanisme palet: ah_palette + data-palette);
+  CSS palet dilayani dinamis dari /shop-palettes.css (bukan style.css —
+  kontrak theme.test tetap terjaga). Aksen tema shop menang setelah
+  applyTheme. Tombol Buka Tema Shop di pane Tampilan.
 - **Marketplace & kartu toko berikon** — ikon folder untuk tiap marketplace,
   ikon huruf berwarna (hue dari nama) untuk tiap plugin tersedia & kartu
   toko, baris marketplace dirapikan (nama + jumlah plugin + path + hapus);

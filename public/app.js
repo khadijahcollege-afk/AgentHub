@@ -7207,8 +7207,8 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
     if (!item) return;
     localStorage.setItem('ah_palette', item.paletteId);
     document.documentElement.dataset.palette = item.paletteId;
-    document.documentElement.style.setProperty('--accent', item.accent);
     applyTheme();
+    document.documentElement.style.setProperty('--accent', item.accent);
     toast('Tema ' + item.name + ' dipasang — langsung aktif');
   }
 
