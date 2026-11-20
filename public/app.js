@@ -6594,8 +6594,15 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
       <button class="theme-card ${pal === id ? 'active' : ''}" data-palette-set="${id}">
         ${prev}<span>${label}</span>
       </button>`).join('');
-    $$('#palette-cards .theme-card').forEach((b) => b.addEventListener('click', () => {
+    $('#palette-cards .theme-card').forEach((b) => b.addEventListener('click', () => {
       localStorage.setItem('ah_palette', b.dataset.paletteSet);
+      // discordAccentSync: palet Discord membawa blurple identitasnya —
+      // palet lain kembali ke aksen pilihan pengguna.
+      if (b.dataset.paletteSet === 'discord') {
+        document.documentElement.style.setProperty('--accent', '#5865f2');
+      } else {
+        document.documentElement.style.setProperty('--accent', localStorage.getItem('ah_accent') || '#4f8cff');
+      }
       applyTheme();
     }));
   }
