@@ -445,3 +445,53 @@ label { color: #b5b5bf; font-size: 12px; gap: 8px; }
 .share-list { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
 .share-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #d6d6dc; }
 .share-url { font-family: ui-monospace, Consolas, monospace; font-size: 11px; color: #a7a7ae; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---------- Tema Shop (ala Shop Discord) ---------- */
+.shop-overlay { position: fixed; inset: 0; z-index: 130; background: rgba(2, 2, 6, .93); display: flex; flex-direction: column; }
+.shop-overlay.hidden { display: none; }
+.shop-head { display: flex; align-items: center; gap: 12px; padding: 14px 22px; border-bottom: 1px solid #26262b; background: #0b0b10; }
+.shop-brand svg { width: 20px; height: 20px; fill: none; stroke: var(--accent); stroke-width: 1.7; }
+.shop-head b { font-size: 16px; color: #f2f3f5; }
+.shop-head .search { width: 260px; }
+.shop-price-badge { border: 1px solid #2f4a2f; background: #10240f; color: #4fd68b; font-size: 11px; border-radius: 99px; padding: 3px 10px; }
+.shop-body { flex: 1; display: flex; min-height: 0; }
+.shop-filters { width: 220px; flex-shrink: 0; padding: 18px 16px; border-right: 1px solid #1f1f24; overflow-y: auto; }
+.shop-filter-label { font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: #8d8d94; margin: 10px 0 8px; }
+.shop-cats { display: flex; flex-direction: column; gap: 4px; }
+.shop-cat { text-align: left; background: none; border: 0; color: #b5bac1; font: inherit; font-size: 12.5px; padding: 7px 10px; border-radius: 8px; cursor: pointer; }
+.shop-cat:hover { background: rgba(255, 255, 255, .05); color: #fff; }
+.shop-cat.active { background: rgba(88, 101, 242, .18); color: #c9d1ff; }
+.shop-colors { display: flex; flex-wrap: wrap; gap: 6px; }
+.shop-dot { width: 22px; height: 22px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; }
+.shop-dot.active { border-color: #fff; }
+.shop-main { flex: 1; overflow-y: auto; padding: 20px 24px 48px; }
+.shop-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; }
+.shop-card {
+  display: flex; flex-direction: column; gap: 8px; text-align: left;
+  background: #17171b; border: 1px solid #26262b; border-radius: 14px;
+  padding: 10px; cursor: pointer; color: inherit; font: inherit; width: 100%;
+  transition: border-color .14s, transform .14s;
+}
+.shop-card:hover { border-color: #4a4c55; transform: translateY(-2px); }
+.shop-preview { border-radius: 10px; overflow: hidden; display: flex; height: 120px; background: var(--p-bg); }
+.shop-preview.big { height: 210px; }
+.sp-side { width: 34px; background: var(--p-side); display: flex; flex-direction: column; align-items: center; gap: 7px; padding: 9px 0; }
+.sp-avatar { width: 18px; height: 18px; border-radius: 50%; background: var(--p-accent); }
+.sp-side i { width: 18px; height: 4px; border-radius: 99px; background: rgba(255, 255, 255, .14); }
+.sp-main { flex: 1; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+.sp-top { height: 8px; width: 55%; border-radius: 99px; background: var(--p-accent); opacity: .85; }
+.sp-name { font-size: 11px; color: var(--p-text); font-weight: 600; }
+.sp-main i { height: 5px; border-radius: 99px; background: rgba(255, 255, 255, .1); }
+.sp-main i:nth-child(3) { width: 80%; }
+.sp-main i:nth-child(4) { width: 65%; }
+.sp-msg { margin-top: auto; height: 22px; border-radius: 8px; background: rgba(255, 255, 255, .07); }
+.shop-card-foot { display: flex; align-items: center; justify-content: space-between; }
+.shop-card-name { font-size: 13px; font-weight: 600; color: #f0f0f3; }
+.shop-price { font-size: 11px; color: #4fd68b; border: 1px solid #2f4a2f; background: #10240f; border-radius: 99px; padding: 2px 9px; }
+.shop-modal { position: fixed; inset: 0; z-index: 140; background: rgba(0, 0, 0, .6); display: grid; place-items: center; }
+.shop-modal.hidden { display: none; }
+.shop-modal-card { width: min(720px, 92vw); background: #17171b; border: 1px solid #303036; border-radius: 16px; overflow: hidden; }
+.shop-modal-preview { background: #0d0d11; padding: 22px; }
+.shop-modal-info { padding: 16px 20px 20px; display: flex; flex-direction: column; gap: 8px; }
+.shop-modal-info h3 { margin: 0; color: #f2f3f5; }
+.shop-apply { align-self: flex-start; }

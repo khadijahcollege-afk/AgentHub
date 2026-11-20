@@ -10,7 +10,8 @@
 <link rel="apple-touch-icon" href="/public/icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="stylesheet" href="/public/style.css?v=1.9.14">
+<link rel="stylesheet" href="/public/style.css?v=1.12.2">
+<link rel="stylesheet" href="/shop-palettes.css?v=1">
 <link rel="stylesheet" href="/public/workspace.css?v=20261119">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%2360a5fa'/%3E%3Cstop offset='100%25' stop-color='%232563eb'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='100' height='100' rx='22' fill='url(%23g)'/%3E%3Ccircle cx='50' cy='38' r='16' fill='white'/%3E%3Crect x='30' y='62' width='40' height='10' rx='5' fill='white'/%3E%3C/svg%3E">
 </head>
@@ -29,6 +30,40 @@
 </div>
 
 <div id="app" class="layout hidden">
+  <div id="shop-overlay" class="shop-overlay hidden" role="dialog" aria-modal="true" aria-label="Tema Shop">
+    <header class="shop-head">
+      <span class="shop-brand"><svg viewBox="0 0 24 24"><path d="M4 7h16l-1.5 12.5a2 2 0 0 1-2 1.5h-9a2 2 0 0 1-2-1.5z"/><path d="M8.5 10V6.5a3.5 3.5 0 0 1 7 0V10"/></svg></span>
+      <b>Tema Shop</b>
+      <input id="shop-search" class="search" placeholder="Cari tema…">
+      <span class="grow"></span>
+      <span class="shop-price-badge">Semua gratis</span>
+      <button class="icon-btn" id="shop-close" title="Tutup toko" aria-label="Tutup toko"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    </header>
+    <div class="shop-body">
+      <aside class="shop-filters">
+        <div class="shop-filter-label">Kategori</div>
+        <div id="shop-cats" class="shop-cats"></div>
+        <div class="shop-filter-label">Warna aksen</div>
+        <div id="shop-colors" class="shop-colors"></div>
+      </aside>
+      <div class="shop-main">
+        <div id="shop-grid" class="shop-grid"></div>
+        <div id="shop-empty" class="store-empty hidden">Tidak ada tema yang cocok.</div>
+      </div>
+    </div>
+    <div id="shop-modal" class="shop-modal hidden">
+      <div class="shop-modal-card">
+        <div class="shop-modal-preview" id="shop-modal-preview"></div>
+        <div class="shop-modal-info">
+          <h3 id="shop-modal-name"></h3>
+          <p class="muted small" id="shop-modal-desc"></p>
+          <div class="store-meta" id="shop-modal-meta"></div>
+          <button class="btn primary" id="shop-apply">Pakai tema ini</button>
+          <button class="btn" id="shop-modal-close">Tutup</button>
+        </div>
+      </div>
+    </div>
+  </div>
   <div id="update-banner" class="update-banner hidden" role="status" aria-live="polite">
     <svg viewBox="0 0 24 24"><path d="M12 3v10M7 10l5 5 5-5"/><path d="M4 20h16"/></svg>
     <span id="update-banner-text"></span>
@@ -677,6 +712,7 @@
             <h3>Tampilan</h3>
             <p class="muted small">Tema mengikuti pilihan Anda atau pengaturan Windows. Warna aksen dipakai pada tombol utama, cursor streaming, dan chip model.</p>
             <div class="set-field"><span class="set-field-label">Tema</span><div id="theme-cards" class="theme-cards"></div></div>
+            <div class="form-actions"><button class="btn primary" type="button" id="btn-shop-open">Buka Tema Shop<svg class="ico" viewBox="0 0 24 24"><path d="M4 7h16l-1.5 12.5a2 2 0 0 1-2 1.5h-9a2 2 0 0 1-2-1.5z"/><path d="M8.5 10V6.5a3.5 3.5 0 0 1 7 0V10"/></svg></button><span class="muted small" style="margin-left:8px">10 tema gratis — satu klik langsung aktif</span></div>
             <div class="set-field">
               <span class="set-field-label">Palet warna</span>
               <div id="palette-cards" class="theme-cards"></div>
@@ -1510,6 +1546,6 @@
 <div id="toast-wrap" class="toast-wrap"></div>
 <script src="/public/pwa.js"></script>
 <script src="/public/qrcode.min.js"></script>
-<script type="module" src="/public/app.js?v=1.9.14"></script>
+<script type="module" src="/public/app.js?v=1.12.2"></script>
 </body>
 </html>

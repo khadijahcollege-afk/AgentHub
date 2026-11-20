@@ -43,6 +43,7 @@ import * as memoryExtract from './lib/memory-extract.js';
 import * as share from './lib/share.js';
 import { searchWeb, researchContext, ResearchError } from './lib/research.js';
 import * as freerot from './lib/freerot.js';
+import { shopCatalog, shopCss, SHOP_CATEGORIES, CATEGORY_LABEL } from './lib/shopthemes.js';
 import { listModelChoices, activateModel, isMaskedKey } from './lib/models.js';
 import { tunnelStatus, startTunnel, stopTunnel } from './lib/tunnel.js';
 import {
@@ -1664,6 +1665,21 @@ async function route(req, res) {
   if (method === 'GET' && p === '/download') return serveStatic(res, 'download.html');
   if (method === 'GET' && p === '/download/setup.exe') {
     return serveDownload(res, path.join(DIST_DIR, 'AgentHub-Setup.exe'), `AgentHub-Setup-${APP_VERSION}.exe`);
+  }
+  // ---- Tema Shop: katalog + CSS palet dinamis (publik, tanpa token) ----
+  if (method === 'GET' && p === '/api/shop') {
+    const items = shopCatalog().map((t) => ({
+      id: t.id, paletteId: t.paletteId, name: t.name, desc: t.desc,
+      price: t.price, tags: t.tags, accent: t.accent, preview: t.preview,
+    }));
+    return sendJson(res, 200, { items, categories: SHOP_CATEGORIES.map((c) => ({ id: c, label: CATEGORY_LABEL[c] })) });
+  }
+  if (method === 'GET' && p === '/shop-palettes.css') {
+    res.writeHead(200, {
+      'content-type': 'text/css; charset=utf-8',
+      'cache-control': 'no-cache, must-revalidate',
+    });
+    return res.end(shopCss());
   }
   if (method === 'GET' && p === '/download/portable.zip') {
     return serveDownload(res, path.join(DIST_DIR, 'AgentHub-Portable.zip'), `AgentHub-Portable-${APP_VERSION}.zip`);

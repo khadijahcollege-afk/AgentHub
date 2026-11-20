@@ -4318,6 +4318,7 @@ window.__ahMachines = {
   });
 
   apBind();
+  document.addEventListener('click', (e) => { if (e.target.closest('#btn-shop-open')) { go('settings'); openShop(); initShop(); } });
   $('#btn-share')?.addEventListener('click', () => shareThread());
 
   // Task baru dari tray (klik kanan ikon tray di desktop)
@@ -6594,7 +6595,7 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
       <button class="theme-card ${pal === id ? 'active' : ''}" data-palette-set="${id}">
         ${prev}<span>${label}</span>
       </button>`).join('');
-    $('#palette-cards .theme-card').forEach((b) => b.addEventListener('click', () => {
+    $$('#palette-cards .theme-card').forEach((b) => b.addEventListener('click', () => {
       localStorage.setItem('ah_palette', b.dataset.paletteSet);
       // discordAccentSync: palet Discord membawa blurple identitasnya —
       // palet lain kembali ke aksen pilihan pengguna.
@@ -7192,6 +7193,116 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
       await loadStore();
       await renderPlugins();
     } catch (err) { toast('Gagal memasang: ' + err.message); btn.disabled = false; }
+  });
+
+  // ---------- Tema Shop (ala Shop Discord) ----------
+  let shopItems = [];
+  let shopCat = 'all';
+  let shopQuery = '';
+  let shopColor = '';
+  let shopOpenId = null;
+
+  function shopApply(id) {
+    const item = shopItems.find((x) => x.id === id);
+    if (!item) return;
+    localStorage.setItem('ah_palette', item.paletteId);
+    document.documentElement.dataset.palette = item.paletteId;
+    document.documentElement.style.setProperty('--accent', item.accent);
+    applyTheme();
+    toast('Tema ' + item.name + ' dipasang — langsung aktif');
+  }
+
+  function shopPreviewHtml(item, big) {
+    const p = item.preview;
+    return `<div class="shop-preview${big ? ' big' : ''}" style="--p-bg:${p.bg};--p-side:${p.side};--p-card:${p.card};--p-accent:${p.accent};--p-text:${p.text}">
+      <div class="sp-side"><span class="sp-avatar"></span><i></i><i></i><i></i></div>
+      <div class="sp-main"><span class="sp-top"></span><span class="sp-name">${esc(item.name)}</span><i></i><i></i><span class="sp-msg"></span></div>
+    </div>`;
+  }
+
+  function shopCatsHtml(cats) {
+    return ['all', ...cats].map((c) => `
+      <button class="shop-cat ${shopCat === c ? 'active' : ''}" data-shop-cat="${esc(c)}">${c === 'all' ? 'Semua' : esc(c.label || c)}</button>`).join('');
+  }
+
+  function renderShop() {
+    const grid = document.querySelector('#shop-grid');
+    if (!grid) return;
+    const q = shopQuery.toLowerCase();
+    const items = shopItems.filter((x) =>
+      (shopCat === 'all' || x.tags.includes(shopCat)) &&
+      (!shopColor || x.tags.some((tg) => tg.includes(shopColor))) &&
+      (!q || (x.name + ' ' + x.desc).toLowerCase().includes(q)));
+    grid.innerHTML = items.map((item) => `
+      <button class="shop-card" data-shop-id="${esc(item.id)}">
+        ${shopPreviewHtml(item)}
+        <div class="shop-card-foot">
+          <span class="shop-card-name">${esc(item.name)}</span>
+          <span class="shop-price">${item.price}</span>
+        </div>
+        <div class="store-meta"><span class="store-type">${item.tags.map((tg) => esc(tg)).join(' · ')}</span></div>
+      </button>`).join('');
+    document.querySelector('#shop-empty')?.classList.toggle('hidden', items.length > 0);
+  }
+
+  function openShop() {
+    const ov = document.querySelector('#shop-overlay');
+    if (!ov) return;
+    ov.classList.remove('hidden');
+    renderShop();
+  }
+  function closeShop() {
+    document.querySelector('#shop-overlay')?.classList.add('hidden');
+    document.querySelector('#shop-modal')?.classList.add('hidden');
+  }
+
+  async function initShop() {
+    try {
+      const r = await api('/api/shop');
+      shopItems = r.items || [];
+      const cats = document.querySelector('#shop-cats');
+      if (cats) cats.innerHTML = shopCatsHtml(r.categories || []);
+      const colors = [...new Set(shopItems.map((x) => x.accent))];
+      const colHost = document.querySelector('#shop-colors');
+      if (colHost) colHost.innerHTML = colors.map((col) => `
+        <button class="shop-dot" data-shop-color="${esc(col)}" style="background:${esc(col)}" title="Filter warna aksen"></button>`).join('');
+      renderShop();
+    } catch (e) { toast('Gagal memuat Tema Shop: ' + e.message); }
+  }
+
+  document.addEventListener('click', (e) => {
+    const card = e.target.closest('[data-shop-id]');
+    if (card && !e.target.closest('.shop-modal')) {
+      shopOpenId = card.dataset.shopId;
+      const item = shopItems.find((x) => x.id === shopOpenId);
+      if (!item) return;
+      document.querySelector('#shop-modal-preview').innerHTML = shopPreviewHtml(item, true);
+      document.querySelector('#shop-modal-name').textContent = item.name;
+      document.querySelector('#shop-modal-desc').textContent = item.desc;
+      document.querySelector('#shop-modal-meta').innerHTML =
+        '<span class="store-type">' + item.tags.map((tg) => esc(tg)).join(' · ') + '</span><span class="shop-price">' + esc(item.price) + '</span>';
+      document.querySelector('#shop-modal').classList.remove('hidden');
+      return;
+    }
+    if (e.target.closest('#shop-apply')) {
+      if (shopOpenId) shopApply(shopOpenId);
+      closeShop();
+      return;
+    }
+    if (e.target.closest('#shop-modal-close') || e.target.id === 'shop-modal') {
+      document.querySelector('#shop-modal')?.classList.add('hidden');
+      return;
+    }
+    if (e.target.closest('#shop-close') || e.target.id === 'shop-overlay') closeShop();
+    const dot = e.target.closest('[data-shop-color]');
+    if (dot) {
+      shopColor = shopColor === dot.dataset.shopColor ? '' : dot.dataset.shopColor;
+      document.querySelectorAll('.shop-dot').forEach((d) => d.classList.toggle('active', d === dot));
+      renderShop();
+    }
+  });
+  document.addEventListener('input', (e) => {
+    if (e.target?.id === 'shop-search') { shopQuery = e.target.value.trim().toLowerCase(); renderShop(); }
   });
 
   async function renderPlugins() {
