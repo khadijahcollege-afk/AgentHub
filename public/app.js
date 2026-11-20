@@ -6529,6 +6529,7 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
   // Discord: tema mengatur gelap-terang, palet mengatur warnanya.
   const THEMES = [
     ['dark', 'Gelap', '<div class="theme-prev dark"><i></i><u></u></div>'],
+    ['discord', 'Discord', '<div class="theme-prev discord"><i></i><u></u></div>'],
     ['light', 'Terang', '<div class="theme-prev light"><i></i><u></u></div>'],
     ['glass', 'Kaca', '<div class="theme-prev glass"><i></i><u></u></div>'],
     ['oled', 'OLED', '<div class="theme-prev oled"><i></i><u></u></div>'],
@@ -6539,6 +6540,7 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
   // dimaksud. UI menjelaskan itu, bukan menyembunyikan pilihannya.
   const PALETTES = [
     ['bawaan', 'Bawaan', '<div class="theme-prev dark"><i></i><u></u></div>'],
+    ['discord', 'Discord', '<div class="theme-prev discord"><i></i><u></u></div>'],
     ['midnight', 'Midnight', '<div class="theme-prev midnight"><i></i><u></u></div>'],
     ['aurora', 'Aurora', '<div class="theme-prev aurora"><i></i><u></u></div>'],
     ['ungu', 'Ungu', '<div class="theme-prev ungu"><i></i><u></u></div>'],
@@ -6549,7 +6551,11 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
   }
   function applyTheme() {
     const pref = localStorage.getItem('ah_theme') || 'dark';
-    const eff = pref === 'system' ? (sysLight() ? 'light' : 'dark') : (pref === 'glass' ? 'dark' : pref);
+    // Tema Discord membawa identitas blurple-nya sendiri; tema lain kembali
+    // ke aksen pilihan pengguna.
+    if (pref === 'discord') document.documentElement.style.setProperty('--accent', '#5865f2');
+    else document.documentElement.style.setProperty('--accent', localStorage.getItem('ah_accent') || '#4f8cff');
+    const eff = pref === 'system' ? (sysLight() ? 'light' : 'dark') : pref; // discord & oled punya palet sendiri
     document.documentElement.dataset.theme = eff;
     // Palet dipasang sebagai atribut terpisah dari tema. Tema Terang memakai
     // inversi, jadi palet gelap di atasnya akan tampil terbalik dan warnanya
@@ -6573,7 +6579,8 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
     $$('#palette-cards .theme-card').forEach((c) => c.classList.toggle('active', c.dataset.palette === pal));
     $$('#acct-theme-label').forEach((el) => {
       el.textContent = pref === 'system' ? 'Sistem' : pref === 'light' ? 'Terang'
-        : pref === 'glass' ? 'Kaca' : pref === 'oled' ? 'OLED' : 'Gelap';
+        : pref === 'glass' ? 'Kaca' : pref === 'oled' ? 'OLED'
+        : pref === 'discord' ? 'Discord' : 'Gelap';
     });
   }
 
@@ -8395,8 +8402,8 @@ Model    : auto  (atau groq/llama-3.3-70b-versatile, dst)`;
       .catch(() => toast(`ID perangkat: ${id}`, 6000));
   });
   $('#acct-theme').addEventListener('click', () => {
-    const order = ['dark', 'glass', 'oled', 'light', 'system'];
-    const labels = { dark: 'gelap', glass: 'kaca', oled: 'OLED', light: 'terang', system: 'ikuti sistem' };
+    const order = ['dark', 'discord', 'glass', 'oled', 'light', 'system'];
+    const labels = { dark: 'gelap', discord: 'Discord', glass: 'kaca', oled: 'OLED', light: 'terang', system: 'ikuti sistem' };
     const cur = localStorage.getItem('ah_theme') || 'dark';
     const next = order[(order.indexOf(cur) + 1) % order.length];
     localStorage.setItem('ah_theme', next);
