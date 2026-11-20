@@ -3452,6 +3452,80 @@ html[data-palette="ungu"]:not([data-tl="1"]) #app.layout {
     radial-gradient(820px 520px at 2% 108%, rgba(72, 38, 120, .20), transparent 62%),
     linear-gradient(140deg, rgba(32, 22, 46, .95), rgba(11, 7, 16, .98));
 }
+
+/* ---------- palet Discord: token asli dari cache aplikasi Discord ---------- */
+
+/* ---------- palet Discord: token asli dari cache aplikasi Discord ---------- */
+
+/* ---------- palet Discord: token asli dari cache aplikasi Discord ---------- */
+html[data-palette="discord"] {
+  --surface: var(--card);
+  --surface2: var(--card-0);
+  --bg: #313338;
+  --terminal-bg: #26272b;
+  --rail: #1e1f22;
+  --side: rgba(43, 45, 49, .82);
+  --side-solid: #2b2d31;
+  --line: #3f4147;
+  --line2: #4e5058;
+  --card: #2b2d31;
+  --card-0: #232428;
+  --card-1: #32353b;
+  --card-2: #1e1f22;
+  --card-3: #2a2c33;
+  --card-4: #2e3036;
+  --card-hi: #35373c;
+  --pop: #232428;
+  --panel-2: #232428;
+  --panel-3: #32353b;
+  --surface-hi: #3f4147;
+  --edge: #3f4147;
+  --edge-0: #333539;
+  --edge-1: #3f4147;
+  --edge-2: #4a4c52;
+  --edge-3: #5c5e66;
+  --edge-btn: #40424a;
+  --edge-panel: #3f4147;
+  --edge-pill: #45474d;
+  --text: #f2f3f5;
+  --text2: #dbdee1;
+  --ink-3: #dbdee1;
+  --ink-4: #b5bac1;
+  --ink-5: #949ba4;
+  --ink-5-fill: #949ba4;
+  --muted: #b5bac1;
+  --muted2: #949ba4;
+  --card-5: #1e1f22;
+  --card-6: #26272b;
+  --card-7: #1a1b1e;
+  --card-8: #35373c;
+  --card-9: #303136;
+  --edge-4: #52545b;
+  --edge-5: #64656c;
+  --edge-6: #494b52;
+  --edge-7: #3c3e44;
+  /* kanal RGB permukaan kaca */
+  --glass-app-rgb: 49 51 56;
+  --glass-rail-rgb: 30 31 34;
+  --glass-side-rgb: 43 45 49;
+  --glass-pill-rgb: 56 58 64;
+  --glass-pop-rgb: 35 36 40;
+  --glass-chat-top-rgb: 49 51 56;
+  --glass-stat-rgb: 43 45 49;
+  --glass-panel-rgb: 43 45 49;
+  --glass-set-rgb: 43 45 49;
+  --glass-seg-rgb: 35 36 40;
+}
+
+html[data-palette="discord"]:not([data-tl="1"]) #app.layout {
+  background:
+    radial-gradient(900px 520px at 80% -10%, rgba(88, 101, 242, .14), transparent 62%),
+    linear-gradient(140deg, rgba(43, 45, 49, .96), rgba(30, 31, 34, .98));
+}
+
+html[data-palette="discord"][data-tl="1"] #app.layout {
+  background: rgb(var(--glass-app-rgb) / var(--t-content, 1));
+}
 html[data-palette="senja"]:not([data-tl="1"]) #app.layout {
   background:
     radial-gradient(900px 520px at 80% -10%, rgba(150, 80, 40, .20), transparent 62%),
@@ -3535,9 +3609,13 @@ html[data-palette="senja"][data-tl="1"] #app.layout {
 .theme-prev.aurora { background: linear-gradient(140deg, #101725, #02040a 70%); }
 .theme-prev.aurora i { background: #1d5c86; }
 .theme-prev.aurora u { background: #131b29; }
+.theme-prev.discord { background: linear-gradient(180deg, #1e1f22 0%, #2b2d31 55%, #313338 100%); }
+.theme-prev.discord i { background: #5865f2; }
+.theme-prev.discord u { background: #383a40; }
 .theme-prev.ungu { background: linear-gradient(140deg, #2b1d3d, #0b0710 70%); }
 .theme-prev.ungu i { background: #6b4a8f; }
 .theme-prev.ungu u { background: #261a38; }
 .theme-prev.senja { background: linear-gradient(140deg, #332520, #100c0b 70%); }
 .theme-prev.senja i { background: #8a5a3e; }
 .theme-prev.senja u { background: #2a1e1a; }
+

@@ -265,7 +265,7 @@ test('tema: label tema & palet punya padanan Inggris (kecuali nama diri)', () =>
   // menyisakan kata Indonesia di tengahnya. Nama diri (OLED, Midnight, Aurora)
   // sengaja dibiarkan karena itu nama, bukan kata biasa.
   const dict = fs.readFileSync(path.join(ROOT, 'public/i18n-dict.js'), 'utf8');
-  const NAMA_DIRI = new Set(['OLED', 'Midnight', 'Aurora']);
+  const NAMA_DIRI = new Set(['OLED', 'Midnight', 'Aurora', 'Discord']);
   const has = (k) => new RegExp(`(^|\\n)\\s*'?${k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}'?\\s*:`, 'm').test(dict);
 
   const grab = (constName) => {
